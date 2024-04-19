@@ -46,6 +46,12 @@ orders:
     engine: openpyxl
     sheet_name: Orders
 
+voestalpine_consumption:
+  type: pandas.ExcelDataset
+  filepath: data/01_raw/historie-spotreb-elektrina.xlsx
+  load_args:
+    engine: openpyxl
+
 starting_schedule:
   type: pandas.ExcelDataset
   filepath: data/02_intermediate/starting_schedule.xlsx
