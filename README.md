@@ -15,6 +15,19 @@ In order to get the best out of the template:
 * Don't commit data to your repository
 * Don't commit any credentials or your local configuration to your repository. Keep all your credentials and local configuration in `conf/local/`
 
+
+## Set up your Python virtual environment
+
+We strongly recommend installing [Miniconda](https://docs.anaconda.com/free/miniconda/index.html) as your virtual environment manager if you don’t already use it.
+
+1. Install Miniconda: https://docs.conda.io/projects/conda/en/latest/user-guide/install/
+2. Create a new virtual environment using conda
+   - `conda create --name <name_of_your_choice> python=3.8.10 -y`
+   - In this example, we use Python 3.8.10, but you can opt for a different version if you need it for your
+     particular project
+3. Activate the new environment: `conda activate <name_of_your_choice>`
+
+
 ## How to install dependencies
 
 Declare any dependencies in `requirements.txt` for `pip` installation.
@@ -43,7 +56,7 @@ pytest
 
 To configure the coverage threshold, look at the `.coveragerc` file.
 
-## Project dependencies
+## IMPORTANT - HOW to update Project dependencies
 
 To see and update the dependency requirements for your project use `requirements.txt`. Install the project requirements with `pip install -r requirements.txt`.
 
