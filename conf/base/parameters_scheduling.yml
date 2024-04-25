@@ -1,3 +1,13 @@
 scheduling_options:
   machines: 3
-  start_date: "2024-01-02"
+  start_date: "2024-03-02"
+  min_processing_time_per_item: 12
+  max_processing_time_per_item: 35
+  change_over_time: 180
+  column_mapping: {
+    'Job ID': 'Order',
+    'Created Date': 'Order_date',
+    'Part Description': 'Product',
+    'Due Date ': 'Due_date',
+    'Order Qty': 'Order Qty'
+}
