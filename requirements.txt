@@ -11,3 +11,7 @@ pytest-mock>=1.7.1, <2.0
 ruff~=0.1.8
 ydata-profiling~=4.7
 openpyxl
+xarray~=2024.3.0
+cfgrib~=0.9.11.0
+eccodes~=1.7.0
+ecmwf-data~=0.0.1

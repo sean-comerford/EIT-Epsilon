@@ -38,6 +38,22 @@ To install them, run:
 pip install -r requirements.txt
 ```
 
+### Installing System dependencies for `eccodes` package
+The Python module depends on the ECMWF ecCodes library that must be installed on the system and accessible as a shared library.
+
+Or if you manage binary packages with Conda use:
+
+$ conda install -c conda-forge eccodes
+
+You may run a simple selfcheck command to ensure that your system is set up correctly:
+
+````commandline
+python -m eccodes selfcheck
+Found: ecCodes v2.27.0.
+Your system is ready.
+````
+
+
 ## How to run your Kedro pipeline
 
 You can run your Kedro project with:
