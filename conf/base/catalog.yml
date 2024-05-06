@@ -225,7 +225,21 @@ remaining_orders:
 final_schedule:
   type: pandas.ExcelDataset
   filepath: data/08_reporting/final_schedule.xlsx
+  save_args:
+    engine: openpyxl
+    sheet_name: Schedule
   load_args:
     engine: openpyxl
     sheet_name: Schedule
 
+gantt_chart_json:
+  type: plotly.PlotlyDataset
+  filepath: data/08_reporting/gantt_chart.json
+  plotly_args:
+    type: timeline
+    fig:
+      x_start: Start_time
+      x_end: End_time
+      y: Machine
+      color: Product
+      title: Production Schedule Milling & Grinding
