@@ -39,18 +39,134 @@
 # (transcoding), templating and a way to reuse arguments that are frequently repeated. See more here:
 # https://docs.kedro.org/en/stable/data/data_catalog.html
 
-orders:
-  type: pandas.ExcelDataset
-  filepath: data/01_raw/order_book.xlsx
-  load_args:
-    engine: openpyxl
-    sheet_name: Orders
+
+# Energy production prediction
 
 voestalpine_consumption:
   type: pandas.ExcelDataset
   filepath: data/01_raw/historie-spotreb-elektrina.xlsx
   load_args:
     engine: openpyxl
+
+solar_energy_production_pilot_locations_2:
+  type: pandas.ExcelDataset
+  filepath: data/01_raw/his_data_032021_192023_new.xlsx
+  load_args:
+    engine: openpyxl # Use modern Excel engine (the default since Kedro 0.18.0)
+
+weather_stations:
+  type: pandas.CSVDataset
+  filepath: data/02_intermediate/weather_stations.csv
+
+nearest_weather_stations:
+  type: json.JSONDataset
+  filepath: data/02_intermediate/nearest_weather_stations.json
+
+unique_weather_stations:
+  type: json.JSONDataset
+  filepath: data/02_intermediate/unique_weather_stations.json
+
+weather_measurements:
+  type: pandas.CSVDataset
+  filepath: data/02_intermediate/hourly_weather_measurements.csv
+
+solar_energy_production_per_location:
+  type: partitions.PartitionedDataset
+  path: data/02_intermediate/solar_energy_production
+  dataset:
+    type: pandas.CSVDataset
+    save_args:
+      index: true
+      header: true
+      sep: ";"
+    load_args:
+      sep: ";"
+  overwrite: true
+
+preprocessed_energy_production_data:
+  type: partitions.PartitionedDataset
+  path: data/02_intermediate/preprocessed_solar_energy_production
+  dataset:
+    type: pandas.CSVDataset
+    save_args:
+      index: false
+      header: true
+    load_args:
+      parse_dates: ['time_utc']
+  overwrite: true
+
+
+# Modelling
+training_day_ahead_data:
+  type: partitions.PartitionedDataset
+  path: data/03_primary/training_day_ahead_data
+  dataset:
+    type: pandas.CSVDataset
+    save_args:
+      index: true
+      header: true
+    load_args:
+      parse_dates: ['time_utc']
+      index_col: 'time_utc'
+  overwrite: true
+
+testing_day_ahead_data:
+  type: partitions.PartitionedDataset
+  path: data/03_primary/testing_day_ahead_data
+  dataset:
+    type: pandas.CSVDataset
+    save_args:
+      index: true
+      header: true
+    load_args:
+      parse_dates: ['time_utc']
+      index_col: 'time_utc'
+  overwrite: true
+
+forecasting_day_ahead_data:
+  type: partitions.PartitionedDataset
+  path: data/03_primary/forecasting_day_ahead_data
+  dataset:
+    type: pandas.CSVDataset
+    save_args:
+      index: true
+      header: true
+    load_args:
+      parse_dates: ['time_utc']
+      index_col: 'time_utc'
+  overwrite: true
+
+forecasting_day_ahead_predictions:
+  type: partitions.PartitionedDataset
+  path: data/07_model_output/forecasting_day_ahead_predictions
+  dataset:
+    type: pandas.CSVDataset
+    save_args:
+      index: true
+      header: true
+
+selected_day_ahead_models:
+  type: partitions.PartitionedDataset
+  path: data/06_models/selected_trained_day_ahead_models
+  dataset:
+    type: pickle.PickleDataset
+
+trained_model_day_ahead:
+  type: partitions.PartitionedDataset
+  path: data/06_models/initially_trained_model_day_ahead_models
+  dataset:
+    type: pickle.PickleDataset
+
+
+
+# Scheduling engine
+
+orders:
+  type: pandas.ExcelDataset
+  filepath: data/01_raw/order_book.xlsx
+  load_args:
+    engine: openpyxl
+    sheet_name: Orders
 
 starting_schedule:
   type: pandas.ExcelDataset
