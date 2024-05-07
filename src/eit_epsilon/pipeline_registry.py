@@ -46,6 +46,10 @@ def register_pipelines() -> Dict[str, Pipeline]:
             preprocessing.create_pipeline_preprocess_weather_data()
     )
 
+    weather_measurements_cz_pipeline = (
+        extract_weather.create_pipeline_measurements_czechia()
+    )
+
     modeling_training_pipeline=(modeling.create_pipeline_training_model())
 
     weather_forecasts_pipeline = (
@@ -81,7 +85,7 @@ def register_pipelines() -> Dict[str, Pipeline]:
         data_funnel.create_pipeline_merging_production_weather_data()
     )
     day_ahead_forecasting_pipeline = pipeline(
-        pipe=weather_forecasts_pipeline + data_funnel_forecasting_pipeline + modeling_forecasting_pipeline,
+        pipe=weather_forecasts_pipeline + data_funnel_forecasting_pipeline + modeling_forecasting_pipeline + weather_measurements_cz_pipeline,
         parameters={
             "params:pilot_locations_coordinates": "params:pilot_locations_coordinates",
             "params:meta_data": "params:meta_data",
@@ -90,6 +94,7 @@ def register_pipelines() -> Dict[str, Pipeline]:
             'params:locations': 'params:day_ahead_forecasting_pipeline.forecasting.locations',
             'params:feature_engineering_selection': 'params:day_ahead_model_training.feature_engineering_selection',
             'params:data_interpolation': 'params:day_ahead_model_training.data_interpolation',
+            "params:ecmwf_grib_file": "params:ecmwf_grib_file"
         },
         inputs={
             "trained_model": "trained_model_day_ahead"
@@ -99,7 +104,8 @@ def register_pipelines() -> Dict[str, Pipeline]:
             "forecasting_predictions": "forecasting_day_ahead_predictions",
             "closest_coordinates": "closest_coordinates_day_ahead_forecasting",
             "selected_models": "selected_day_ahead_models",
-
+            "weather_measurements_czechia": "weather_measurements_czechia",
+            "preprocessed_weather_measurements_czechia": "preprocessed_weather_czechia"
         },
         namespace='day_ahead_forecasting_pipeline'
     )
