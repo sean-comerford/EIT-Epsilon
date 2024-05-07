@@ -1,7 +1,9 @@
 from kedro.pipeline import Pipeline, node, pipeline
 
 from .nodes import load_jobs, schedule_earliest_due_date
+
 # from .nodes import get_starting_jobs, fill_schedule
+
 
 def create_pipeline(**kwargs) -> Pipeline:
     return pipeline(
