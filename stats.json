@@ -1,1 +1,1 @@
-{"solar_energy_production_pilot_locations_2": {"rows": 83517, "columns": 19, "file_size": 7012618}, "weather_stations": {"rows": 50, "columns": 5, "file_size": 1776}, "weather_measurements": {"rows": 91320, "columns": 4, "file_size": 2556986}, "day_ahead_model_training.preprocessed_weather_measurements": {"rows": 91315, "columns": 3}}
+{"weather_measurements_czechia": {"rows": 394200, "columns": 7, "file_size": 31141569}, "preprocessed_weather_czechia": {"rows": 8760, "columns": 1, "file_size": 237917}}

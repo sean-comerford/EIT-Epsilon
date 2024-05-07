@@ -95,6 +95,13 @@ preprocessed_energy_production_data:
       parse_dates: ['time_utc']
   overwrite: true
 
+weather_measurements_czechia:
+  type: pandas.CSVDataset
+  filepath: data/02_intermediate/weather_measurements_czechia.csv
+  load_args:
+    parse_dates: True
+    index_col: "time"
+
 
 # Modelling
 training_day_ahead_data:
@@ -135,6 +142,16 @@ forecasting_day_ahead_data:
       parse_dates: ['time_utc']
       index_col: 'time_utc'
   overwrite: true
+
+preprocessed_weather_czechia:
+  type: pandas.CSVDataset
+  filepath: data/03_primary/preprocessed_weather_czechia.csv
+  save_args:
+    index: True
+  load_args:
+    parse_dates: True
+    index_col: "time"
+
 
 forecasting_day_ahead_predictions:
   type: partitions.PartitionedDataset
