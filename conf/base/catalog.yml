@@ -172,6 +172,7 @@ selected_day_ahead_models:
   path: data/06_models/selected_trained_day_ahead_models
   dataset:
     type: pickle.PickleDataset
+  overwrite: true
 
 trained_model_day_ahead:
   type: partitions.PartitionedDataset
