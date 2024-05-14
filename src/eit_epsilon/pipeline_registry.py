@@ -1,6 +1,9 @@
 """Project pipelines."""
+from pathlib import Path
 from typing import Dict
 
+from kedro.config import OmegaConfigLoader
+from kedro.framework.project import settings
 import eit_epsilon.pipelines.energy_forecasting.data_funnel as data_funnel
 import eit_epsilon.pipelines.energy_forecasting.preprocessing as preprocessing
 import eit_epsilon.pipelines.energy_forecasting.modeling as modeling
@@ -10,11 +13,10 @@ from kedro.pipeline import Pipeline, pipeline
 
 import eit_epsilon.pipelines.energy_forecasting.data_extraction.energy_production as extract_energy_production
 import eit_epsilon.pipelines.energy_forecasting.data_extraction.weather as extract_weather
-
-from pathlib import Path
-
-from kedro.config import OmegaConfigLoader
-from kedro.framework.project import settings
+import eit_epsilon.pipelines.energy_forecasting.data_funnel as data_funnel
+import eit_epsilon.pipelines.energy_forecasting.exploration as exploration
+import eit_epsilon.pipelines.energy_forecasting.modeling as modeling
+import eit_epsilon.pipelines.energy_forecasting.preprocessing as preprocessing
 
 conf_path = str(Path.cwd() / settings.CONF_SOURCE)
 conf_loader = OmegaConfigLoader(conf_source=conf_path)
@@ -77,6 +79,7 @@ def register_pipelines() -> Dict[str, Pipeline]:
 
     modeling_forecasting_pipeline = modeling.create_pipeline_forecasting_model()
     exploration_pipeline = exploration.create_pipeline()
+    exploration_pipeline_czechia = exploration.create_pipeline_predictions()
     data_funnel_forecasting_pipeline = data_funnel.create_pipeline_weather_forecasts()
 
     # Day ahead forecasting pipelines
@@ -118,7 +121,7 @@ def register_pipelines() -> Dict[str, Pipeline]:
         },
         namespace="czechia_prediction_pipeline",
     ) + pipeline(
-        pipe=data_funnel_forecasting_pipeline + modeling_forecasting_pipeline,
+        pipe=data_funnel_forecasting_pipeline + modeling_forecasting_pipeline + exploration_pipeline_czechia,
         parameters={
             "params:pilot_locations_coordinates": "params:pilot_locations_coordinates",
             "params:meta_data": "params:meta_data",
@@ -135,6 +138,7 @@ def register_pipelines() -> Dict[str, Pipeline]:
         },
         namespace="czechia_prediction_pipeline",
     )
+
 
     # Model forecasting day ahead
     day_ahead_model_training_pipeline = pipeline(
@@ -179,10 +183,12 @@ def register_pipelines() -> Dict[str, Pipeline]:
     )
 
     pipelines = {
+        # TODO: remove/replace old pipelines when czechia stable
         "__default__": day_ahead_model_training_pipeline + day_ahead_forecasting_pipeline,
-        'modeling_training_day_ahead': day_ahead_model_training_pipeline,
-        'forecasting_day_ahead': day_ahead_forecasting_pipeline,
-        'day_ahead': day_ahead_model_training_pipeline + day_ahead_forecasting_pipeline,
+        # "__default__": day_ahead_model_training_pipeline,
+        "modeling_training_day_ahead": day_ahead_model_training_pipeline,
+        # "forecasting_day_ahead": day_ahead_forecasting_pipeline,
+        # "day_ahead": day_ahead_model_training_pipeline + day_ahead_forecasting_pipeline,
         "czechia": czechia_prediction_pipeline,
         'scheduling_engine': pipeline_scheduling_engine
     }

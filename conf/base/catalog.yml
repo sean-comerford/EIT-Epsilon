@@ -163,6 +163,9 @@ forecasting_day_ahead_predictions:
     save_args:
       index: true
       header: true
+    load_args:
+      index_col: "time_utc"
+      parse_dates: True
 
 selected_day_ahead_models:
   type: partitions.PartitionedDataset
