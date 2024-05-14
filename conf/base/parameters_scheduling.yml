@@ -11,3 +11,12 @@ scheduling_options:
     'Due Date ': 'Due_date',
     'Order Qty': 'Order Qty'
 }
+
+visualization_options:
+  title: "Production Schedule Milling & Grinding"
+  column_mapping: {
+    'Start': 'Start_time',
+    'End': 'End_time',
+    'Resource': 'Machine',
+    'Task': 'Product'
+  }

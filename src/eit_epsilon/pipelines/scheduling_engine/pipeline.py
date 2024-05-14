@@ -1,9 +1,6 @@
 from kedro.pipeline import Pipeline, node, pipeline
 
-from .nodes import load_jobs, schedule_earliest_due_date
-
-# from .nodes import get_starting_jobs, fill_schedule
-
+from .nodes import load_jobs, schedule_earliest_due_date, create_chart, save_chart_to_html
 
 def create_pipeline(**kwargs) -> Pipeline:
     return pipeline(
@@ -19,6 +16,18 @@ def create_pipeline(**kwargs) -> Pipeline:
                 inputs=["job_list", "params:scheduling_options"],
                 outputs="final_schedule",
                 name="schedule_earliest_due_date",
+            ),
+            node(
+                func=create_chart,
+                inputs=["final_schedule", "params:visualization_options"],
+                outputs="gantt_chart",
+                name="schedule_chart",
+            ),
+            node(
+                func=save_chart_to_html,
+                inputs="gantt_chart_json",
+                outputs=None,
+                name="save_chart_to_html",
             ),
         ]
     )

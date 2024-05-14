@@ -5,6 +5,7 @@ import eit_epsilon.pipelines.energy_forecasting.data_funnel as data_funnel
 import eit_epsilon.pipelines.energy_forecasting.preprocessing as preprocessing
 import eit_epsilon.pipelines.energy_forecasting.modeling as modeling
 import eit_epsilon.pipelines.energy_forecasting.exploration as exploration
+import eit_epsilon.pipelines.scheduling_engine as scheduling_engine
 from kedro.pipeline import Pipeline, pipeline
 
 import eit_epsilon.pipelines.energy_forecasting.data_extraction.energy_production as extract_energy_production
@@ -58,6 +59,8 @@ def register_pipelines() -> Dict[str, Pipeline]:
     )
 
     modeling_testing_pipeline = (modeling.create_pipeline_testing_model())
+
+    scheduling_engine_pipeline = (scheduling_engine.create_pipeline())
 
     weather_forecasts_testing_pipeline = pipeline(
         pipe=weather_forecasts_pipeline,
@@ -144,13 +147,16 @@ def register_pipelines() -> Dict[str, Pipeline]:
         },
         namespace='day_ahead_model_training'
     )
-
+    pipeline_scheduling_engine = pipeline(
+        pipe=scheduling_engine_pipeline
+    )
 
     pipelines = {
         "__default__": day_ahead_model_training_pipeline + day_ahead_forecasting_pipeline,
         'modeling_training_day_ahead': day_ahead_model_training_pipeline,
         'forecasting_day_ahead': day_ahead_forecasting_pipeline,
         'day_ahead': day_ahead_model_training_pipeline + day_ahead_forecasting_pipeline,
+        'scheduling_engine': pipeline_scheduling_engine
     }
 
 
