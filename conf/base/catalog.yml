@@ -144,13 +144,15 @@ forecasting_day_ahead_data:
   overwrite: true
 
 preprocessed_weather_czechia:
-  type: pandas.CSVDataset
-  filepath: data/03_primary/preprocessed_weather_czechia.csv
-  save_args:
-    index: True
-  load_args:
-    parse_dates: True
-    index_col: "time"
+  type: partitions.PartitionedDataset
+  path: data/03_primary/preprocessed_weather_czechia
+  dataset:
+    type: pandas.CSVDataset
+    save_args:
+      index: True
+    load_args:
+      parse_dates: True
+      index_col: "time"
 
 
 forecasting_day_ahead_predictions:
@@ -161,12 +163,16 @@ forecasting_day_ahead_predictions:
     save_args:
       index: true
       header: true
+    load_args:
+      index_col: "time_utc"
+      parse_dates: True
 
 selected_day_ahead_models:
   type: partitions.PartitionedDataset
   path: data/06_models/selected_trained_day_ahead_models
   dataset:
     type: pickle.PickleDataset
+  overwrite: true
 
 trained_model_day_ahead:
   type: partitions.PartitionedDataset
