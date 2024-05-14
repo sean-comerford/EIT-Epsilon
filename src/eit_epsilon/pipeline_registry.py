@@ -4,11 +4,6 @@ from typing import Dict
 
 from kedro.config import OmegaConfigLoader
 from kedro.framework.project import settings
-import eit_epsilon.pipelines.energy_forecasting.data_funnel as data_funnel
-import eit_epsilon.pipelines.energy_forecasting.preprocessing as preprocessing
-import eit_epsilon.pipelines.energy_forecasting.modeling as modeling
-import eit_epsilon.pipelines.energy_forecasting.exploration as exploration
-import eit_epsilon.pipelines.scheduling_engine as scheduling_engine
 from kedro.pipeline import Pipeline, pipeline
 
 import eit_epsilon.pipelines.energy_forecasting.data_extraction.energy_production as extract_energy_production
@@ -17,6 +12,8 @@ import eit_epsilon.pipelines.energy_forecasting.data_funnel as data_funnel
 import eit_epsilon.pipelines.energy_forecasting.exploration as exploration
 import eit_epsilon.pipelines.energy_forecasting.modeling as modeling
 import eit_epsilon.pipelines.energy_forecasting.preprocessing as preprocessing
+import eit_epsilon.pipelines.scheduling_engine as scheduling_engine
+
 
 conf_path = str(Path.cwd() / settings.CONF_SOURCE)
 conf_loader = OmegaConfigLoader(conf_source=conf_path)
