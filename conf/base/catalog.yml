@@ -167,6 +167,7 @@ forecasting_day_ahead_predictions:
     load_args:
       index_col: "time_utc"
       parse_dates: True
+  overwrite: True
 
 selected_day_ahead_models:
   type: partitions.PartitionedDataset
