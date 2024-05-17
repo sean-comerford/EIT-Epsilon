@@ -14,7 +14,6 @@ import eit_epsilon.pipelines.energy_forecasting.modeling as modeling
 import eit_epsilon.pipelines.energy_forecasting.preprocessing as preprocessing
 import eit_epsilon.pipelines.scheduling_engine as scheduling_engine
 
-
 conf_path = str(Path.cwd() / settings.CONF_SOURCE)
 conf_loader = OmegaConfigLoader(conf_source=conf_path)
 parameters = conf_loader["parameters"]
@@ -111,7 +110,8 @@ def register_pipelines() -> Dict[str, Pipeline]:
 
     czechia_prediction_pipeline = pipeline(
         pipe=weather_measurements_cz_pipeline,
-        parameters="params:ecmwf_grib_file",
+        parameters={"params:ecmwf_grib_file", "params:pilot_locations_coordinates",
+                    "params:czechia_prediction_pipeline"},
         outputs={
             "weather_measurements": "weather_measurements_czechia",
             "preprocessed_weather_forecasts": "preprocessed_weather_czechia",
@@ -172,6 +172,7 @@ def register_pipelines() -> Dict[str, Pipeline]:
             "nearest_weather_stations": "nearest_weather_stations",
             "unique_weather_stations": "unique_weather_stations",
             "weather_measurements": "weather_measurements",
+            "production_and_weather_data": "production_and_weather_data_nl"
         },
         namespace="day_ahead_model_training",
     )

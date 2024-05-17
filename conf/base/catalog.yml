@@ -47,6 +47,7 @@ voestalpine_consumption:
   filepath: data/01_raw/historie-spotreb-elektrina.xlsx
   load_args:
     engine: openpyxl
+    usecols: [ 0, 2, 3, 4 ]
 
 solar_energy_production_pilot_locations_2:
   type: pandas.ExcelDataset
