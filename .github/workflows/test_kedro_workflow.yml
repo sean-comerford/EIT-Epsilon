@@ -1,0 +1,46 @@
+name: Build environment and run Kedro
+run-name: Testing the kedro project for ${{github.ref_name}}
+on: [push]
+jobs:
+  run-pipeline:
+    name: Run Kedro pipeline using conda environment on ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false # Ensures that not all jobs are cancelled when one job in the matrix fails
+      matrix:
+        os: ["ubuntu-latest", "macos-latest", "windows-latest" ]
+    defaults:
+      run:
+        # This command ensures a bash shell is always used. It is required to run de conda and kedro commands below.
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4 # This line ensures the repository is usable in the workflow
+      - uses: conda-incubator/setup-miniconda@v3 # Creates a Conda environment
+        with:
+          auto-update-conda: false
+          activate-environment: EIT-CICD-test
+          environment-file: environment.yml
+      - name: List packages
+        run: conda list
+      - name: Run Kedro pipeline
+        run: kedro run --pipeline=scheduling_engine
+
+  run-pipeline-pip:
+    name: Run Kedro pipeline using Python environment on ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false # Ensures that not all jobs are cancelled when one job in the matrix fails
+      matrix:
+        os: ["ubuntu-latest", "macos-latest", "windows-latest" ]
+        python-version: ["3.11"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5 # Creates a Python environment without the use of Conda
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: List pip packages
+        run: pip freeze
+      - name: Run Kedro pipeline
+        run: kedro run --pipeline=scheduling_engine
