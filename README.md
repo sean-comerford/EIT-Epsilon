@@ -48,8 +48,6 @@ You can also use the exact Conda environment used for development. To do this, f
   - `conda env create -f environment.yml`
 3. Activate the new environment: `conda activate EIT-Epsilon`
 
-When changes have been made, you can use `conda env update --file environment.yml --prune` to update your environment to match the environment file again. 
-
 ### Installing System dependencies for `eccodes` package
 The Python module depends on the ECMWF ecCodes library that must be installed on the system and accessible as a shared library.
 
@@ -89,6 +87,8 @@ To configure the coverage threshold, look at the `.coveragerc` file.
 To see and update the dependency requirements for your project use `requirements.txt`. Install the project requirements with `pip install -r requirements.txt`.
 
 [Further information about project dependencies](https://docs.kedro.org/en/stable/kedro_project_setup/dependencies.html#project-specific-dependencies)
+
+If you created your environment with Conda using the environment file, you can use `conda env update --file environment.yml --prune` to update your environment to match the environment file again. 
 
 ## How to work with Kedro and notebooks
 
