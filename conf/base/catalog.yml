@@ -251,3 +251,9 @@ gantt_chart_json:
       y: Machine
       color: Product
       title: Production Schedule Milling & Grinding
+      hover_name: Order
+      template: simple_white
+    layout:
+      xaxis_title: Time
+      yaxis_title: Machines
+      title: Scheduling of HAAS machines
