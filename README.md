@@ -18,17 +18,19 @@ In order to get the best out of the template:
 
 ## Set up your Python virtual environment
 
+### Creating an environment using Conda
+
 We strongly recommend installing [Miniconda](https://docs.anaconda.com/free/miniconda/index.html) as your virtual environment manager if you don’t already use it.
 
 1. Install Miniconda: https://docs.conda.io/projects/conda/en/latest/user-guide/install/
 2. Create a new virtual environment using conda
-   - `conda create --name <name_of_your_choice> python=3.8.10 -y`
-   - In this example, we use Python 3.8.10, but you can opt for a different version if you need it for your
+   - `conda create --name <name_of_your_choice> python=3.11.9 -y`
+   - In this example, we use Python 3.11.9, but you can opt for a different version if you need it for your
      particular project
 3. Activate the new environment: `conda activate <name_of_your_choice>`
 
 
-## How to install dependencies
+### How to install dependencies
 
 Declare any dependencies in `requirements.txt` for `pip` installation.
 
@@ -37,6 +39,16 @@ To install them, run:
 ```
 pip install -r requirements.txt
 ```
+
+### Installing the exact environment used in the project
+
+You can also use the exact Conda environment used for development. To do this, follow the steps below:
+1. Install MiniConda as explained above.
+2. Create the EIT-Epsilon environment using the environment.yml file
+  - `conda env create -f environment.yml`
+3. Activate the new environment: `conda activate EIT-Epsilon`
+
+When changes have been made, you can use `conda env update --file environment.yml --prune` to update your environment to match the environment file again. 
 
 ### Installing System dependencies for `eccodes` package
 The Python module depends on the ECMWF ecCodes library that must be installed on the system and accessible as a shared library.
