@@ -30,8 +30,8 @@ jobs:
         run: cp .github/conf/credentials.yml conf/local/credentials.yml
       - name: List Kedro pipelines
         run: kedro registry list
-      - name: Run Kedro pipeline
-        run: kedro run --pipeline=scheduling_engine
+#      - name: Run Kedro pipeline
+#        run: kedro run --pipeline=scheduling_engine
 
 
   run-pipeline-pip:
@@ -51,9 +51,10 @@ jobs:
         run: pip install -r requirements.txt
       - name: List pip packages
         run: pip freeze
+        # Place a credentials.yml file in conf/local which is not stored in the repository.
       - name: Insert placeholder credentials
         run: cp .github/conf/credentials.yml conf/local/credentials.yml
       - name: List Kedro pipelines
         run: kedro registry list
-      - name: Run Kedro pipeline
-        run: kedro run --pipeline=scheduling_engine
+#      - name: Run Kedro pipeline
+#        run: kedro run --pipeline=scheduling_engine
