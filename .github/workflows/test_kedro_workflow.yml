@@ -26,6 +26,8 @@ jobs:
           environment-file: environment.yml
       - name: List packages
         run: conda list
+      - name: Insert placeholder credentials
+        run: cp .github/conf/credentials.yml conf/local/credentials.yml
       - name: List Kedro pipelines
         run: kedro registry list
 #      - name: Run Kedro pipeline
