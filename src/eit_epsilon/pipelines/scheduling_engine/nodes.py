@@ -33,6 +33,7 @@ def create_chart(schedule: pd.DataFrame, parameters: dict):
     schedule = schedule.rename(columns=
         parameters["column_mapping"]
     )
+    schedule['Late'] = schedule['Due_date'] < schedule['End_time']
     return schedule
 
 

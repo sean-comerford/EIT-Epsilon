@@ -252,8 +252,25 @@ gantt_chart_json:
       color: Product
       title: Production Schedule Milling & Grinding
       hover_name: Order
+      hover_data: ['Order_date', 'Due_date', 'Late']
       template: simple_white
+      color_discrete_sequence: ['rgb(41, 24, 107)', 'rgb(42, 35, 160)', 'rgb(15, 71, 153)', 'rgb(18, 95, 142)', 'rgb(38, 116, 137)', 'rgb(53, 136, 136)', 'rgb(65, 157, 133)', 'rgb(81, 178, 124)', 'rgb(111, 198, 107)', 'rgb(160, 214, 91)', 'rgb(212, 225, 112)', 'rgb(253, 238, 153)']
+      pattern_shape: Late
+      pattern_shape_map: {True: 'x', False: ''}
     layout:
       xaxis_title: Time
       yaxis_title: Machines
       title: Scheduling of HAAS machines
+      autosize: True
+      title_font_family: Arial
+      title_font_size: 32
+      font_size: 16
+#      width: 1800
+#      height: 620
+      legend:
+        title: Legend
+        yanchor: bottom
+        y: -1
+        xanchor: center
+        x: 0.9
+
