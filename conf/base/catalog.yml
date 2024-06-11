@@ -182,8 +182,6 @@ trained_model_day_ahead:
   dataset:
     type: pickle.PickleDataset
 
-
-
 # Scheduling engine
 
 orders:
@@ -206,6 +204,32 @@ monza_cycle_times:
   load_args:
     engine: openpyxl
     sheet_name: Monza OP1 Cycle times
+
+croom_processed_orders:
+  type: pandas.ParquetDataset
+  filepath: data/03_primary/croom_processed_orders.pq
+
+cr_cycle_times:
+  type: pandas.ParquetDataset
+  filepath: data/03_primary/cr_cycle_times.pq
+
+ps_cycle_times:
+  type: pandas.ParquetDataset
+  filepath: data/03_primary/ps_cycle_times.pq
+
+input_repr_dict:
+  type: pickle.PickleDataset
+  filepath: data/05_model_input/input_repr_dict.pkl
+
+machine_qty_dict:
+  type: pickle.PickleDataset
+  filepath: data/01_raw/machine_qty_dict.pkl
+
+task_to_machines:
+  type: pickle.PickleDataset
+  filepath: data/01_raw/task_to_machines.pkl
+
+# Tim's input
 
 job_list:
   type: pandas.ExcelDataset
@@ -280,4 +304,3 @@ gantt_chart_json:
         y: -1
         xanchor: center
         x: 0.9
-
