@@ -229,6 +229,10 @@ task_to_machines:
   type: pickle.PickleDataset
   filepath: data/01_raw/task_to_machines.pkl
 
+best_schedule:
+  type: pickle.PickleDataset
+  filepath: data/07_model_output/best_schedule.pkl
+
 # Tim's input
 
 job_list:
@@ -271,6 +275,16 @@ final_schedule:
     engine: openpyxl
     sheet_name: Schedule
 
+final_schedule_alt:
+  type: pandas.ExcelDataset
+  filepath: data/08_reporting/final_schedule_alt.xlsx
+  save_args:
+    engine: openpyxl
+    sheet_name: Sheet1
+  load_args:
+    engine: openpyxl
+    sheet_name: Sheet1
+
 gantt_chart_json:
   type: plotly.PlotlyDataset
   filepath: data/08_reporting/gantt_chart.json
@@ -280,18 +294,21 @@ gantt_chart_json:
       x_start: Start_time
       x_end: End_time
       y: Machine
-      color: Product
-      title: Production Schedule Milling & Grinding
+      color: Job
+      title: Production Schedule
       hover_name: Order
-      hover_data: ['Order_date', 'Due_date', 'Late']
+      hover_data: ['Order_date', 'Due_date']
       template: simple_white
-      color_discrete_sequence: ['rgb(41, 24, 107)', 'rgb(42, 35, 160)', 'rgb(15, 71, 153)', 'rgb(18, 95, 142)', 'rgb(38, 116, 137)', 'rgb(53, 136, 136)', 'rgb(65, 157, 133)', 'rgb(81, 178, 124)', 'rgb(111, 198, 107)', 'rgb(160, 214, 91)', 'rgb(212, 225, 112)', 'rgb(253, 238, 153)']
-      pattern_shape: Late
+      color_discrete_sequence: ['rgb(41, 24, 107)', 'rgb(42, 35, 160)', 'rgb(15, 71, 153)',
+                                'rgb(18, 95, 142)', 'rgb(38, 116, 137)', 'rgb(53, 136, 136)',
+                                'rgb(65, 157, 133)', 'rgb(81, 178, 124)', 'rgb(111, 198, 107)',
+                                'rgb(160, 214, 91)', 'rgb(212, 225, 112)', 'rgb(253, 238, 153)']
+      pattern_shape: task
       pattern_shape_map: {True: 'x', False: ''}
     layout:
       xaxis_title: Time
       yaxis_title: Machines
-      title: Scheduling of HAAS machines
+      title: Scheduling of OP1
       autosize: True
       title_font_family: Arial
       title_font_size: 32

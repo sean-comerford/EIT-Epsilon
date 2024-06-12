@@ -1,12 +1,14 @@
 import os
 from pathlib import Path
-import datetime
 import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
 import re
+import random
 import logging
 from pandas.api.types import is_string_dtype
 import plotly
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Union
 
 # Instantiate logger
 logger = logging.getLogger(__name__)
@@ -267,7 +269,7 @@ class Shop:
             due.append(working_days)
 
         # Debug statement
-        logger.info(f"Snippet of due: {due[:2]}")
+        logger.info(f"Snippet of due: {due[:5]}")
 
         return due
 
@@ -343,23 +345,195 @@ class JobShop(Job, Shop):
         return input_repr_dict
 
 
-def create_chart(schedule: pd.DataFrame) -> None:
+def mock_genetic_algorithm(input_repr_dict: Dict[str, any], n: int = 20000) -> Dict[str, any]:
     """
-    Creates a chart from the schedule.
+    This function is a mock implementation of a genetic algorithm (GA) for scheduling tasks on machines.
+    It initializes a population of schedules, evaluates them, and selects the best schedule without performing
+    crossover/offspring or mutation operations and without running multiple generations.
+
+    Args:
+        input_repr_dict (Dict[str, any]): A dictionary containing the necessary input variables for the GA.
+        n (int, optional): The population size. Defaults to 200.
+
+    Returns:
+        best_schedule: Dictionary containing schedule with the best score.
+    """
+
+    # Unpack input into local variables
+    for key, value in input_repr_dict.items():
+        globals()[key] = value
+
+    # INIT
+    P = []
+    i = 0
+    percentages = np.arange(10, 101, 10)
+
+    while i < n:
+        i += 1
+        avail_m = {m: 0 for m in M}
+        P_j = []
+
+        J_temp = list(range(len(J)))
+        while J_temp:
+            job_idx = random.choice(J_temp)
+            J_temp.remove(job_idx)
+            job = J[job_idx]
+            for task in range(len(job)):
+                m = random.choice(compat[job_idx][task])
+                if task == 0:
+                    start = avail_m[m]
+                else:
+                    start = max(avail_m[m], P_j[-1][3] + dur[job_idx][task - 1])
+                P_j.append((job_idx, job[task], m, start, dur[job_idx][task]))
+                avail_m[m] = start + dur[job_idx][task]
+
+        if P_j not in P:
+            P.append(P_j)
+        else:
+            i -= 1
+
+        # Print a message when a certain percentage of schedules have been created
+        if i * 100 / n in percentages:
+            logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {i * 100 / n}% of schedules have been created.")
+
+    # EVAL
+    scores = []
+    for schedule in P:
+        score = 0
+        for (job_idx, task, machine, start_time, job_task_dur) in schedule:
+            job = J[job_idx]
+            if task+1 == len(job):  # Applies to last task of each job
+                completion_time = start_time + dur[job_idx][task]   # Assuming tasks are 1 indexed
+                if completion_time <= due[job_idx]:
+                    score += (10000 + due[job_idx] - completion_time)
+                else:
+                    score -= (completion_time - due[job_idx])  # Penalty for late completion
+
+        scores.append(round(score))
+
+    # Score metrics
+    logger.info(f"Best score: {max(scores)}, Median score: {np.median(scores)}, Worst score: {min(scores)}")
+
+    # Zip schedules and scores together
+    schedules_and_scores = list(zip(P, scores))
+
+    # Sort schedules by score and extract best schedule
+    schedules_and_scores.sort(key=lambda x: x[1], reverse=True)
+    best_schedule = schedules_and_scores[0][0]
+
+    # Debug statement
+    logger.info(f"Snippet of best schedule (job, task, machine, start_time, duration): {best_schedule[:4]}")
+
+    return best_schedule
+
+
+def reformat_output(croom_processed_orders: pd.DataFrame, best_schedule: Dict[str, any], column_mapping: dict) -> pd.DataFrame:
+
+    # Convert best schedule into a dataframe
+    schedule_df = pd.DataFrame(best_schedule, columns=['job', 'task', 'machine', 'starting_time', 'duration'])
+
+    # Round the starting time
+    schedule_df['starting_time'] = schedule_df['starting_time'].round(1)
+
+    # Rename columns of processed orders
+    mapping = {
+        'Job ID': 'Order',
+        'Created Date': 'Order_date',
+        'Part Description': 'Product',
+        'Due Date ': 'Due_date',
+        'Order Qty': 'Order Qty'
+    }
+    croom_processed_orders = croom_processed_orders.rename(columns=mapping)
+
+    # Reset and drop index
+    croom_processed_orders.reset_index(inplace=True, drop=True)
+
+    # Join best schedule to processed orders
+    croom_processed_orders = croom_processed_orders.merge(schedule_df,
+                                                          left_index=True,
+                                                          right_on='job',
+                                                          how='left')
+
+    # Define end time
+    croom_processed_orders['end_time'] = croom_processed_orders['starting_time'] + croom_processed_orders['duration']
+
+    # Rename round two
+    croom_processed_orders = croom_processed_orders.rename(columns={'job': 'Job',
+                                                                    'starting_time': 'Start_time',
+                                                                    'end_time': 'End_time',
+                                                                    'machine': 'Machine'
+                                                                    })
+
+    def add_duration_to_start_time(df: pd.DataFrame, base_date: str = '2024-03-18T09:00') -> pd.DataFrame:
+        """
+        Adds the duration to the start time.
+
+        Args:
+            df (pd.DataFrame): The input dataframe with 'start_time' and 'duration' columns.
+            base_date (str): The base date in the format 'YYYY-MM-DDTHH:MM'.
+
+        Returns:
+            pd.DataFrame: The dataframe with 'start_time' and 'end_time' columns.
+        """
+        base_datetime = datetime.strptime(base_date, '%Y-%m-%dT%H:%M')
+        df['Start_time'] = pd.to_timedelta(df['Start_time'], unit='m') + base_datetime
+        df['End_time'] = df['Start_time'] + pd.to_timedelta(df['duration'], unit='m')
+        return df
+
+    # Apply duration function
+    croom_adjusted = add_duration_to_start_time(croom_processed_orders)
+
+    # Define mapping for machine names
+    machine_dict = {
+        1: 'HAAS-1',
+        2: 'HAAS-2',
+        3: 'HAAS-3',
+        4: 'HAAS-4',
+        5: 'HAAS-5',
+        6: 'HAAS-6',
+        7: 'Inspection-1',
+        8: 'Inspection-2',
+        9: 'Inspection-3',
+        10: 'Inspection-4',
+        11: 'Wash-1',
+        12: 'Manual Prep-1',
+        13: 'Manual Prep-2',
+        14: 'Manual Prep-3',
+        15: 'Final Wash-1',
+        16: 'Final Inspect-1',
+        17: 'Final Inspect-2'
+    }
+
+    # Apply machine name mapping
+    croom_adjusted['Machine'] = croom_adjusted['Machine'].map(machine_dict)
+
+    return croom_adjusted
+
+
+def create_chart(schedule: pd.DataFrame, parameters: Dict[str, Union[str, Dict[str, str]]]) -> pd.DataFrame:
+    """
+    Creates a Gantt chart based on the schedule and parameters.
 
     Args:
         schedule (pd.DataFrame): The schedule data.
+        parameters (Dict[str, Union[str, Dict[str, str]]]): The parameters for creating the chart.
+
+    Returns:
+        pd.DataFrame: The updated schedule data with additional columns for the chart.
     """
-    # Add your chart creation logic here
-    pass
+    if not is_string_dtype(schedule[[parameters["column_mapping"]["Resource"]]]):
+        schedule[parameters["column_mapping"]["Resource"]] = schedule[parameters["column_mapping"]["Resource"]].apply(str)
+    schedule = schedule.rename(columns=parameters["column_mapping"])
+
+    return schedule
 
 
-def save_chart_to_html(gantt_chart) -> None:
+def save_chart_to_html(gantt_chart: plotly.graph_objs.Figure) -> None:
     """
-    Saves the chart to an HTML file.
+    Saves the Gantt chart to an HTML file.
 
     Args:
-        gantt_chart: The Gantt chart object.
+        gantt_chart (plotly.graph_objs.Figure): The Gantt chart to be saved.
     """
-    # Add your chart saving logic here
-    pass
+    filepath = Path(os.getcwd()) / 'data/08_reporting/gantt_chart.html'
+    plotly.offline.plot(gantt_chart, filename=str(filepath))
