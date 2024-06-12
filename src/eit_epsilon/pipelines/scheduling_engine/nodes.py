@@ -11,8 +11,14 @@ from typing import List, Dict, Tuple
 # Instantiate logger
 logger = logging.getLogger(__name__)
 
+
 class Job:
-    def filter_in_scope_op1(self, data: pd.DataFrame) -> pd.DataFrame:
+    """
+    The Job class contains methods for preprocessing and extracting information from open orders that need
+    to be processed in a manufacturing workshop.
+    """
+    @staticmethod
+    def filter_in_scope_op1(data: pd.DataFrame) -> pd.DataFrame:
         """
         Filters the data to include only in-scope operations for OP 1.
 
@@ -36,7 +42,8 @@ class Job:
 
         return inscope_data
 
-    def extract_info(self, data: pd.DataFrame) -> pd.DataFrame:
+    @staticmethod
+    def extract_info(data: pd.DataFrame) -> pd.DataFrame:
         """
         Extracts type, size, and orientation from the part description.
 
@@ -65,7 +72,8 @@ class Job:
 
         return data
 
-    def check_part_id_consistency(self, data: pd.DataFrame) -> None:
+    @staticmethod
+    def check_part_id_consistency(data: pd.DataFrame) -> None:
         """
         Checks the consistency of Part IDs.
 
@@ -83,8 +91,8 @@ class Job:
         else:
             logger.info(f"Part ID consistency check passed")
 
-
-    def create_jobs_op1(self, data: pd.DataFrame) -> List[List[int]]:
+    @staticmethod
+    def create_jobs_op1(data: pd.DataFrame) -> List[List[int]]:
         """
         Creates jobs representation for the GA, defined as J.
         Cemented products do not have to go through manual prep in OP 1.
@@ -116,7 +124,13 @@ class Job:
 
 
 class Shop:
-    def create_machines(self, machine_qty_dict: Dict[str, int]) -> List[int]:
+    """
+    The Shop class contains methods for creating machine lists, compatibility matrices,
+    duration matrices and due dates as input for a genetic algorithm.
+    It creates a digital representation of the processes in and the setup of a manufacturing workshop.
+    """
+    @staticmethod
+    def create_machines(machine_qty_dict: Dict[str, int]) -> List[int]:
         """
         Creates a list of machines based on the quantity dictionary.
 
@@ -134,7 +148,8 @@ class Shop:
 
         return M
 
-    def get_compatibility(self, J: List[List[int]], task_to_machines: Dict[int, List[int]]) -> List[List[List[int]]]:
+    @staticmethod
+    def get_compatibility(J: List[List[int]], task_to_machines: Dict[int, List[int]]) -> List[List[List[int]]]:
         """
         Gets the compatibility of tasks to machines.
 
@@ -165,17 +180,19 @@ class Shop:
 
         return compat
 
-    def preprocess_cycle_times(self, cycle_times: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    @staticmethod
+    def preprocess_cycle_times(cycle_times: pd.DataFrame, last_task_minutes: int = 4) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Preprocesses the cycle times:
             1.) Remove empty rows and columns
             2.) Create new index starting from 1
             3.) Reduce column names to only the size
-            4.) Fill the missing values in final inspection with 1 minute
-            5.) Split data for cruciate retaining and posterior stabilizing
+            4.) Fill the missing values in final inspection with 4 minutes
+            5.) Split data for cruciate retaining and posterior stabilizing products
 
         Args:
             cycle_times (pd.DataFrame): The cycle times data.
+            last_task_minutes (int, optional): The duration of the last task. Defaults to 4 minutes.
 
         Returns:
             Tuple[pd.DataFrame, pd.DataFrame]: The preprocessed PS and CR cycle times.
@@ -189,15 +206,16 @@ class Shop:
             return match.group(0) if match else s
 
         cycle_times.columns = [extract_number(col) for col in cycle_times.columns]
-        cycle_times.loc[7] = cycle_times.loc[7].fillna(1)
-        ps_times, cr_times = cycle_times.iloc[:, :18], cycle_times.iloc[:, 18:]
+        cycle_times.loc[7] = cycle_times.loc[7].fillna(last_task_minutes)
+        ps_times, cr_times = cycle_times.iloc[:, :cycle_times.shape[1]//2], cycle_times.iloc[:, cycle_times.shape[1]//2 + 1:]
 
         # Debug statement
         logger.info(f"PS times dim.: {ps_times.shape}, CR times dim.: {cr_times.shape}")
 
         return ps_times, cr_times
 
-    def get_duration_matrix(self, J: List[List[int]], inscope_orders: pd.DataFrame, cr_times: pd.DataFrame, ps_times: pd.DataFrame) -> List[List[float]]:
+    @staticmethod
+    def get_duration_matrix(J: List[List[int]], inscope_orders: pd.DataFrame, cr_times: pd.DataFrame, ps_times: pd.DataFrame) -> List[List[float]]:
         """
         Gets the duration matrix for the jobs.
 
@@ -228,7 +246,8 @@ class Shop:
 
         return dur
 
-    def get_due_date(self, inscope_orders: pd.DataFrame, date: str = '2024-03-18') -> List[int]:
+    @staticmethod
+    def get_due_date(inscope_orders: pd.DataFrame, date: str = '2024-03-18') -> List[int]:
         """
         Gets the due dates for the in-scope orders.
 
@@ -254,6 +273,7 @@ class Shop:
 
 
 class JobShop(Job, Shop):
+
     def preprocess_orders(self, croom_open_orders: pd.DataFrame) -> pd.DataFrame:
         """
         Preprocesses the open orders.
@@ -281,6 +301,8 @@ class JobShop(Job, Shop):
             compat: List[List[List[int]]]: The compatibility list.
             dur: List[List[float]]: The duration matrix.
             due: List[int]: The list of due dates in working minutes.
+
+        Additionally, checks if all output variables are valid; they must be (nested) lists of integers/floats.
 
         Args:
             croom_processed_orders (pd.DataFrame): The processed orders.
