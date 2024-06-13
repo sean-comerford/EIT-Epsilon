@@ -127,6 +127,7 @@ def register_pipelines() -> Dict[str, Pipeline]:
         inputs={
             "trained_model": "trained_model_day_ahead",
             "preprocessed_weather_forecasts": "preprocessed_weather_czechia",
+            "energy_consumption": "voestalpine_consumption"
         },
         outputs={
             "forecasting_data": "forecasting_day_ahead_data",
