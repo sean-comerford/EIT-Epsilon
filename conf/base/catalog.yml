@@ -275,16 +275,6 @@ final_schedule:
     engine: openpyxl
     sheet_name: Schedule
 
-final_schedule_alt:
-  type: pandas.ExcelDataset
-  filepath: data/08_reporting/final_schedule_alt.xlsx
-  save_args:
-    engine: openpyxl
-    sheet_name: Sheet1
-  load_args:
-    engine: openpyxl
-    sheet_name: Sheet1
-
 gantt_chart_json:
   type: plotly.PlotlyDataset
   filepath: data/08_reporting/gantt_chart.json
@@ -295,6 +285,7 @@ gantt_chart_json:
       x_end: End_time
       y: Machine
       color: Job
+      pattern_shape: Job
       title: Production Schedule
       hover_name: Order
       hover_data: ['Order_date', 'Due_date']
@@ -303,21 +294,31 @@ gantt_chart_json:
                                 'rgb(18, 95, 142)', 'rgb(38, 116, 137)', 'rgb(53, 136, 136)',
                                 'rgb(65, 157, 133)', 'rgb(81, 178, 124)', 'rgb(111, 198, 107)',
                                 'rgb(160, 214, 91)', 'rgb(212, 225, 112)', 'rgb(253, 238, 153)']
-      pattern_shape: task
-      pattern_shape_map: {True: 'x', False: ''}
+
     layout:
       xaxis_title: Time
       yaxis_title: Machines
+      yaxis:
+        type: 'category'
+        categoryorder: 'array'
+        categoryarray: [
+            'Final Inspect-2', 'Final Inspect-1', 'Final Wash-1',
+            'Manual Prep-3', 'Manual Prep-2', 'Manual Prep-1',
+            'Wash-1', 'Inspection-4', 'Inspection-3', 'Inspection-2',
+            'Inspection-1', 'HAAS-6', 'HAAS-5', 'HAAS-4', 'HAAS-3', 'HAAS-2', 'HAAS-1'
+          ]
       title: Scheduling of OP1
       autosize: True
       title_font_family: Arial
       title_font_size: 32
-      font_size: 16
-#      width: 1800
-#      height: 620
+      font_size: 14
+      width: 1800
+      height: 1000
+      showlegend: True
       legend:
+        orientation: h
         title: Legend
         yanchor: bottom
-        y: -1
+        y: -0.2
         xanchor: center
-        x: 0.9
+        x: 0.5

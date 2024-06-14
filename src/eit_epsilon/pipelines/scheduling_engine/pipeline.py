@@ -37,13 +37,13 @@ def create_pipeline(**kwargs) -> Pipeline:
         ),
         node(
             func=reformat_output,
-            inputs=['croom_processed_orders', 'best_schedule', 'params:scheduling_options'],
-            outputs='final_schedule_alt',
+            inputs=['croom_processed_orders', 'best_schedule', 'params:column_mapping_reformat', 'params:machine_dict'],
+            outputs='final_schedule',
             name='reformat_output',
         ),
         node(
             func=create_chart,
-            inputs=['final_schedule_alt', 'params:visualization_options'],
+            inputs=['final_schedule', 'params:visualization_options'],
             outputs='gantt_chart_json',
             name='schedule_chart',
         ),

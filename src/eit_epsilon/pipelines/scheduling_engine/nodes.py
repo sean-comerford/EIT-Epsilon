@@ -249,7 +249,7 @@ class Shop:
         return dur
 
     @staticmethod
-    def get_due_date(inscope_orders: pd.DataFrame, date: str = '2024-03-18') -> List[int]:
+    def get_due_date(inscope_orders: pd.DataFrame, date: str = '2024-03-18', working_minutes: int = 480) -> List[int]:
         """
         Gets the due dates for the in-scope orders.
 
@@ -263,9 +263,9 @@ class Shop:
         due = []
         for due_date in inscope_orders['Due Date ']:
             if pd.Timestamp(date) > due_date:
-                working_days = -len(pd.bdate_range(due_date, date)) * 480
+                working_days = -len(pd.bdate_range(due_date, date)) * working_minutes
             else:
-                working_days = len(pd.bdate_range(date, due_date)) * 480
+                working_days = len(pd.bdate_range(date, due_date)) * working_minutes
             due.append(working_days)
 
         # Debug statement
@@ -402,10 +402,11 @@ def mock_genetic_algorithm(input_repr_dict: Dict[str, any], n: int = 20000) -> D
         score = 0
         for (job_idx, task, machine, start_time, job_task_dur) in schedule:
             job = J[job_idx]
-            if task+1 == len(job):  # Applies to last task of each job
-                completion_time = start_time + dur[job_idx][task]   # Assuming tasks are 1 indexed
+            if task+1 == max(job):  # Applies to last task of each job
+                completion_time = start_time + dur[job_idx][-1]
+
                 if completion_time <= due[job_idx]:
-                    score += (10000 + due[job_idx] - completion_time)
+                    score += 10000
                 else:
                     score -= (completion_time - due[job_idx])  # Penalty for late completion
 
@@ -427,23 +428,14 @@ def mock_genetic_algorithm(input_repr_dict: Dict[str, any], n: int = 20000) -> D
     return best_schedule
 
 
-def reformat_output(croom_processed_orders: pd.DataFrame, best_schedule: Dict[str, any], column_mapping: dict) -> pd.DataFrame:
+def reformat_output(croom_processed_orders: pd.DataFrame, best_schedule: Dict[str, any],
+                    column_mapping_reformat: dict, machine_dict: dict, base_date: str = '2024-03-18T09:00') -> pd.DataFrame:
 
     # Convert best schedule into a dataframe
     schedule_df = pd.DataFrame(best_schedule, columns=['job', 'task', 'machine', 'starting_time', 'duration'])
 
     # Round the starting time
     schedule_df['starting_time'] = schedule_df['starting_time'].round(1)
-
-    # Rename columns of processed orders
-    mapping = {
-        'Job ID': 'Order',
-        'Created Date': 'Order_date',
-        'Part Description': 'Product',
-        'Due Date ': 'Due_date',
-        'Order Qty': 'Order Qty'
-    }
-    croom_processed_orders = croom_processed_orders.rename(columns=mapping)
 
     # Reset and drop index
     croom_processed_orders.reset_index(inplace=True, drop=True)
@@ -458,56 +450,17 @@ def reformat_output(croom_processed_orders: pd.DataFrame, best_schedule: Dict[st
     croom_processed_orders['end_time'] = croom_processed_orders['starting_time'] + croom_processed_orders['duration']
 
     # Rename round two
-    croom_processed_orders = croom_processed_orders.rename(columns={'job': 'Job',
-                                                                    'starting_time': 'Start_time',
-                                                                    'end_time': 'End_time',
-                                                                    'machine': 'Machine'
-                                                                    })
-
-    def add_duration_to_start_time(df: pd.DataFrame, base_date: str = '2024-03-18T09:00') -> pd.DataFrame:
-        """
-        Adds the duration to the start time.
-
-        Args:
-            df (pd.DataFrame): The input dataframe with 'start_time' and 'duration' columns.
-            base_date (str): The base date in the format 'YYYY-MM-DDTHH:MM'.
-
-        Returns:
-            pd.DataFrame: The dataframe with 'start_time' and 'end_time' columns.
-        """
-        base_datetime = datetime.strptime(base_date, '%Y-%m-%dT%H:%M')
-        df['Start_time'] = pd.to_timedelta(df['Start_time'], unit='m') + base_datetime
-        df['End_time'] = df['Start_time'] + pd.to_timedelta(df['duration'], unit='m')
-        return df
-
-    # Apply duration function
-    croom_adjusted = add_duration_to_start_time(croom_processed_orders)
-
-    # Define mapping for machine names
-    machine_dict = {
-        1: 'HAAS-1',
-        2: 'HAAS-2',
-        3: 'HAAS-3',
-        4: 'HAAS-4',
-        5: 'HAAS-5',
-        6: 'HAAS-6',
-        7: 'Inspection-1',
-        8: 'Inspection-2',
-        9: 'Inspection-3',
-        10: 'Inspection-4',
-        11: 'Wash-1',
-        12: 'Manual Prep-1',
-        13: 'Manual Prep-2',
-        14: 'Manual Prep-3',
-        15: 'Final Wash-1',
-        16: 'Final Inspect-1',
-        17: 'Final Inspect-2'
-    }
+    croom_processed_orders = croom_processed_orders.rename(columns=column_mapping_reformat)
 
     # Apply machine name mapping
-    croom_adjusted['Machine'] = croom_adjusted['Machine'].map(machine_dict)
+    croom_processed_orders['Machine'] = croom_processed_orders['Machine'].map(machine_dict)
 
-    return croom_adjusted
+    # Create start and end datetime based on hypothetical start date
+    base_datetime = datetime.strptime(base_date, '%Y-%m-%dT%H:%M')
+    croom_processed_orders['Start_time'] = pd.to_timedelta(croom_processed_orders['Start_time'], unit='m') + base_datetime
+    croom_processed_orders['End_time'] = croom_processed_orders['Start_time'] + pd.to_timedelta(croom_processed_orders['duration'], unit='m')
+
+    return croom_processed_orders
 
 
 def create_chart(schedule: pd.DataFrame, parameters: Dict[str, Union[str, Dict[str, str]]]) -> pd.DataFrame:
