@@ -1,0 +1,50 @@
+task_to_machines: {
+  1: [1, 2, 3, 4, 5, 6],  # HAAS
+  2: [7, 8, 9, 10],  # Inspection
+  3: [11],  # First Wash
+  4: [12, 13, 14],  # Manual Prep
+  5: [7, 8, 9, 10],  # Inspection (again)
+  6: [15],  # Final Wash
+  7: [16, 17]  # Final inspection
+}
+
+machine_qty_dict: {
+  'HAAS': 6,
+  'Inspection': 4,
+  'First Wash': 1,
+  'Manual Prep': 3,
+  'Final Wash': 1,
+  'Final Inspection': 2
+}
+
+column_mapping_reformat: {
+  'job': 'Job',
+  'starting_time': 'Start_time',
+  'end_time': 'End_time',
+  'machine': 'Machine',
+  'Job ID': 'Order',
+  'Created Date': 'Order_date',
+  'Part Description': 'Product',
+  'Due Date ': 'Due_date',
+  'Order Qty': 'Order Qty'
+}
+
+machine_dict: {
+    1: 'HAAS-1',
+    2: 'HAAS-2',
+    3: 'HAAS-3',
+    4: 'HAAS-4',
+    5: 'HAAS-5',
+    6: 'HAAS-6',
+    7: 'Inspection-1',
+    8: 'Inspection-2',
+    9: 'Inspection-3',
+    10: 'Inspection-4',
+    11: 'Wash-1',
+    12: 'Manual Prep-1',
+    13: 'Manual Prep-2',
+    14: 'Manual Prep-3',
+    15: 'Final Wash-1',
+    16: 'Final Inspect-1',
+    17: 'Final Inspect-2'
+}

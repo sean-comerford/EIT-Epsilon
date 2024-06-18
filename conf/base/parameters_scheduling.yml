@@ -18,5 +18,5 @@ visualization_options:
     'Start': 'Start_time',
     'End': 'End_time',
     'Resource': 'Machine',
-    'Task': 'Product'
+    'Task': 'Job'
   }
