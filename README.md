@@ -40,6 +40,12 @@ To install them, run:
 pip install -r requirements.txt
 ```
 
+Pre-commit is enabled for this project. To install the required hooks, run:
+
+```
+pre-commit install
+```
+
 ### Installing the exact environment used in the project
 
 You can also use the exact Conda environment used for development. To do this, follow the steps below:
