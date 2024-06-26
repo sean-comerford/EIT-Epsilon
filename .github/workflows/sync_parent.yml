@@ -20,7 +20,6 @@ jobs:
       run: |
         git config --global user.email "j.oudshoorn@brightcape.nl"
         git config --global user.name "JeanLuc Oudshoorn"
-        cd <working-repo>
         git fetch ../EIT_Epsilon_000511
         git checkout test
         git merge origin/test --strategy-option=theirs --no-commit
