@@ -14,13 +14,13 @@ jobs:
 
     - name: Fetch updates from parent repository
       run: |
-        git remote add parent https://github.com/parent/repo.git
-        git fetch parent main
-        git checkout main
-        git merge parent/main --strategy-option=theirs --no-commit
+        git remote add parent https://github.com/brightcape/EIT_Epsilon_000511.git
+        git fetch parent test
+        git checkout test
+        git merge parent/test --strategy-option=theirs --no-commit
         git checkout HEAD -- src/eit_epsilon/pipelines/scheduling_engine conf/base/parameters_genetic_algo.yml conf/base/parameters_scheduling.yml
         git commit -m "Merge updates from parent repository"
 
     - name: Push updates to origin
       run: |
-        git push origin main
+        git push origin test
