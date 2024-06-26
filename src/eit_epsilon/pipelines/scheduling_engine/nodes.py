@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime
 import re
 import random
 import logging
@@ -123,6 +123,15 @@ class Job:
         logger.info(f"Snippet of Jobs for OP 1: {J[:2]}")
 
         return J
+
+    @staticmethod
+    def get_part_id(data: pd.DataFrame) -> List[int]:
+        part_id = data['Part ID'].to_list()
+
+        # Show snippet of Part IDs
+        logger.info(f"Snippet of Part IDs: {part_id[:5]}")
+
+        return part_id
 
 
 class Shop:
@@ -255,7 +264,8 @@ class Shop:
 
         Args:
             inscope_orders (pd.DataFrame): The in-scope orders.
-            date (str): The reference date.
+            date (str): The reference date in 'YYYY-MM-DD' format. Defaults to '2024-03-18'.
+            working_minutes (int, optional): The number of working minutes per day. Defaults to 480.
 
         Returns:
             List[int]: The list of due dates in working minutes.
@@ -321,6 +331,7 @@ class JobShop(Job, Shop):
         compat = self.get_compatibility(J, task_to_machines)
         dur = self.get_duration_matrix(J, croom_processed_orders, cr_cycle_times, ps_cycle_times)
         due = self.get_due_date(croom_processed_orders)
+        part_id = self.get_part_id(croom_processed_orders)
 
         def is_nested_list_of_numbers(lst):
             if isinstance(lst, list):
@@ -333,103 +344,286 @@ class JobShop(Job, Shop):
             'compat': compat,
             'dur': dur,
             'due': due,
+            'part_id': part_id,
         }
 
         # Check if J, M, compat, dur, and due are (nested) lists of integers or floats
+        # Part ID is a list of strings, so should be excluded
         for var_name, var in input_repr_dict.items():
-            if not is_nested_list_of_numbers(var):
-                logger.error(
-                    f"[bold red blink]{var_name} is not a nested list of integers/floats: {var[0]}[/]",
-                    extra={"markup": True})
+            if var_name != 'part_id':
+                if not is_nested_list_of_numbers(var):
+                    logger.error(
+                        f"[bold red blink]{var_name} is not a nested list of integers/floats: {var[0]}[/]",
+                        extra={"markup": True})
 
         return input_repr_dict
 
 
-def mock_genetic_algorithm(input_repr_dict: Dict[str, any], n: int = 20000) -> Dict[str, any]:
-    """
-    This function is a mock implementation of a genetic algorithm (GA) for scheduling tasks on machines.
-    It initializes a population of schedules, evaluates them, and selects the best schedule without performing
-    crossover/offspring or mutation operations and without running multiple generations.
+class GeneticAlgorithmScheduler:
+    def __init__(self):
+        self.J = None
+        self.M = None
+        self.compat = None
+        self.dur = None
+        self.due = None
+        self.part_id = None
+        self.n = None
+        self.P = None
+        self.scores = None
+        self.day_range = None
+        self.best_schedule = None
+        self.minutes_per_day = None
+        self.change_over_time = None
 
-    Args:
-        input_repr_dict (Dict[str, any]): A dictionary containing the necessary input variables for the GA.
-        n (int, optional): The population size. Defaults to 200.
+    def find_avail_m(self, start: int, job_idx: int, task_num: int) -> int:
+        """
+        Finds the next available time for a machine to start a task, considering the working day duration.
 
-    Returns:
-        best_schedule: Dictionary containing schedule with the best score.
-    """
+        Args:
+            start (int): The starting time in the schedule in minutes.
+            job_idx (int): The index of the job in the job list.
+            task_num (int): The task number within the job.
 
-    # Unpack input into local variables
-    for key, value in input_repr_dict.items():
-        globals()[key] = value
+        Returns:
+            int: The next available time for the machine to start the task.
+        """
+        for day in self.day_range:
+            if start < day <= start + self.dur[job_idx][task_num]:
+                return day
+        return start + self.dur[job_idx][task_num]
 
-    # INIT
-    P = []
-    i = 0
-    percentages = np.arange(10, 101, 10)
+    def init_population(self, num_inds: int = None, fill_inds: bool = False):
+        """
+        Initializes the population of schedules. Each schedule is a list of tasks assigned to machines with start times.
+        """
+        if num_inds is None:
+            num_inds = self.n
 
-    while i < n:
-        i += 1
-        avail_m = {m: 0 for m in M}
-        P_j = []
+        P = []
+        percentages = np.arange(10, 101, 10)
 
-        J_temp = list(range(len(J)))
-        while J_temp:
-            job_idx = random.choice(J_temp)
-            J_temp.remove(job_idx)
-            job = J[job_idx]
-            for task in range(len(job)):
-                m = random.choice(compat[job_idx][task])
-                if task == 0:
-                    start = avail_m[m]
-                else:
-                    start = max(avail_m[m], P_j[-1][3] + dur[job_idx][task - 1])
-                P_j.append((job_idx, job[task], m, start, dur[job_idx][task]))
-                avail_m[m] = start + dur[job_idx][task]
+        for i in range(num_inds):
+            avail_m = {m: 0 for m in self.M}
+            product_m = {m: 0 for m in self.M}
+            changeover_finish_time = 0
+            P_j = []
 
-        if P_j not in P:
-            P.append(P_j)
+            J_temp = list(range(len(self.J)))
+            random_roll = random.random()
+
+            if random_roll < 0.5:
+                random.shuffle(J_temp)
+            elif random_roll < 0.7:
+                J_temp.sort(key=lambda x: self.part_id[x])
+            elif random_roll < 0.9:
+                J_temp.sort(key=lambda x: self.due[x], reverse=True)
+            else:
+                J_temp.sort(key=lambda x: (self.part_id[x], self.due[x]), reverse=True)
+
+            while J_temp:
+                job_idx = J_temp.pop()
+                job = self.J[job_idx]
+                for task in range(len(job)):
+                    random_roll = random.random()
+
+                    if task == 0:
+                        compat_task_0 = self.compat[job_idx][task]
+                        preferred_machines = [key for key in compat_task_0 if product_m.get(key) == self.part_id[job_idx] or product_m.get(key) == 0]
+
+                        if not preferred_machines:
+                            m = min(compat_task_0, key=lambda x: avail_m.get(x)) if random_roll < 0.8 else random.choice(compat_task_0)
+                        else:
+                            m = min(preferred_machines, key=lambda x: avail_m.get(x)) if random_roll < 0.9 else random.choice(preferred_machines)
+
+                        start = avail_m[m] if product_m[m] == 0 or self.part_id[job_idx] == product_m[m] \
+                            else avail_m[m] + self.change_over_time + max((changeover_finish_time - avail_m[m]), 0)
+
+                        if product_m[m] != 0 and self.part_id[job_idx] != product_m[m]:
+                            changeover_finish_time = start
+                    else:
+                        compat_with_task = self.compat[job_idx][task]
+                        m = min(compat_with_task, key=lambda x: avail_m.get(x)) if random_roll < 0.85 else random.choice(compat_with_task)
+                        start = max(avail_m[m], P_j[-1][3] + self.dur[job_idx][task - 1])
+
+                    P_j.append((job_idx, job[task], m, start, self.dur[job_idx][task], task))
+                    avail_m[m] = self.find_avail_m(start, job_idx, task)
+                    product_m[m] = self.part_id[job_idx]
+
+            if P_j not in P:
+                P.append(P_j)
+            else:
+                i -= 1
+
+            if not fill_inds and i * 100 / num_inds in percentages:
+                logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {i * 100 / num_inds}% of schedules have been created.")
+
+        if not fill_inds:
+            self.P = P
         else:
-            i -= 1
+            return P
 
-        # Print a message when a certain percentage of schedules have been created
-        if i * 100 / n in percentages:
-            logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {i * 100 / n}% of schedules have been created.")
+    def evaluate_population(self, best_scores: list = None, display_scores: bool = True):
+        """
+        Evaluates the population of schedules by calculating a score for each schedule based on the completion times of jobs.
+        """
+        self.scores = [
+            round(
+                sum(
+                    (
+                        self.due[job_idx] - (start_time + self.dur[job_idx][-1]) +
+                        (5000 if (self.due[job_idx] - (start_time + self.dur[job_idx][-1])) > 0 else 0)
+                    )
+                    for (job_idx, task, machine, start_time, job_task_dur, _) in schedule
+                    if task + 1 == max(self.J[job_idx])
+                )
+            )
+            for schedule in self.P
+        ]
 
-    # EVAL
-    scores = []
-    for schedule in P:
-        score = 0
-        for (job_idx, task, machine, start_time, job_task_dur) in schedule:
-            job = J[job_idx]
-            if task+1 == max(job):  # Applies to last task of each job
-                completion_time = start_time + dur[job_idx][-1]
+        if display_scores:
+            logger.info(
+                f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Best score: {max(self.scores)}, "
+                f"Median score: {np.median(self.scores)}, Worst score: {min(self.scores)}"
+            )
+            best_scores.append(max(self.scores))
 
-                if completion_time <= due[job_idx]:
-                    score += 10000
+    def resolve_conflict(self, P_prime):
+        P_prime_sorted = []
+        avail_m = {m: 0 for m in self.M}
+        product_m = {m: 0 for m in self.M}
+        changeover_finish_time = 0
+        start_times = {j: 0 for j in range(len(self.J))}
+
+        for job_idx in range(len(self.J)):
+            job = self.J[job_idx]
+            job_tasks = sorted([entry for entry in P_prime if entry[0] == job_idx], key=lambda x: x[1])
+
+            for task_entry in job_tasks:
+                _, task, m, _, part_id, task_num = task_entry
+
+                if task_num == 0:
+                    start = avail_m[m] if product_m[m] == 0 or self.part_id[job_idx] == product_m[m] \
+                        else avail_m[m] + self.change_over_time + max((changeover_finish_time - avail_m[m]), 0)
+                    if product_m[m] != 0 and self.part_id[job_idx] != product_m[m]:
+                        changeover_finish_time = start
                 else:
-                    score -= (completion_time - due[job_idx])  # Penalty for late completion
+                    start = max(avail_m[m], start_times[job_idx] + self.dur[job_idx][task_num - 1])
+                start_times[job_idx] = start
 
-        scores.append(round(score))
+                avail_m[m] = self.find_avail_m(start, job_idx, task_num)
+                product_m[m] = self.part_id[job_idx]
 
-    # Score metrics
-    logger.info(f"Best score: {max(scores)}, Median score: {np.median(scores)}, Worst score: {min(scores)}")
+                P_prime_sorted.append((job_idx, job[task_num], m, start, self.dur[job_idx][task_num], task_num))
 
-    # Zip schedules and scores together
-    schedules_and_scores = list(zip(P, scores))
+        return P_prime_sorted
 
-    # Sort schedules by score and extract best schedule
-    schedules_and_scores.sort(key=lambda x: x[1], reverse=True)
-    best_schedule = schedules_and_scores[0][0]
+    def offspring(self, n_e, n_c):
+        self.evaluate_population(display_scores=False)
+        scored_population = sorted(zip(self.scores, self.P), key=lambda x: x[0], reverse=True)
+        retain_count = min(2, int(len(self.P) * n_e))
+        P_0 = [schedule for score, schedule in scored_population[:retain_count]]
 
-    # Debug statement
-    logger.info(f"Snippet of best schedule (job, task, machine, start_time, duration): {best_schedule[:4]}")
+        iter_count = len(self.P) * (n_c + n_e)
+        while len(P_0) < iter_count:
+            P1, P2 = random.sample(P_0, 2)
+            P_prime = [entry for job_idx in range(len(self.J)) for entry in random.choice([P1, P2]) if entry[0] == job_idx]
+            P_prime = self.resolve_conflict(P_prime)
+            if P_prime not in P_0:
+                P_0.append(P_prime)
 
-    return best_schedule
+        self.P = P_0
+
+    def mutate(self):
+        """
+        WARNING: This function is currently not used and is a work in progress (WIP).
+
+        Mutates the top 10% highest scoring schedules in the population by randomly picking new machines for the
+        latest job. Does not seem to improve performance.
+        """
+        num_best_schedules = int(len(self.P) * 0.1)
+        self.evaluate_population(display_scores=False)
+        scored_population = sorted(zip(self.scores, self.P), key=lambda x: x[0], reverse=True)
+        best_schedules = [schedule for score, schedule in scored_population[:num_best_schedules]]
+
+        for schedule in best_schedules:
+            sorted_schedule = sorted(schedule, key=lambda x: x[-3], reverse=True)
+            unique_job_indices = list({entry[0] for entry in sorted_schedule[:4]})
+            sorted_schedule_without_last_task = [t for t in sorted_schedule if t[0] not in unique_job_indices]
+
+            for job_idx in unique_job_indices:
+                job = self.J[job_idx]
+                for task in range(len(job)):
+                    m = random.choice(self.compat[job_idx][task])
+                    prev_task = next((t for t in sorted_schedule if t[2] == m), None)
+                    if prev_task:
+                        start = prev_task[3] + prev_task[4] + (self.change_over_time if task == 0 and self.part_id[prev_task[0]] != self.part_id[job_idx] else 0)
+                    else:
+                        start = 0
+                    sorted_schedule_without_last_task.append((job_idx, job[task], m, start, self.dur[job_idx][task], task))
+
+                test_scores = [
+                    round(
+                        sum(
+                            (
+                                self.due[job_idx] - (start_time + self.dur[job_idx][-1]) +
+                                (5000 if (self.due[job_idx] - (start_time + self.dur[job_idx][-1])) > 0 else 0)
+                            )
+                            for (job_idx, task, machine, start_time, job_task_dur, _) in sched
+                            if task + 1 == max(self.J[job_idx])
+                        )
+                    )
+                    for sched in [schedule, sorted_schedule_without_last_task]
+                ]
+
+                if test_scores[1] > test_scores[0] and schedule in self.P:
+                    self.P.remove(schedule)
+                    self.P.append(sorted_schedule_without_last_task)
+
+    def run(self, input_repr_dict: Dict[str, any], scheduling_options: dict, n: int = 1200,
+            minutes_per_day: int = 480, max_iterations: int = 60):
+        """
+        Runs the genetic algorithm by initializing the population, evaluating it, and selecting the best schedule.
+
+        Args:
+            input_repr_dict (Dict[str, any]): A dictionary containing the necessary input variables for the GA.
+            scheduling_options (dict): Dictionary containing the changeover time.
+            n (int, optional): The population size. Defaults to 1200.
+            minutes_per_day (int, optional): The number of working minutes per day. Defaults to 480.
+            max_iterations (int, optional): The maximum number of iterations for the genetic algorithm. Defaults to 100.
+
+        Returns:
+            Tuple[List[Tuple[int, int, int, int, float]], List[int]]: The best schedule with the highest score and the list of best scores per generation.
+        """
+        self.J = input_repr_dict['J']
+        self.M = input_repr_dict['M']
+        self.compat = input_repr_dict['compat']
+        self.dur = input_repr_dict['dur']
+        self.due = input_repr_dict['due']
+        self.part_id = input_repr_dict['part_id']
+        self.n = n
+        self.minutes_per_day = minutes_per_day
+        self.change_over_time = scheduling_options['change_over_time']
+        self.day_range = np.arange(self.minutes_per_day, len(self.J) // 5 * self.minutes_per_day, self.minutes_per_day)
+
+        self.init_population()
+        best_scores = []
+
+        for iteration in range(max_iterations):
+            logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Iteration {iteration + 1}")
+            self.offspring(n_e=0.1, n_c=0.3)
+            if len(self.P) < self.n:
+                self.P += self.init_population(num_inds=self.n - len(self.P), fill_inds=True)
+            self.evaluate_population(best_scores=best_scores)
+
+        schedules_and_scores = sorted(zip(self.P, self.scores), key=lambda x: x[1], reverse=True)
+        self.best_schedule = schedules_and_scores[0][0]
+        logger.info(f"Snippet of best schedule (job, task, machine, start_time, duration): {self.best_schedule[:4]}")
+
+        return self.best_schedule, best_scores
 
 
 def reformat_output(croom_processed_orders: pd.DataFrame, best_schedule: Dict[str, any],
-                    column_mapping_reformat: dict, machine_dict: dict, base_date: str = '2024-03-18T09:00') -> pd.DataFrame:
+                    column_mapping_reformat: dict, machine_dict: dict) -> pd.DataFrame:
     """
     Reformats the output of the genetic algorithm by converting the best schedule into a dataframe,
     rounding the starting time, resetting and dropping the index, joining the best schedule to processed orders,
@@ -441,16 +635,16 @@ def reformat_output(croom_processed_orders: pd.DataFrame, best_schedule: Dict[st
         best_schedule (Dict[str, any]): The best schedule generated by the genetic algorithm.
         column_mapping_reformat (dict): The mapping for renaming columns in the output dataframe.
         machine_dict (dict): The dictionary mapping machine numbers to machine names.
-        base_date (str, optional): The base date for calculating start and end times. Defaults to '2024-03-18T09:00'.
 
     Returns:
         pd.DataFrame: The reformatted output dataframe.
     """
     # Convert best schedule into a dataframe
-    schedule_df = pd.DataFrame(best_schedule, columns=['job', 'task', 'machine', 'starting_time', 'duration'])
+    schedule_df = pd.DataFrame(best_schedule, columns=['job', 'task', 'machine', 'starting_time', 'duration', 'task_num'])
 
-    # Round the starting time
-    schedule_df['starting_time'] = schedule_df['starting_time'].round(1)
+    # Round the starting time and duration
+    schedule_df['starting_time'] = schedule_df['starting_time'].round(5)
+    schedule_df['duration'] = schedule_df['duration'].round(5)
 
     # Reset and drop index
     croom_processed_orders.reset_index(inplace=True, drop=True)
@@ -464,18 +658,87 @@ def reformat_output(croom_processed_orders: pd.DataFrame, best_schedule: Dict[st
     # Define end time
     croom_processed_orders['end_time'] = croom_processed_orders['starting_time'] + croom_processed_orders['duration']
 
-    # Rename round two
+    # Rename columns
     croom_processed_orders = croom_processed_orders.rename(columns=column_mapping_reformat)
 
     # Apply machine name mapping
     croom_processed_orders['Machine'] = croom_processed_orders['Machine'].map(machine_dict)
 
-    # Create start and end datetime based on hypothetical start date
-    base_datetime = datetime.strptime(base_date, '%Y-%m-%dT%H:%M')
-    croom_processed_orders['Start_time'] = pd.to_timedelta(croom_processed_orders['Start_time'], unit='m') + base_datetime
-    croom_processed_orders['End_time'] = croom_processed_orders['Start_time'] + pd.to_timedelta(croom_processed_orders['duration'], unit='m')
-
     return croom_processed_orders
+
+
+def create_start_end_time(croom_reformatted_orders: pd.DataFrame, scheduling_options: dict) -> pd.DataFrame:
+    """
+    Adjusts the start and end times of tasks in the given DataFrame to fit within working hours (09:00 to 17:00)
+    and ensures that tasks are scheduled sequentially within each job and machine.
+
+    The function first converts the 'Start_time' from minutes to a datetime based on a hypothetical start date.
+    It then adjusts the start and end times of tasks to fit within working hours, pushing tasks to the next day
+    if they start after 17:00 or before 09:00. The function also checks for consistency in task scheduling within
+    each job and machine.
+
+    Args:
+        croom_reformatted_orders (pd.DataFrame): The DataFrame containing reformatted orders with 'Start_time' in minutes.
+        scheduling_options (dict): A dictionary containing scheduling options, including the 'start_date'.
+
+    Returns:
+        pd.DataFrame: The adjusted DataFrame with updated start and end times.
+    """
+
+    # Parse the date string into a datetime object
+    base_date = datetime.strptime(scheduling_options["start_date"], "%Y-%m-%dT%H:%M")
+
+    # Sort by start time ascending
+    croom_reformatted_orders.sort_values('Start_time', inplace=True)
+
+    # Initialize empty 'Start_time_date' column
+    croom_reformatted_orders['Start_time_date'] = None
+
+    def working_hours_shift(row):
+        days = [d * 480 for d in range(1, 6)]
+
+        for k, day in enumerate(days):
+            if row['Start_time'] < day:
+                row['Start_time_date'] = base_date + pd.to_timedelta(row['Start_time'], unit='m') + \
+                                         pd.Timedelta(days=k) - pd.Timedelta(minutes=480*k)
+                break
+        return row
+
+    # Apply function
+    croom_reformatted_orders = croom_reformatted_orders.apply(working_hours_shift, axis=1)
+
+    # Overwrite the integer start time with the calculated datetimes
+    croom_reformatted_orders['Start_time'] = croom_reformatted_orders['Start_time_date']
+    croom_reformatted_orders['End_time'] = croom_reformatted_orders['Start_time'] + \
+                                           pd.to_timedelta(croom_reformatted_orders['duration'], unit='m')
+
+    # Reorder by earliest start time
+    croom_reformatted_orders.sort_values(by='Start_time', inplace=True)
+
+    # Check if the start time for each task within each job is later than the completion time of the previous task
+    for job_id in croom_reformatted_orders['Job'].unique():
+        job_schedule = croom_reformatted_orders[croom_reformatted_orders['Job'] == job_id]
+        for i in range(1, len(job_schedule)):
+            if not job_schedule.iloc[i]['Start_time'] >= job_schedule.iloc[i-1]['End_time']:
+                logger.warning(
+                    f"The start time for task {job_schedule.iloc[i]['task']} in job {job_id} "
+                    f"is earlier than the completion time of the previous task!"
+                )
+
+    # Check if the start time for each task within each job is later than the completion time of the previous task
+    for machine in croom_reformatted_orders['Machine'].unique():
+        machine_schedule = croom_reformatted_orders[croom_reformatted_orders['Machine'] == machine].sort_values('Start_time')
+        for i in range(1, len(machine_schedule)):
+            if not machine_schedule.iloc[i]['Start_time'] >= machine_schedule.iloc[i-1]['End_time']:
+                logger.warning(
+                    f"The start time for job {machine_schedule.iloc[i]['Job']}, task {machine_schedule.iloc[i]['task']}"
+                    f" in machine {machine} is earlier than the completion time of the previous task!"
+                )
+
+    # Sort again by job and task before plotting
+    croom_reformatted_orders = croom_reformatted_orders.sort_values(['Job', 'task'])
+
+    return croom_reformatted_orders
 
 
 def create_chart(schedule: pd.DataFrame, parameters: Dict[str, Union[str, Dict[str, str]]]) -> pd.DataFrame:

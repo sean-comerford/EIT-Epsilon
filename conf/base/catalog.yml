@@ -1,189 +1,4 @@
-# Here you can define all your data sets by using simple YAML syntax.
-#
-# Documentation for this file format can be found in "The Data Catalog"
-# Link: https://docs.kedro.org/en/stable/data/data_catalog.html
-#
-# We support interacting with a variety of data stores including local file systems, cloud, network and HDFS
-#
-# An example data set definition can look as follows:
-#
-#bikes:
-#  type: pandas.CSVDataset
-#  filepath: "data/01_raw/bikes.csv"
-#
-#weather:
-#  type: spark.SparkDataset
-#  filepath: s3a://your_bucket/data/01_raw/weather*
-#  file_format: csv
-#  credentials: dev_s3
-#  load_args:
-#    header: True
-#    inferSchema: True
-#  save_args:
-#    sep: '|'
-#    header: True
-#
-#scooters:
-#  type: pandas.SQLTableDataset
-#  credentials: scooters_credentials
-#  table_name: scooters
-#  load_args:
-#    index_col: ['name']
-#    columns: ['name', 'gear']
-#  save_args:
-#    if_exists: 'replace'
-#    # if_exists: 'fail'
-#    # if_exists: 'append'
-#
-# The Data Catalog supports being able to reference the same file using two different Dataset implementations
-# (transcoding), templating and a way to reuse arguments that are frequently repeated. See more here:
-# https://docs.kedro.org/en/stable/data/data_catalog.html
-
-
-# Energy production prediction
-
-voestalpine_consumption:
-  type: pandas.ExcelDataset
-  filepath: data/01_raw/historie-spotreb-elektrina.xlsx
-  load_args:
-    engine: openpyxl
-    usecols: [ 0, 2, 3, 4 ]
-
-solar_energy_production_pilot_locations_2:
-  type: pandas.ExcelDataset
-  filepath: data/01_raw/his_data_032021_192023_new.xlsx
-  load_args:
-    engine: openpyxl # Use modern Excel engine (the default since Kedro 0.18.0)
-
-weather_stations:
-  type: pandas.CSVDataset
-  filepath: data/02_intermediate/weather_stations.csv
-
-nearest_weather_stations:
-  type: json.JSONDataset
-  filepath: data/02_intermediate/nearest_weather_stations.json
-
-unique_weather_stations:
-  type: json.JSONDataset
-  filepath: data/02_intermediate/unique_weather_stations.json
-
-weather_measurements:
-  type: pandas.CSVDataset
-  filepath: data/02_intermediate/hourly_weather_measurements.csv
-
-solar_energy_production_per_location:
-  type: partitions.PartitionedDataset
-  path: data/02_intermediate/solar_energy_production
-  dataset:
-    type: pandas.CSVDataset
-    save_args:
-      index: true
-      header: true
-      sep: ";"
-    load_args:
-      sep: ";"
-  overwrite: true
-
-preprocessed_energy_production_data:
-  type: partitions.PartitionedDataset
-  path: data/02_intermediate/preprocessed_solar_energy_production
-  dataset:
-    type: pandas.CSVDataset
-    save_args:
-      index: false
-      header: true
-    load_args:
-      parse_dates: ['time_utc']
-  overwrite: true
-
-weather_measurements_czechia:
-  type: pandas.CSVDataset
-  filepath: data/02_intermediate/weather_measurements_czechia.csv
-  load_args:
-    parse_dates: True
-    index_col: "time"
-
-
-# Modelling
-training_day_ahead_data:
-  type: partitions.PartitionedDataset
-  path: data/03_primary/training_day_ahead_data
-  dataset:
-    type: pandas.CSVDataset
-    save_args:
-      index: true
-      header: true
-    load_args:
-      parse_dates: ['time_utc']
-      index_col: 'time_utc'
-  overwrite: true
-
-testing_day_ahead_data:
-  type: partitions.PartitionedDataset
-  path: data/03_primary/testing_day_ahead_data
-  dataset:
-    type: pandas.CSVDataset
-    save_args:
-      index: true
-      header: true
-    load_args:
-      parse_dates: ['time_utc']
-      index_col: 'time_utc'
-  overwrite: true
-
-forecasting_day_ahead_data:
-  type: partitions.PartitionedDataset
-  path: data/03_primary/forecasting_day_ahead_data
-  dataset:
-    type: pandas.CSVDataset
-    save_args:
-      index: true
-      header: true
-    load_args:
-      parse_dates: ['time_utc']
-      index_col: 'time_utc'
-  overwrite: true
-
-preprocessed_weather_czechia:
-  type: partitions.PartitionedDataset
-  path: data/03_primary/preprocessed_weather_czechia
-  dataset:
-    type: pandas.CSVDataset
-    save_args:
-      index: True
-    load_args:
-      parse_dates: True
-      index_col: "time"
-
-
-forecasting_day_ahead_predictions:
-  type: partitions.PartitionedDataset
-  path: data/07_model_output/forecasting_day_ahead_predictions
-  dataset:
-    type: pandas.CSVDataset
-    save_args:
-      index: true
-      header: true
-    load_args:
-      index_col: "time_utc"
-      parse_dates: True
-  overwrite: True
-
-selected_day_ahead_models:
-  type: partitions.PartitionedDataset
-  path: data/06_models/selected_trained_day_ahead_models
-  dataset:
-    type: pickle.PickleDataset
-  overwrite: true
-
-trained_model_day_ahead:
-  type: partitions.PartitionedDataset
-  path: data/06_models/initially_trained_model_day_ahead_models
-  dataset:
-    type: pickle.PickleDataset
-
 # Scheduling engine
-
 orders:
   type: pandas.ExcelDataset
   filepath: data/01_raw/order_book.xlsx
@@ -209,6 +24,10 @@ croom_processed_orders:
   type: pandas.ParquetDataset
   filepath: data/03_primary/croom_processed_orders.pq
 
+croom_reformatted_orders:
+  type: pandas.ParquetDataset
+  filepath: data/07_model_output/croom_reformatted_orders.pq
+
 cr_cycle_times:
   type: pandas.ParquetDataset
   filepath: data/03_primary/cr_cycle_times.pq
@@ -232,6 +51,10 @@ task_to_machines:
 best_schedule:
   type: pickle.PickleDataset
   filepath: data/07_model_output/best_schedule.pkl
+
+best_scores:
+  type: pickle.PickleDataset
+  filepath: data/07_model_output/best_scores.pkl
 
 # Tim's input
 
@@ -288,7 +111,7 @@ gantt_chart_json:
       pattern_shape: Job
       title: Production Schedule
       hover_name: Order
-      hover_data: ['Order_date', 'Due_date']
+      hover_data: ['Order_date', 'Due_date', 'task', 'Part ID']
       template: simple_white
       color_discrete_sequence: ['rgb(41, 24, 107)', 'rgb(42, 35, 160)', 'rgb(15, 71, 153)',
                                 'rgb(18, 95, 142)', 'rgb(38, 116, 137)', 'rgb(53, 136, 136)',
@@ -307,7 +130,7 @@ gantt_chart_json:
             'Wash-1', 'Inspection-4', 'Inspection-3', 'Inspection-2',
             'Inspection-1', 'HAAS-6', 'HAAS-5', 'HAAS-4', 'HAAS-3', 'HAAS-2', 'HAAS-1'
           ]
-      title: Scheduling of OP1
+      title: Production Schedule for Operation 1
       autosize: True
       title_font_family: Arial
       title_font_size: 32
@@ -316,9 +139,9 @@ gantt_chart_json:
       height: 1000
       showlegend: True
       legend:
-        orientation: h
+        orientation: v
         title: Legend
         yanchor: bottom
-        y: -0.2
+        y: 0.1
         xanchor: center
-        x: 0.5
+        x: 1.1
