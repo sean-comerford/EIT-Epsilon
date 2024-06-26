@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Clone remote repository
+    - name: Clone other repository
       run: |
         git clone https://x-access-token:${{ secrets.EPSILON_PAT }}@github.com/brightcape/EIT_Epsilon_000511.git
       env:
@@ -18,12 +18,16 @@ jobs:
 
     - name: Change directory and fetch updates
       run: |
-        cd EIT_Epsilon_000511
         git config --global user.email "j.oudshoorn@brightcape.nl"
         git config --global user.name "JeanLuc Oudshoorn"
-        git fetch origin test
+        cd <working-repo>
+        git fetch ../EIT_Epsilon_000511
         git checkout test
         git merge origin/test --strategy-option=theirs --no-commit
         git checkout HEAD -- src/eit_epsilon/pipelines/scheduling_engine conf/base/parameters_genetic_algo.yml conf/base/parameters_scheduling.yml
-        git commit -m "Merge updates from parent repository"
-        git push origin test
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "Merge updates from parent repository"
+          git push origin test
+        fi
