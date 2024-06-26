@@ -10,35 +10,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repo
-      uses: actions/checkout@v2
-
-    - name: Test Add Parent
+    - name: Clone remote repository
       run: |
-        git remote add parent https://x-access-token:${{ secrets.EPSILON_PAT }}@github.com/brightcape/EIT_Epsilon_000511.git
-
-    - name: Test Fetch
-      run: |
-        git fetch https://x-access-token:${{ secrets.EPSILON_PAT }}@github.com/brightcape/EIT_Epsilon_000511.git test
-
-    - name: Test Git Checkout
-      run: |
-        git checkout test
-
-    - name: Test Git Merge
-      run: |
-        git merge https://x-access-token:${{ secrets.EPSILON_PAT }}@github.com/brightcape/EIT_Epsilon_000511.git/test --strategy-option=theirs --no-commit
-
-    - name: Test Git Checkout from parent
-      run: |
-        git checkout HEAD -- src/eit_epsilon/pipelines/scheduling_engine conf/base/parameters_genetic_algo.yml conf/base/parameters_scheduling.yml
-
-    - name: Test Git Commit
-      run: |
-        git commit -m "Merge updates from parent repository"
-
-    - name: Test push updates from parent repository
-      run: |
-        git push origin test
+        git clone https://x-access-token:${{ secrets.EPSILON_PAT }}@github.com/brightcape/EIT_Epsilon_000511.git
       env:
         TOKEN: ${{ secrets.EPSILON_PAT }}
+
+    - name: Change directory and fetch updates
+      run: |
+        cd EIT_Epsilon_000511
+        git fetch origin test
+        git checkout test
+        git merge origin/test --strategy-option=theirs --no-commit
+        git checkout HEAD -- src/eit_epsilon/pipelines/scheduling_engine conf/base/parameters_genetic_algo.yml conf/base/parameters_scheduling.yml
+        git commit -m "Merge updates from parent repository"
+        git push origin test
