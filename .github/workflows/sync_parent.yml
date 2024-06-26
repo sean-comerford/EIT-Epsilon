@@ -1,0 +1,26 @@
+name: Fetch updates from parent repository
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # This will run the workflow daily at 00:00
+
+jobs:
+  fetch-updates:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v2
+
+    - name: Fetch updates from parent repository
+      run: |
+        git remote add parent https://github.com/parent/repo.git
+        git fetch parent main
+        git checkout main
+        git merge parent/main --strategy-option=theirs --no-commit
+        git checkout HEAD -- src/eit_epsilon/pipelines/scheduling_engine conf/base/parameters_genetic_algo.yml conf/base/parameters_scheduling.yml
+        git commit -m "Merge updates from parent repository"
+
+    - name: Push updates to origin
+      run: |
+        git push origin main
