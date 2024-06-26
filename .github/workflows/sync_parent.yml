@@ -15,14 +15,12 @@ jobs:
 
     - name: Fetch updates from parent repository
       run: |
-        git config --global user.email "j.oudshoorn@brightcape.nl"
-        git config --global user.name "JeanLuc Oudshoorn"
         git remote add parent https://x-access-token:${{ secrets.EPSILON_PAT }}@github.com/brightcape/EIT_Epsilon_000511.git
         git fetch https://x-access-token:${{ secrets.EPSILON_PAT }}@github.com/brightcape/EIT_Epsilon_000511.git test
         git checkout test
-        git merge parent/test --strategy-option=theirs --no-commit
+        git merge https://x-access-token:${{ secrets.EPSILON_PAT }}@github.com/brightcape/EIT_Epsilon_000511.git/test --strategy-option=theirs --no-commit
         git checkout HEAD -- src/eit_epsilon/pipelines/scheduling_engine conf/base/parameters_genetic_algo.yml conf/base/parameters_scheduling.yml
         git commit -m "Merge updates from parent repository"
-
+        git push origin test
       env:
-        TOKEN: ${{ secrets.EPSILON_PAT }}
+        EPSILON_PAT: ${{ secrets.EPSILON_PAT }}
