@@ -13,17 +13,28 @@ jobs:
     - name: Checkout repo
       uses: actions/checkout@v2
 
-    - name: Test Authentication
-      run: |
-        git clone https://x-access-token:${{ secrets.EPSILON_PAT }}@github.com/brightcape/EIT_Epsilon_000511.git
-
     - name: Test Add Parent
       run: |
         git remote add parent https://x-access-token:${{ secrets.EPSILON_PAT }}@github.com/brightcape/EIT_Epsilon_000511.git
+
+    - name: Test Fetch
+      run: |
         git fetch https://x-access-token:${{ secrets.EPSILON_PAT }}@github.com/brightcape/EIT_Epsilon_000511.git test
+
+    - name: Test Git Checkout
+      run: |
         git checkout test
+
+    - name: Test Git Merge
+      run: |
         git merge https://x-access-token:${{ secrets.EPSILON_PAT }}@github.com/brightcape/EIT_Epsilon_000511.git/test --strategy-option=theirs --no-commit
+
+    - name: Test Git Checkout from parent
+      run: |
         git checkout HEAD -- src/eit_epsilon/pipelines/scheduling_engine conf/base/parameters_genetic_algo.yml conf/base/parameters_scheduling.yml
+
+    - name: Test Git Commit
+      run: |
         git commit -m "Merge updates from parent repository"
 
     - name: Test push updates from parent repository
