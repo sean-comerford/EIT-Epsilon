@@ -19,6 +19,8 @@ jobs:
     - name: Change directory and fetch updates
       run: |
         cd EIT_Epsilon_000511
+        git config --global user.email "j.oudshoorn@brightcape.nl"
+        git config --global user.name "JeanLuc Oudshoorn"
         git fetch origin test
         git checkout test
         git merge origin/test --strategy-option=theirs --no-commit
