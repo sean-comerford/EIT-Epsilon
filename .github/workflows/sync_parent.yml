@@ -13,6 +13,10 @@ jobs:
     - name: Checkout repo
       uses: actions/checkout@v2
 
+    - name: Test Authentication
+      run: |
+        git clone https://x-access-token:${{ secrets.EPSILON_PAT }}@github.com/brightcape/EIT_Epsilon_000511.git
+
     - name: Fetch updates from parent repository
       run: |
         git remote add parent https://github.com/brightcape/EIT_Epsilon_000511.git
