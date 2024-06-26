@@ -1,8 +1,9 @@
 name: Fetch updates from parent repository
 
 on:
+  workflow_dispatch:
   schedule:
-    - cron: '0 12 * * *'  # This will run the workflow daily at 00:00
+    - cron: '0 12 * * *'
 
 jobs:
   fetch-updates:
