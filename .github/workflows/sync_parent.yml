@@ -1,4 +1,4 @@
-name: Fetch updates from parent repository
+name: Sync Fork
 
 on:
   workflow_dispatch:
@@ -6,27 +6,27 @@ on:
     - cron: '0 12 * * *'
 
 jobs:
-  fetch-updates:
+  sync:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Clone other repository
-      run: |
-        git clone https://x-access-token:${{ secrets.EPSILON_PAT }}@github.com/brightcape/EIT_Epsilon_000511.git
-      env:
-        TOKEN: ${{ secrets.EPSILON_PAT }}
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        fetch-depth: 0
 
-    - name: Change directory and fetch updates
+    - name: Set up Git
       run: |
         git config --global user.email "j.oudshoorn@brightcape.nl"
         git config --global user.name "JeanLuc Oudshoorn"
-        git fetch ../EIT_Epsilon_000511
+
+    - name: Sync changes
+      env:
+        TOKEN: ${{ secrets.EPSILON_PAT }}
+      run: |
+        git remote add upstream https://x-access-token:$TOKEN@github.com/parent/repo.git
+        git fetch upstream
         git checkout test
-        git merge origin/test --strategy-option=theirs --no-commit
-        git checkout HEAD -- src/eit_epsilon/pipelines/scheduling_engine conf/base/parameters_genetic_algo.yml conf/base/parameters_scheduling.yml
-        if git diff --staged --quiet; then
-          echo "No changes to commit"
-        else
-          git commit -m "Merge updates from parent repository"
-          git push origin test
-        fi
+        git merge upstream/test
+        git add src/eit_epsilon/pipelines/scheduling_engine/*
+        git commit -m "Sync changes from src/eit_epsilon/pipelines/scheduling_engine"
+        git push upstream test
