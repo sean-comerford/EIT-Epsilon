@@ -23,7 +23,7 @@ jobs:
       env:
         TOKEN: ${{ secrets.EPSILON_PAT }}
       run: |
-        git remote add upstream https://x-access-token:$TOKEN@github.com/parent/repo.git
+        git remote add upstream https://x-access-token:$TOKEN@github.com:brightcape/EIT_Epsilon_000511.git
         git fetch upstream
         git checkout test
         git merge upstream/test
