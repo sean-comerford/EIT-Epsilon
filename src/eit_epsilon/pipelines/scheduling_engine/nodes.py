@@ -13,12 +13,15 @@ from typing import List, Dict, Tuple, Union
 # Instantiate logger
 logger = logging.getLogger(__name__)
 
+# Test
+
 
 class Job:
     """
     The Job class contains methods for preprocessing and extracting information from open orders that need
     to be processed in a manufacturing workshop.
     """
+
     @staticmethod
     def filter_in_scope_op1(data: pd.DataFrame) -> pd.DataFrame:
         """
@@ -34,10 +37,14 @@ class Job:
         logger.info(f"Total order data: {data.shape}")
 
         # Apply the filter
-        inscope_data = data[(data['Part Description'].str.contains('OP 1') |
-                            data['Part Description'].str.contains('ATT ')) &
-                            (~data['On Hold?']) &
-                            (~data['Part Description'].str.contains('OP 2'))]
+        inscope_data = data[
+            (
+                data["Part Description"].str.contains("OP 1")
+                | data["Part Description"].str.contains("ATT ")
+            )
+            & (~data["On Hold?"])
+            & (~data["Part Description"].str.contains("OP 2"))
+        ]
 
         # Debug statement
         logger.info(f"In-scope data for OP 1: {inscope_data.shape}")
@@ -56,21 +63,27 @@ class Job:
             pd.DataFrame: The data with extracted information.
         """
         data = data.assign(
-            Type=lambda x: x['Part Description'].apply(
-                lambda y: 'CR' if 'CR' in y else ('PS' if 'PS' in y else '')),
-            Size=lambda x: x['Part Description'].apply(
-                lambda y: re.search(r'Sz (\d+N?)', y).group(1) if re.search(r'Sz (\d+N?)', y) else ''),
-            Orientation=lambda x: x['Part Description'].apply(
-                lambda y: 'LEFT' if 'LEFT' in y.upper() else ('RIGHT' if 'RIGHT' in y.upper() else '')),
-            Cementless=lambda x: x['Part Description'].apply(
-                lambda y: 'CLS' if 'CLS' in y.upper() else 'C')
+            Type=lambda x: x["Part Description"].apply(
+                lambda y: "CR" if "CR" in y else ("PS" if "PS" in y else "")
+            ),
+            Size=lambda x: x["Part Description"].apply(
+                lambda y: re.search(r"Sz (\d+N?)", y).group(1) if re.search(r"Sz (\d+N?)", y) else ""
+            ),
+            Orientation=lambda x: x["Part Description"].apply(
+                lambda y: "LEFT" if "LEFT" in y.upper() else ("RIGHT" if "RIGHT" in y.upper() else "")
+            ),
+            Cementless=lambda x: x["Part Description"].apply(
+                lambda y: "CLS" if "CLS" in y.upper() else "C"
+            ),
         )
 
         # Debug statement
-        if data[['Type', 'Size', 'Orientation']].isna().sum().sum() > 0:
-            logger.warning(f"Data with extracted information: {data[['Type', 'Size', 'Orientation']].isna().sum()}")
+        if data[["Type", "Size", "Orientation"]].isna().sum().sum() > 0:
+            logger.warning(
+                f"Data with extracted information: {data[['Type', 'Size', 'Orientation']].isna().sum()}"
+            )
         else:
-            logger.info(f"No missing values in Type, Size, and Orientation columns")
+            logger.info("No missing values in Type, Size, and Orientation columns")
 
         return data
 
@@ -85,13 +98,15 @@ class Job:
         Raises:
             LoggerError: If Part ID is not unique for every combination of Type, Size, and Orientation.
         """
-        grouped = data.groupby('Part ID')[['Type', 'Size', 'Orientation']].nunique()
+        grouped = data.groupby("Part ID")[["Type", "Size", "Orientation"]].nunique()
 
         if (grouped > 1).any().any():
-            logger.error("[bold red blink]Part ID not unique for every combination of Type, Size, and Orientation[/]",
-                         extra={"markup": True})
+            logger.error(
+                "[bold red blink]Part ID not unique for every combination of Type, Size, and Orientation[/]",
+                extra={"markup": True},
+            )
         else:
-            logger.info(f"Part ID consistency check passed")
+            logger.info("Part ID consistency check passed")
 
     @staticmethod
     def create_jobs_op1(data: pd.DataFrame) -> List[List[int]]:
@@ -106,18 +121,23 @@ class Job:
             List[List[int]]: The list of jobs.
         """
         # Find proportion of cementless products
-        cementless_count = data[data['Cementless'] == 'CLS'].shape[0]
+        cementless_count = data[data["Cementless"] == "CLS"].shape[0]
         total_products = data.shape[0]
 
         cementless_percentage = (cementless_count / total_products) * 100
         logger.info(f"Proportion of cementless products: {cementless_percentage:.1f}%")
 
         # Populate J
-        J = [[1, 2, 3, 4, 5, 6, 7] if cementless == 'CLS' else [1, 2, 3, 6, 7] for cementless in data['Cementless']]
+        J = [
+            [1, 2, 3, 4, 5, 6, 7] if cementless == "CLS" else [1, 2, 3, 6, 7]
+            for cementless in data["Cementless"]
+        ]
 
         if not len(J) == len(data):
-            logger.error("[bold red blink]J is not of the same length as processed orders![/]",
-                         extra={"markup": True})
+            logger.error(
+                "[bold red blink]J is not of the same length as processed orders![/]",
+                extra={"markup": True},
+            )
 
         # Debug statement
         logger.info(f"Snippet of Jobs for OP 1: {J[:2]}")
@@ -126,7 +146,7 @@ class Job:
 
     @staticmethod
     def get_part_id(data: pd.DataFrame) -> List[int]:
-        part_id = data['Part ID'].to_list()
+        part_id = data["Part ID"].to_list()
 
         # Show snippet of Part IDs
         logger.info(f"Snippet of Part IDs: {part_id[:5]}")
@@ -140,6 +160,7 @@ class Shop:
     duration matrices and due dates as input for a genetic algorithm.
     It creates a digital representation of the processes in and the setup of a manufacturing workshop.
     """
+
     @staticmethod
     def create_machines(machine_qty_dict: Dict[str, int]) -> List[int]:
         """
@@ -160,7 +181,9 @@ class Shop:
         return M
 
     @staticmethod
-    def get_compatibility(J: List[List[int]], task_to_machines: Dict[int, List[int]]) -> List[List[List[int]]]:
+    def get_compatibility(
+        J: List[List[int]], task_to_machines: Dict[int, List[int]]
+    ) -> List[List[List[int]]]:
         """
         Gets the compatibility of tasks to machines.
 
@@ -192,7 +215,9 @@ class Shop:
         return compat
 
     @staticmethod
-    def preprocess_cycle_times(cycle_times: pd.DataFrame, last_task_minutes: int = 4) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    def preprocess_cycle_times(
+        cycle_times: pd.DataFrame, last_task_minutes: int = 4
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Preprocesses the cycle times:
             1.) Remove empty rows and columns
@@ -213,12 +238,15 @@ class Shop:
         cycle_times.index = range(1, len(cycle_times) + 1)
 
         def extract_number(s: str) -> str:
-            match = re.search(r'\d+N?', s)
+            match = re.search(r"\d+N?", s)
             return match.group(0) if match else s
 
         cycle_times.columns = [extract_number(col) for col in cycle_times.columns]
         cycle_times.loc[7] = cycle_times.loc[7].fillna(last_task_minutes)
-        ps_times, cr_times = cycle_times.iloc[:, :cycle_times.shape[1]//2], cycle_times.iloc[:, cycle_times.shape[1]//2 + 1:]
+        ps_times, cr_times = (
+            cycle_times.iloc[:, : cycle_times.shape[1] // 2],
+            cycle_times.iloc[:, cycle_times.shape[1] // 2 + 1 :],
+        )
 
         # Debug statement
         logger.info(f"PS times dim.: {ps_times.shape}, CR times dim.: {cr_times.shape}")
@@ -226,7 +254,9 @@ class Shop:
         return ps_times, cr_times
 
     @staticmethod
-    def get_duration_matrix(J: List[List[int]], inscope_orders: pd.DataFrame, cr_times: pd.DataFrame, ps_times: pd.DataFrame) -> List[List[float]]:
+    def get_duration_matrix(
+        J: List[List[int]], inscope_orders: pd.DataFrame, cr_times: pd.DataFrame, ps_times: pd.DataFrame
+    ) -> List[List[float]]:
         """
         Gets the duration matrix for the jobs.
 
@@ -247,8 +277,12 @@ class Shop:
         for i, job in enumerate(J):
             job_dur = []
             for task in job:
-                times = cr_times if inscope_orders.iloc[i]['Type'] == 'CR' else ps_times
-                duration = round(times.loc[task, inscope_orders.iloc[i]['Size']] * inscope_orders.iloc[i]['Order Qty'], 1)
+                times = cr_times if inscope_orders.iloc[i]["Type"] == "CR" else ps_times
+                duration = round(
+                    times.loc[task, inscope_orders.iloc[i]["Size"]]
+                    * inscope_orders.iloc[i]["Order Qty"],
+                    1,
+                )
                 job_dur.append(duration)
             dur.append(job_dur)
 
@@ -258,7 +292,9 @@ class Shop:
         return dur
 
     @staticmethod
-    def get_due_date(inscope_orders: pd.DataFrame, date: str = '2024-03-18', working_minutes: int = 480) -> List[int]:
+    def get_due_date(
+        inscope_orders: pd.DataFrame, date: str = "2024-03-18", working_minutes: int = 480
+    ) -> List[int]:
         """
         Gets the due dates for the in-scope orders.
 
@@ -271,7 +307,7 @@ class Shop:
             List[int]: The list of due dates in working minutes.
         """
         due = []
-        for due_date in inscope_orders['Due Date ']:
+        for due_date in inscope_orders["Due Date "]:
             if pd.Timestamp(date) > due_date:
                 working_days = -len(pd.bdate_range(due_date, date)) * working_minutes
             else:
@@ -285,7 +321,6 @@ class Shop:
 
 
 class JobShop(Job, Shop):
-
     def preprocess_orders(self, croom_open_orders: pd.DataFrame) -> pd.DataFrame:
         """
         Preprocesses the open orders.
@@ -296,16 +331,19 @@ class JobShop(Job, Shop):
         Returns:
             pd.DataFrame: The preprocessed orders.
         """
-        inscope_data = (
-            self.filter_in_scope_op1(croom_open_orders)
-                .pipe(self.extract_info)
-        )
+        inscope_data = self.filter_in_scope_op1(croom_open_orders).pipe(self.extract_info)
         self.check_part_id_consistency(inscope_data)
 
         return inscope_data
 
-    def build_ga_representation(self, croom_processed_orders: pd.DataFrame, cr_cycle_times: pd.DataFrame, ps_cycle_times: pd.DataFrame,
-                                machine_qty_dict: Dict[str, int], task_to_machines: Dict[int, List[int]]) -> Dict[str, any]:
+    def build_ga_representation(
+        self,
+        croom_processed_orders: pd.DataFrame,
+        cr_cycle_times: pd.DataFrame,
+        ps_cycle_times: pd.DataFrame,
+        machine_qty_dict: Dict[str, int],
+        task_to_machines: Dict[int, List[int]],
+    ) -> Dict[str, any]:
         """
         Builds the GA representation:
             J: List[List[int]]: The list of jobs, each job is a list of tasks.
@@ -335,26 +373,32 @@ class JobShop(Job, Shop):
 
         def is_nested_list_of_numbers(lst):
             if isinstance(lst, list):
-                return all(is_nested_list_of_numbers(item) if isinstance(item, list) else isinstance(item, (int, float)) for item in lst)
+                return all(
+                    is_nested_list_of_numbers(item)
+                    if isinstance(item, list)
+                    else isinstance(item, (int, float))
+                    for item in lst
+                )
             return False
 
         input_repr_dict = {
-            'J': J,
-            'M': M,
-            'compat': compat,
-            'dur': dur,
-            'due': due,
-            'part_id': part_id,
+            "J": J,
+            "M": M,
+            "compat": compat,
+            "dur": dur,
+            "due": due,
+            "part_id": part_id,
         }
 
         # Check if J, M, compat, dur, and due are (nested) lists of integers or floats
         # Part ID is a list of strings, so should be excluded
         for var_name, var in input_repr_dict.items():
-            if var_name != 'part_id':
+            if var_name != "part_id":
                 if not is_nested_list_of_numbers(var):
                     logger.error(
                         f"[bold red blink]{var_name} is not a nested list of integers/floats: {var[0]}[/]",
-                        extra={"markup": True})
+                        extra={"markup": True},
+                    )
 
         return input_repr_dict
 
@@ -428,21 +472,42 @@ class GeneticAlgorithmScheduler:
 
                     if task == 0:
                         compat_task_0 = self.compat[job_idx][task]
-                        preferred_machines = [key for key in compat_task_0 if product_m.get(key) == self.part_id[job_idx] or product_m.get(key) == 0]
+                        preferred_machines = [
+                            key
+                            for key in compat_task_0
+                            if product_m.get(key) == self.part_id[job_idx] or product_m.get(key) == 0
+                        ]
 
                         if not preferred_machines:
-                            m = min(compat_task_0, key=lambda x: avail_m.get(x)) if random_roll < 0.8 else random.choice(compat_task_0)
+                            m = (
+                                min(compat_task_0, key=lambda x: avail_m.get(x))
+                                if random_roll < 0.8
+                                else random.choice(compat_task_0)
+                            )
                         else:
-                            m = min(preferred_machines, key=lambda x: avail_m.get(x)) if random_roll < 0.9 else random.choice(preferred_machines)
+                            m = (
+                                min(preferred_machines, key=lambda x: avail_m.get(x))
+                                if random_roll < 0.9
+                                else random.choice(preferred_machines)
+                            )
 
-                        start = avail_m[m] if product_m[m] == 0 or self.part_id[job_idx] == product_m[m] \
-                            else avail_m[m] + self.change_over_time + max((changeover_finish_time - avail_m[m]), 0)
+                        start = (
+                            avail_m[m]
+                            if product_m[m] == 0 or self.part_id[job_idx] == product_m[m]
+                            else avail_m[m]
+                            + self.change_over_time
+                            + max((changeover_finish_time - avail_m[m]), 0)
+                        )
 
                         if product_m[m] != 0 and self.part_id[job_idx] != product_m[m]:
                             changeover_finish_time = start
                     else:
                         compat_with_task = self.compat[job_idx][task]
-                        m = min(compat_with_task, key=lambda x: avail_m.get(x)) if random_roll < 0.85 else random.choice(compat_with_task)
+                        m = (
+                            min(compat_with_task, key=lambda x: avail_m.get(x))
+                            if random_roll < 0.85
+                            else random.choice(compat_with_task)
+                        )
                         start = max(avail_m[m], P_j[-1][3] + self.dur[job_idx][task - 1])
 
                     P_j.append((job_idx, job[task], m, start, self.dur[job_idx][task], task))
@@ -455,7 +520,9 @@ class GeneticAlgorithmScheduler:
                 i -= 1
 
             if not fill_inds and i * 100 / num_inds in percentages:
-                logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {i * 100 / num_inds}% of schedules have been created.")
+                logger.info(
+                    f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {i * 100 / num_inds}% of schedules have been created."
+                )
 
         if not fill_inds:
             self.P = P
@@ -470,8 +537,9 @@ class GeneticAlgorithmScheduler:
             round(
                 sum(
                     (
-                        self.due[job_idx] - (start_time + self.dur[job_idx][-1]) +
-                        (6000 if (self.due[job_idx] - (start_time + self.dur[job_idx][-1])) > 0 else 0)
+                        self.due[job_idx]
+                        - (start_time + self.dur[job_idx][-1])
+                        + (6000 if (self.due[job_idx] - (start_time + self.dur[job_idx][-1])) > 0 else 0)
                     )
                     for (job_idx, task, machine, start_time, job_task_dur, _) in schedule
                     if task + 1 == max(self.J[job_idx])
@@ -502,8 +570,13 @@ class GeneticAlgorithmScheduler:
                 _, task, m, _, part_id, task_num = task_entry
 
                 if task_num == 0:
-                    start = avail_m[m] if product_m[m] == 0 or self.part_id[job_idx] == product_m[m] \
-                        else avail_m[m] + self.change_over_time + max((changeover_finish_time - avail_m[m]), 0)
+                    start = (
+                        avail_m[m]
+                        if product_m[m] == 0 or self.part_id[job_idx] == product_m[m]
+                        else avail_m[m]
+                        + self.change_over_time
+                        + max((changeover_finish_time - avail_m[m]), 0)
+                    )
                     if product_m[m] != 0 and self.part_id[job_idx] != product_m[m]:
                         changeover_finish_time = start
                 else:
@@ -513,7 +586,9 @@ class GeneticAlgorithmScheduler:
                 avail_m[m] = self.find_avail_m(start, job_idx, task_num)
                 product_m[m] = self.part_id[job_idx]
 
-                P_prime_sorted.append((job_idx, job[task_num], m, start, self.dur[job_idx][task_num], task_num))
+                P_prime_sorted.append(
+                    (job_idx, job[task_num], m, start, self.dur[job_idx][task_num], task_num)
+                )
 
         return P_prime_sorted
 
@@ -526,7 +601,12 @@ class GeneticAlgorithmScheduler:
         iter_count = len(self.P) * (n_c + n_e)
         while len(P_0) < iter_count:
             P1, P2 = random.sample(P_0, 2)
-            P_prime = [entry for job_idx in range(len(self.J)) for entry in random.choice([P1, P2]) if entry[0] == job_idx]
+            P_prime = [
+                entry
+                for job_idx in range(len(self.J))
+                for entry in random.choice([P1, P2])
+                if entry[0] == job_idx
+            ]
             P_prime = self.resolve_conflict(P_prime)
             if P_prime not in P_0:
                 P_0.append(P_prime)
@@ -548,7 +628,9 @@ class GeneticAlgorithmScheduler:
         for schedule in best_schedules:
             sorted_schedule = sorted(schedule, key=lambda x: x[-3], reverse=True)
             unique_job_indices = list({entry[0] for entry in sorted_schedule[:4]})
-            sorted_schedule_without_last_task = [t for t in sorted_schedule if t[0] not in unique_job_indices]
+            sorted_schedule_without_last_task = [
+                t for t in sorted_schedule if t[0] not in unique_job_indices
+            ]
 
             for job_idx in unique_job_indices:
                 job = self.J[job_idx]
@@ -556,17 +638,32 @@ class GeneticAlgorithmScheduler:
                     m = random.choice(self.compat[job_idx][task])
                     prev_task = next((t for t in sorted_schedule if t[2] == m), None)
                     if prev_task:
-                        start = prev_task[3] + prev_task[4] + (self.change_over_time if task == 0 and self.part_id[prev_task[0]] != self.part_id[job_idx] else 0)
+                        start = (
+                            prev_task[3]
+                            + prev_task[4]
+                            + (
+                                self.change_over_time
+                                if task == 0 and self.part_id[prev_task[0]] != self.part_id[job_idx]
+                                else 0
+                            )
+                        )
                     else:
                         start = 0
-                    sorted_schedule_without_last_task.append((job_idx, job[task], m, start, self.dur[job_idx][task], task))
+                    sorted_schedule_without_last_task.append(
+                        (job_idx, job[task], m, start, self.dur[job_idx][task], task)
+                    )
 
                 test_scores = [
                     round(
                         sum(
                             (
-                                self.due[job_idx] - (start_time + self.dur[job_idx][-1]) +
-                                (5000 if (self.due[job_idx] - (start_time + self.dur[job_idx][-1])) > 0 else 0)
+                                self.due[job_idx]
+                                - (start_time + self.dur[job_idx][-1])
+                                + (
+                                    5000
+                                    if (self.due[job_idx] - (start_time + self.dur[job_idx][-1])) > 0
+                                    else 0
+                                )
                             )
                             for (job_idx, task, machine, start_time, job_task_dur, _) in sched
                             if task + 1 == max(self.J[job_idx])
@@ -579,8 +676,14 @@ class GeneticAlgorithmScheduler:
                     self.P.remove(schedule)
                     self.P.append(sorted_schedule_without_last_task)
 
-    def run(self, input_repr_dict: Dict[str, any], scheduling_options: dict, n: int = 1200,
-            minutes_per_day: int = 480, max_iterations: int = 60):
+    def run(
+        self,
+        input_repr_dict: Dict[str, any],
+        scheduling_options: dict,
+        n: int = 1200,
+        minutes_per_day: int = 480,
+        max_iterations: int = 60,
+    ):
         """
         Runs the genetic algorithm by initializing the population, evaluating it, and selecting the best schedule.
 
@@ -594,16 +697,18 @@ class GeneticAlgorithmScheduler:
         Returns:
             Tuple[List[Tuple[int, int, int, int, float]], List[int]]: The best schedule with the highest score and the list of best scores per generation.
         """
-        self.J = input_repr_dict['J']
-        self.M = input_repr_dict['M']
-        self.compat = input_repr_dict['compat']
-        self.dur = input_repr_dict['dur']
-        self.due = input_repr_dict['due']
-        self.part_id = input_repr_dict['part_id']
+        self.J = input_repr_dict["J"]
+        self.M = input_repr_dict["M"]
+        self.compat = input_repr_dict["compat"]
+        self.dur = input_repr_dict["dur"]
+        self.due = input_repr_dict["due"]
+        self.part_id = input_repr_dict["part_id"]
         self.n = n
         self.minutes_per_day = minutes_per_day
-        self.change_over_time = scheduling_options['change_over_time']
-        self.day_range = np.arange(self.minutes_per_day, len(self.J) // 5 * self.minutes_per_day, self.minutes_per_day)
+        self.change_over_time = scheduling_options["change_over_time"]
+        self.day_range = np.arange(
+            self.minutes_per_day, len(self.J) // 5 * self.minutes_per_day, self.minutes_per_day
+        )
 
         self.init_population()
         best_scores = []
@@ -617,13 +722,19 @@ class GeneticAlgorithmScheduler:
 
         schedules_and_scores = sorted(zip(self.P, self.scores), key=lambda x: x[1], reverse=True)
         self.best_schedule = schedules_and_scores[0][0]
-        logger.info(f"Snippet of best schedule (job, task, machine, start_time, duration): {self.best_schedule[:4]}")
+        logger.info(
+            f"Snippet of best schedule (job, task, machine, start_time, duration): {self.best_schedule[:4]}"
+        )
 
         return self.best_schedule, best_scores
 
 
-def reformat_output(croom_processed_orders: pd.DataFrame, best_schedule: Dict[str, any],
-                    column_mapping_reformat: dict, machine_dict: dict) -> pd.DataFrame:
+def reformat_output(
+    croom_processed_orders: pd.DataFrame,
+    best_schedule: Dict[str, any],
+    column_mapping_reformat: dict,
+    machine_dict: dict,
+) -> pd.DataFrame:
     """
     Reformats the output of the genetic algorithm by converting the best schedule into a dataframe,
     rounding the starting time, resetting and dropping the index, joining the best schedule to processed orders,
@@ -640,34 +751,39 @@ def reformat_output(croom_processed_orders: pd.DataFrame, best_schedule: Dict[st
         pd.DataFrame: The reformatted output dataframe.
     """
     # Convert best schedule into a dataframe
-    schedule_df = pd.DataFrame(best_schedule, columns=['job', 'task', 'machine', 'starting_time', 'duration', 'task_num'])
+    schedule_df = pd.DataFrame(
+        best_schedule, columns=["job", "task", "machine", "starting_time", "duration", "task_num"]
+    )
 
     # Round the starting time and duration
-    schedule_df['starting_time'] = schedule_df['starting_time'].round(5)
-    schedule_df['duration'] = schedule_df['duration'].round(5)
+    schedule_df["starting_time"] = schedule_df["starting_time"].round(5)
+    schedule_df["duration"] = schedule_df["duration"].round(5)
 
     # Reset and drop index
     croom_processed_orders.reset_index(inplace=True, drop=True)
 
     # Join best schedule to processed orders
-    croom_processed_orders = croom_processed_orders.merge(schedule_df,
-                                                          left_index=True,
-                                                          right_on='job',
-                                                          how='left')
+    croom_processed_orders = croom_processed_orders.merge(
+        schedule_df, left_index=True, right_on="job", how="left"
+    )
 
     # Define end time
-    croom_processed_orders['end_time'] = croom_processed_orders['starting_time'] + croom_processed_orders['duration']
+    croom_processed_orders["end_time"] = (
+        croom_processed_orders["starting_time"] + croom_processed_orders["duration"]
+    )
 
     # Rename columns
     croom_processed_orders = croom_processed_orders.rename(columns=column_mapping_reformat)
 
     # Apply machine name mapping
-    croom_processed_orders['Machine'] = croom_processed_orders['Machine'].map(machine_dict)
+    croom_processed_orders["Machine"] = croom_processed_orders["Machine"].map(machine_dict)
 
     return croom_processed_orders
 
 
-def create_start_end_time(croom_reformatted_orders: pd.DataFrame, scheduling_options: dict) -> pd.DataFrame:
+def create_start_end_time(
+    croom_reformatted_orders: pd.DataFrame, scheduling_options: dict
+) -> pd.DataFrame:
     """
     Adjusts the start and end times of tasks in the given DataFrame to fit within working hours (09:00 to 17:00)
     and ensures that tasks are scheduled sequentially within each job and machine.
@@ -689,18 +805,22 @@ def create_start_end_time(croom_reformatted_orders: pd.DataFrame, scheduling_opt
     base_date = datetime.strptime(scheduling_options["start_date"], "%Y-%m-%dT%H:%M")
 
     # Sort by start time ascending
-    croom_reformatted_orders.sort_values('Start_time', inplace=True)
+    croom_reformatted_orders.sort_values("Start_time", inplace=True)
 
     # Initialize empty 'Start_time_date' column
-    croom_reformatted_orders['Start_time_date'] = None
+    croom_reformatted_orders["Start_time_date"] = None
 
     def working_hours_shift(row):
         days = [d * 480 for d in range(1, 6)]
 
         for k, day in enumerate(days):
-            if row['Start_time'] < day:
-                row['Start_time_date'] = base_date + pd.to_timedelta(row['Start_time'], unit='m') + \
-                                         pd.Timedelta(days=k) - pd.Timedelta(minutes=480*k)
+            if row["Start_time"] < day:
+                row["Start_time_date"] = (
+                    base_date
+                    + pd.to_timedelta(row["Start_time"], unit="m")
+                    + pd.Timedelta(days=k)
+                    - pd.Timedelta(minutes=480 * k)
+                )
                 break
         return row
 
@@ -708,40 +828,45 @@ def create_start_end_time(croom_reformatted_orders: pd.DataFrame, scheduling_opt
     croom_reformatted_orders = croom_reformatted_orders.apply(working_hours_shift, axis=1)
 
     # Overwrite the integer start time with the calculated datetimes
-    croom_reformatted_orders['Start_time'] = croom_reformatted_orders['Start_time_date']
-    croom_reformatted_orders['End_time'] = croom_reformatted_orders['Start_time'] + \
-                                           pd.to_timedelta(croom_reformatted_orders['duration'], unit='m')
+    croom_reformatted_orders["Start_time"] = croom_reformatted_orders["Start_time_date"]
+    croom_reformatted_orders["End_time"] = croom_reformatted_orders["Start_time"] + pd.to_timedelta(
+        croom_reformatted_orders["duration"], unit="m"
+    )
 
     # Reorder by earliest start time
-    croom_reformatted_orders.sort_values(by='Start_time', inplace=True)
+    croom_reformatted_orders.sort_values(by="Start_time", inplace=True)
 
     # Check if the start time for each task within each job is later than the completion time of the previous task
-    for job_id in croom_reformatted_orders['Job'].unique():
-        job_schedule = croom_reformatted_orders[croom_reformatted_orders['Job'] == job_id]
+    for job_id in croom_reformatted_orders["Job"].unique():
+        job_schedule = croom_reformatted_orders[croom_reformatted_orders["Job"] == job_id]
         for i in range(1, len(job_schedule)):
-            if not job_schedule.iloc[i]['Start_time'] >= job_schedule.iloc[i-1]['End_time']:
+            if not job_schedule.iloc[i]["Start_time"] >= job_schedule.iloc[i - 1]["End_time"]:
                 logger.warning(
                     f"The start time for task {job_schedule.iloc[i]['task']} in job {job_id} "
                     f"is earlier than the completion time of the previous task!"
                 )
 
     # Check if the start time for each task within each job is later than the completion time of the previous task
-    for machine in croom_reformatted_orders['Machine'].unique():
-        machine_schedule = croom_reformatted_orders[croom_reformatted_orders['Machine'] == machine].sort_values('Start_time')
+    for machine in croom_reformatted_orders["Machine"].unique():
+        machine_schedule = croom_reformatted_orders[
+            croom_reformatted_orders["Machine"] == machine
+        ].sort_values("Start_time")
         for i in range(1, len(machine_schedule)):
-            if not machine_schedule.iloc[i]['Start_time'] >= machine_schedule.iloc[i-1]['End_time']:
+            if not machine_schedule.iloc[i]["Start_time"] >= machine_schedule.iloc[i - 1]["End_time"]:
                 logger.warning(
                     f"The start time for job {machine_schedule.iloc[i]['Job']}, task {machine_schedule.iloc[i]['task']}"
                     f" in machine {machine} is earlier than the completion time of the previous task!"
                 )
 
     # Sort again by job and task before plotting
-    croom_reformatted_orders = croom_reformatted_orders.sort_values(['Job', 'task'])
+    croom_reformatted_orders = croom_reformatted_orders.sort_values(["Job", "task"])
 
     return croom_reformatted_orders
 
 
-def create_chart(schedule: pd.DataFrame, parameters: Dict[str, Union[str, Dict[str, str]]]) -> pd.DataFrame:
+def create_chart(
+    schedule: pd.DataFrame, parameters: Dict[str, Union[str, Dict[str, str]]]
+) -> pd.DataFrame:
     """
     Creates a Gantt chart based on the schedule and parameters.
 
@@ -753,7 +878,9 @@ def create_chart(schedule: pd.DataFrame, parameters: Dict[str, Union[str, Dict[s
         pd.DataFrame: The updated schedule data with additional columns for the chart.
     """
     if not is_string_dtype(schedule[[parameters["column_mapping"]["Resource"]]]):
-        schedule[parameters["column_mapping"]["Resource"]] = schedule[parameters["column_mapping"]["Resource"]].apply(str)
+        schedule[parameters["column_mapping"]["Resource"]] = schedule[
+            parameters["column_mapping"]["Resource"]
+        ].apply(str)
     schedule = schedule.rename(columns=parameters["column_mapping"])
 
     return schedule
@@ -766,5 +893,5 @@ def save_chart_to_html(gantt_chart: plotly.graph_objs.Figure) -> None:
     Args:
         gantt_chart (plotly.graph_objs.Figure): The Gantt chart to be saved.
     """
-    filepath = Path(os.getcwd()) / 'data/08_reporting/gantt_chart.html'
+    filepath = Path(os.getcwd()) / "data/08_reporting/gantt_chart.html"
     plotly.offline.plot(gantt_chart, filename=str(filepath))
