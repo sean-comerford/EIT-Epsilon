@@ -14,19 +14,13 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Set up Git
-      run: |
-        git config --global user.email "j.oudshoorn@brightcape.nl"
-        git config --global user.name "JeanLuc Oudshoorn"
-
     - name: Sync changes
       env:
         TOKEN: ${{ secrets.EPSILON_PAT }}
       run: |
         git remote add upstream https://x-access-token:$TOKEN@github.com/brightcape/EIT_Epsilon_000511.git
-        git fetch upstream
-        git checkout test
-        git merge upstream/test
-        git add src/eit_epsilon/pipelines/scheduling_engine/*
-        git commit -m "Sync changes from src/eit_epsilon/pipelines/scheduling_engine"
-        git push upstream test
+
+    - name: Set up Git
+      run: |
+        git config --global user.email "j.oudshoorn@brightcape.nl"
+        git config --global user.name "JeanLuc Oudshoorn"
