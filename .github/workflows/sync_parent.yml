@@ -25,6 +25,9 @@ jobs:
         git config --global user.email "j.oudshoorn@brightcape.nl"
         git config --global user.name "JeanLuc Oudshoorn"
 
-    - name: Fetch upstream
+    - name: Push folder to upstream
       run: |
-        git fetch upstream
+        git checkout -b temp-branch
+        git add src/eit_epsilon/pipelines/scheduling_engine/*
+        git commit -m "Push changes from src/eit_epsilon/pipelines/scheduling_engine"
+        git push upstream temp-branch:main
