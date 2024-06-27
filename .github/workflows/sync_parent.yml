@@ -24,7 +24,3 @@ jobs:
       run: |
         git config --global user.email "j.oudshoorn@brightcape.nl"
         git config --global user.name "JeanLuc Oudshoorn"
-
-    - name: Fetch upstream
-      run: |
-        git fetch upstream
