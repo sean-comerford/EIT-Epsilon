@@ -471,7 +471,7 @@ class GeneticAlgorithmScheduler:
                 sum(
                     (
                         self.due[job_idx] - (start_time + self.dur[job_idx][-1]) +
-                        (5000 if (self.due[job_idx] - (start_time + self.dur[job_idx][-1])) > 0 else 0)
+                        (6000 if (self.due[job_idx] - (start_time + self.dur[job_idx][-1])) > 0 else 0)
                     )
                     for (job_idx, task, machine, start_time, job_task_dur, _) in schedule
                     if task + 1 == max(self.J[job_idx])
