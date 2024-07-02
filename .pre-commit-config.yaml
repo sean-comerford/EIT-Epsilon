@@ -9,6 +9,4 @@ repos:
     rev: 6.1.0
     hooks:
       - id: flake8
-        args: [ "--max-line-length=200", "--ignore=E203,W503" ]
-
-
+        args: ["--ignore=E203,E501,W503,F821,F541,E731" ]

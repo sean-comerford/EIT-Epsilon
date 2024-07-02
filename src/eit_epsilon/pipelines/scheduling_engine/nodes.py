@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import math
 import re
 import random
 import logging
@@ -12,8 +13,6 @@ from typing import List, Dict, Tuple, Union
 
 # Instantiate logger
 logger = logging.getLogger(__name__)
-
-# Test fork connections
 
 
 class Job:
@@ -67,10 +66,10 @@ class Job:
                 lambda y: "CR" if "CR" in y else ("PS" if "PS" in y else "")
             ),
             Size=lambda x: x["Part Description"].apply(
-                lambda y: re.search(r"Sz (\d+N?)", y).group(1) if re.search(r"Sz (\d+N?)", y) else ""
+                lambda y: (re.search(r"Sz (\d+N?)", y).group(1) if re.search(r"Sz (\d+N?)", y) else "")
             ),
             Orientation=lambda x: x["Part Description"].apply(
-                lambda y: "LEFT" if "LEFT" in y.upper() else ("RIGHT" if "RIGHT" in y.upper() else "")
+                lambda y: ("LEFT" if "LEFT" in y.upper() else ("RIGHT" if "RIGHT" in y.upper() else ""))
             ),
             Cementless=lambda x: x["Part Description"].apply(
                 lambda y: "CLS" if "CLS" in y.upper() else "C"
@@ -83,7 +82,7 @@ class Job:
                 f"Data with extracted information: {data[['Type', 'Size', 'Orientation']].isna().sum()}"
             )
         else:
-            logger.info("No missing values in Type, Size, and Orientation columns")
+            logger.info(f"No missing values in Type, Size, and Orientation columns")
 
         return data
 
@@ -106,7 +105,7 @@ class Job:
                 extra={"markup": True},
             )
         else:
-            logger.info("Part ID consistency check passed")
+            logger.info(f"Part ID consistency check passed")
 
     @staticmethod
     def create_jobs_op1(data: pd.DataFrame) -> List[List[int]]:
@@ -244,18 +243,49 @@ class Shop:
         cycle_times.columns = [extract_number(col) for col in cycle_times.columns]
         cycle_times.loc[7] = cycle_times.loc[7].fillna(last_task_minutes)
         ps_times, cr_times = (
-            cycle_times.iloc[:, : cycle_times.shape[1] // 2],
-            cycle_times.iloc[:, cycle_times.shape[1] // 2 + 1 :],
+            cycle_times.iloc[:8, 2 : math.ceil(cycle_times.shape[1] / 2) + 1],
+            cycle_times.iloc[:8, math.ceil(cycle_times.shape[1] / 2) + 1 :],
         )
 
         # Debug statement
         logger.info(f"PS times dim.: {ps_times.shape}, CR times dim.: {cr_times.shape}")
 
+        # Convert everything to float
+        ps_times = ps_times.astype(float)
+        cr_times = cr_times.astype(float)
+
+        logger.info(f"PS times columns: {ps_times.columns}")
+        logger.info(f"CR times columns: {cr_times.columns}")
+
+        # Check if all cycle times are numeric values
+        if not all(isinstance(i, (int, float)) for i in ps_times.values.flatten()) or not all(
+            isinstance(i, (int, float)) for i in cr_times.values.flatten()
+        ):
+            logger.warning(
+                "[bold red blink]All cycle times should be numeric values. Please check the input data.[/]",
+                extra={"markup": True},
+            )
+
+        # Define required sizes
+        required_sizes = {"1", "2", "3", "3N", "4", "4N", "5", "5N", "6", "6N", "7", "8", "9", "10"}
+
+        # Check if all required sizes are in the columns of both dataframes
+        if not required_sizes.issubset(set(cr_times.columns)) or not required_sizes.issubset(
+            set(ps_times.columns)
+        ):
+            logger.warning(
+                "[bold red blink]Either cr_times or ps_times is missing some of the sizes in the columns.[/]",
+                extra={"markup": True},
+            )
+
         return ps_times, cr_times
 
     @staticmethod
     def get_duration_matrix(
-        J: List[List[int]], inscope_orders: pd.DataFrame, cr_times: pd.DataFrame, ps_times: pd.DataFrame
+        J: List[List[int]],
+        inscope_orders: pd.DataFrame,
+        cr_times: pd.DataFrame,
+        ps_times: pd.DataFrame,
     ) -> List[List[float]]:
         """
         Gets the duration matrix for the jobs.
@@ -293,7 +323,9 @@ class Shop:
 
     @staticmethod
     def get_due_date(
-        inscope_orders: pd.DataFrame, date: str = "2024-03-18", working_minutes: int = 480
+        inscope_orders: pd.DataFrame,
+        date: str = "2024-03-18",
+        working_minutes: int = 480,
     ) -> List[int]:
         """
         Gets the due dates for the in-scope orders.
@@ -321,6 +353,14 @@ class Shop:
 
 
 class JobShop(Job, Shop):
+    """
+    The JobShop class combines the functionality of the Job and Shop classes.
+    The Job class is used to preprocess orders into the correct representation for a genetic algorithm.
+    The Shop class is used to create a representation of the factory floor: the machines and the constraints.
+
+    By using the JobShop class all the functionality of the Job and Shop classes can be accessed.
+    """
+
     def preprocess_orders(self, croom_open_orders: pd.DataFrame) -> pd.DataFrame:
         """
         Preprocesses the open orders.
@@ -374,9 +414,11 @@ class JobShop(Job, Shop):
         def is_nested_list_of_numbers(lst):
             if isinstance(lst, list):
                 return all(
-                    is_nested_list_of_numbers(item)
-                    if isinstance(item, list)
-                    else isinstance(item, (int, float))
+                    (
+                        is_nested_list_of_numbers(item)
+                        if isinstance(item, list)
+                        else isinstance(item, (int, float))
+                    )
                     for item in lst
                 )
             return False
@@ -404,6 +446,16 @@ class JobShop(Job, Shop):
 
 
 class GeneticAlgorithmScheduler:
+    """
+    Contains all functions to run a genetic algorithm for a flexible job shop scheduling problem (FJSSP):
+
+    - Initialize population
+    - Evaluate fitness
+    - Crossover/Offspring
+    - Mutation (Currently not implemented)
+    - Run
+    """
+
     def __init__(self):
         self.J = None
         self.M = None
@@ -529,9 +581,15 @@ class GeneticAlgorithmScheduler:
         else:
             return P
 
-    def evaluate_population(self, best_scores: list = None, display_scores: bool = True):
+    def evaluate_population(
+        self,
+        best_scores: list = None,
+        display_scores: bool = True,
+        on_time_bonus: int = 5000,
+    ):
         """
-        Evaluates the population of schedules by calculating a score for each schedule based on the completion times of jobs.
+        Evaluates the population of schedules by calculating a score for each schedule based on the completion times
+        of jobs vs. the required due date.
         """
         self.scores = [
             round(
@@ -539,9 +597,20 @@ class GeneticAlgorithmScheduler:
                     (
                         self.due[job_idx]
                         - (start_time + self.dur[job_idx][-1])
-                        + (6000 if (self.due[job_idx] - (start_time + self.dur[job_idx][-1])) > 0 else 0)
+                        + (
+                            on_time_bonus
+                            if (self.due[job_idx] - (start_time + self.dur[job_idx][-1])) > 0
+                            else 0
+                        )
                     )
-                    for (job_idx, task, machine, start_time, job_task_dur, _) in schedule
+                    for (
+                        job_idx,
+                        task,
+                        machine,
+                        start_time,
+                        job_task_dur,
+                        _,
+                    ) in schedule
                     if task + 1 == max(self.J[job_idx])
                 )
             )
@@ -555,7 +624,21 @@ class GeneticAlgorithmScheduler:
             )
             best_scores.append(max(self.scores))
 
-    def resolve_conflict(self, P_prime):
+    def resolve_conflict(
+        self, P_prime: List[Tuple[int, int, int, int, int, int]]
+    ) -> (List)[Tuple[int, int, int, int, int, int]]:
+        """
+        This function resolves conflicts in a given schedule. If tasks are planned on the same machine at the same time,
+        it finds the first available time for each task to start on the machine.
+
+        Parameters:
+        P_prime (List[Tuple[int, int, int, int, int, int]]): A list of tuples where each tuple represents a task.
+        Each task is represented as (job index, task, machine, start time, duration, task number).
+
+        Returns:
+        P_prime_sorted (List[Tuple[int, int, int, int, int, int]]): A sorted list of tuples where each tuple
+        represents a task. Each task is represented as (job index, job, machine, start time, duration, task number).
+        """
         P_prime_sorted = []
         avail_m = {m: 0 for m in self.M}
         product_m = {m: 0 for m in self.M}
@@ -580,19 +663,41 @@ class GeneticAlgorithmScheduler:
                     if product_m[m] != 0 and self.part_id[job_idx] != product_m[m]:
                         changeover_finish_time = start
                 else:
-                    start = max(avail_m[m], start_times[job_idx] + self.dur[job_idx][task_num - 1])
+                    start = max(
+                        avail_m[m],
+                        start_times[job_idx] + self.dur[job_idx][task_num - 1],
+                    )
                 start_times[job_idx] = start
 
                 avail_m[m] = self.find_avail_m(start, job_idx, task_num)
                 product_m[m] = self.part_id[job_idx]
 
                 P_prime_sorted.append(
-                    (job_idx, job[task_num], m, start, self.dur[job_idx][task_num], task_num)
+                    (
+                        job_idx,
+                        job[task_num],
+                        m,
+                        start,
+                        self.dur[job_idx][task_num],
+                        task_num,
+                    )
                 )
 
         return P_prime_sorted
 
-    def offspring(self, n_e, n_c):
+    def offspring(self, n_e: float, n_c: float) -> None:
+        """
+        This function generates offspring for the next generation of the population. It identifies the best schedules
+        in the population, after which it randomly selects each job from the first or the second schedule.
+        Conflicts are resolved by another function.
+
+        Parameters:
+        n_e (float): The elitism rate. It represents the proportion of the population to be retained for the next generation.
+        n_c (float): The crossover rate. It represents the proportion of the population to be generated through crossover.
+
+        Returns:
+        None. The function updates the population in-place.
+        """
         self.evaluate_population(display_scores=False)
         scored_population = sorted(zip(self.scores, self.P), key=lambda x: x[0], reverse=True)
         retain_count = min(2, int(len(self.P) * n_e))
@@ -615,7 +720,7 @@ class GeneticAlgorithmScheduler:
 
     def mutate(self):
         """
-        WARNING: This function is currently not used and is a work in progress (WIP).
+        WARNING: This function is currently not implemented and is a work in progress (WIP).
 
         Mutates the top 10% highest scoring schedules in the population by randomly picking new machines for the
         latest job. Does not seem to improve performance.
@@ -665,7 +770,14 @@ class GeneticAlgorithmScheduler:
                                     else 0
                                 )
                             )
-                            for (job_idx, task, machine, start_time, job_task_dur, _) in sched
+                            for (
+                                job_idx,
+                                task,
+                                machine,
+                                start_time,
+                                job_task_dur,
+                                _,
+                            ) in sched
                             if task + 1 == max(self.J[job_idx])
                         )
                     )
@@ -680,9 +792,11 @@ class GeneticAlgorithmScheduler:
         self,
         input_repr_dict: Dict[str, any],
         scheduling_options: dict,
-        n: int = 1200,
+        n: int = 1500,
+        n_e: float = 0.1,
+        n_c: float = 0.3,
         minutes_per_day: int = 480,
-        max_iterations: int = 60,
+        max_iterations: int = 100,
     ):
         """
         Runs the genetic algorithm by initializing the population, evaluating it, and selecting the best schedule.
@@ -691,6 +805,8 @@ class GeneticAlgorithmScheduler:
             input_repr_dict (Dict[str, any]): A dictionary containing the necessary input variables for the GA.
             scheduling_options (dict): Dictionary containing the changeover time.
             n (int, optional): The population size. Defaults to 1200.
+            n_e (float, optional): The elitism rate. Defaults to 0.1.
+            n_c (float, optional): The crossover rate. Defaults to 0.3.
             minutes_per_day (int, optional): The number of working minutes per day. Defaults to 480.
             max_iterations (int, optional): The maximum number of iterations for the genetic algorithm. Defaults to 100.
 
@@ -707,7 +823,9 @@ class GeneticAlgorithmScheduler:
         self.minutes_per_day = minutes_per_day
         self.change_over_time = scheduling_options["change_over_time"]
         self.day_range = np.arange(
-            self.minutes_per_day, len(self.J) // 5 * self.minutes_per_day, self.minutes_per_day
+            self.minutes_per_day,
+            len(self.J) // 5 * self.minutes_per_day,
+            self.minutes_per_day,
         )
 
         self.init_population()
@@ -715,7 +833,7 @@ class GeneticAlgorithmScheduler:
 
         for iteration in range(max_iterations):
             logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Iteration {iteration + 1}")
-            self.offspring(n_e=0.1, n_c=0.3)
+            self.offspring(n_e=n_e, n_c=n_c)
             if len(self.P) < self.n:
                 self.P += self.init_population(num_inds=self.n - len(self.P), fill_inds=True)
             self.evaluate_population(best_scores=best_scores)
@@ -752,7 +870,8 @@ def reformat_output(
     """
     # Convert best schedule into a dataframe
     schedule_df = pd.DataFrame(
-        best_schedule, columns=["job", "task", "machine", "starting_time", "duration", "task_num"]
+        best_schedule,
+        columns=["job", "task", "machine", "starting_time", "duration", "task_num"],
     )
 
     # Round the starting time and duration
