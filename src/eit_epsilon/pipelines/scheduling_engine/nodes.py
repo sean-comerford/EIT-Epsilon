@@ -506,14 +506,18 @@ class GeneticAlgorithmScheduler:
 
             if random_roll < 0.5:
                 random.shuffle(J_temp)
+            # Larger chance to sort by part ID
             elif random_roll < 0.7:
                 J_temp.sort(key=lambda x: self.part_id[x])
+            # Larger chance to sort by due date
             elif random_roll < 0.9:
                 J_temp.sort(key=lambda x: self.due[x], reverse=True)
+            # Larger chance to sort by part ID and due date
             else:
                 J_temp.sort(key=lambda x: (self.part_id[x], self.due[x]), reverse=True)
 
             while J_temp:
+                # Pick the last item in the job array list
                 job_idx = J_temp.pop()
                 job = self.J[job_idx]
                 for task in range(len(job)):
@@ -521,6 +525,8 @@ class GeneticAlgorithmScheduler:
 
                     if task == 0:
                         compat_task_0 = self.compat[job_idx][task]
+                        # Preferred machines: compatible machines for the task if they processed the same Part ID
+                        # previously
                         preferred_machines = [
                             key
                             for key in compat_task_0
@@ -530,16 +536,25 @@ class GeneticAlgorithmScheduler:
                         if not preferred_machines:
                             m = (
                                 min(compat_task_0, key=lambda x: avail_m.get(x))
+                                # If no preferred machines, 80% chance to pick the one that comes available first
+                                # among compatible machines, otherwise randomly pick a compatible machine
                                 if random_roll < 0.8
                                 else random.choice(compat_task_0)
                             )
                         else:
                             m = (
                                 min(preferred_machines, key=lambda x: avail_m.get(x))
+                                # If there are preferred machines, 90% chance to pick the one that comes available
+                                # first among preferred machines, otherwise randomly pick a preferred machine
                                 if random_roll < 0.9
                                 else random.choice(preferred_machines)
                             )
 
+                        # Start time for first task (HAAS machine) is defined as follows:
+                        #  - If no changeover is required, start time is end time of previous task on that machine
+                        #  - If a changeover is required, start time is end time of previous task plus the changeover
+                        #    time, plus optional waiting time for changeover to finish if a changeover was already
+                        #    happening on a different machine
                         start = (
                             avail_m[m]
                             if product_m[m] == 0 or self.part_id[job_idx] == product_m[m]
@@ -548,12 +563,16 @@ class GeneticAlgorithmScheduler:
                             + max((changeover_finish_time - avail_m[m]), 0)
                         )
 
+                        # Update changeover finish time
                         if product_m[m] != 0 and self.part_id[job_idx] != product_m[m]:
                             changeover_finish_time = start
                     else:
                         compat_with_task = self.compat[job_idx][task]
                         m = (
                             min(compat_with_task, key=lambda x: avail_m.get(x))
+                            # Other tasks than milling & grinding on HAAS:
+                            #  - 85% chance to pick the one that comes available first among compatible machines,
+                            #    otherwise randomly pick a compatible machine
                             if random_roll < 0.85
                             else random.choice(compat_with_task)
                         )
