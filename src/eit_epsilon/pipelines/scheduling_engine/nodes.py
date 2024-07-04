@@ -254,9 +254,6 @@ class Shop:
         ps_times = ps_times.astype(float)
         cr_times = cr_times.astype(float)
 
-        logger.info(f"PS times columns: {ps_times.columns}")
-        logger.info(f"CR times columns: {cr_times.columns}")
-
         # Check if all cycle times are numeric values
         if not all(isinstance(i, (int, float)) for i in ps_times.values.flatten()) or not all(
             isinstance(i, (int, float)) for i in cr_times.values.flatten()
