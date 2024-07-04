@@ -48,3 +48,23 @@ machine_dict: {
     16: 'Final Inspect-1',
     17: 'Final Inspect-2'
 }
+
+scheduling_options:
+  start_date: "2023-03-18T09:00"
+  change_over_time: 120
+  column_mapping: {
+    'Job ID': 'Order',
+    'Created Date': 'Order_date',
+    'Part Description': 'Product',
+    'Due Date ': 'Due_date',
+    'Order Qty': 'Order Qty'
+}
+
+visualization_options:
+  title: "Production Schedule Milling & Grinding"
+  column_mapping: {
+    'Start': 'Start_time',
+    'End': 'End_time',
+    'Resource': 'Machine',
+    'Task': 'Job'
+  }
