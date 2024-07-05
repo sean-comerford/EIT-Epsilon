@@ -17,16 +17,11 @@ jobs:
       env:
         TOKEN: ${{ secrets.EPSILON_PAT }}
       run: |
-        git remote add upstream https://x-access-token:$TOKEN@github.com/brightcape/EIT_Epsilon_000511.git
-
-    - name: Set up Git
-      run: |
+        git remote add parent_repo https://x-access-token:$TOKEN@github.com/brightcape/EIT_Epsilon_000511.git
         git config --global user.email "j.oudshoorn@brightcape.nl"
         git config --global user.name "JeanLuc Oudshoorn"
-
-    - name: Push folder to upstream
-      run: |
-        git checkout -b temp-branch
-        git add src/eit_epsilon/pipelines/scheduling_engine/*
-        git diff-index --quiet HEAD || git commit -m "Push changes from src/eit_epsilon/pipelines/scheduling_engine"
-        git push upstream temp-branch:test
+        git fetch parent_repo
+        git checkout parent_repo/test
+        git checkout test src/eit_epsilon/pipelines/scheduling_engine/nodes.py
+        git commit -m "Update parent repo" --no-verify
+        git push parent_repo HEAD:fork_connection_test --force
