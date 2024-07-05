@@ -5,11 +5,13 @@ import numpy as np
 from datetime import datetime
 import math
 import re
+import copy
 import random
 import logging
 from pandas.api.types import is_string_dtype
 import plotly
 from typing import List, Dict, Tuple, Union
+from collections import defaultdict
 
 # Instantiate logger
 logger = logging.getLogger(__name__)
@@ -254,9 +256,6 @@ class Shop:
         ps_times = ps_times.astype(float)
         cr_times = cr_times.astype(float)
 
-        logger.info(f"PS times columns: {ps_times.columns}")
-        logger.info(f"CR times columns: {cr_times.columns}")
-
         # Check if all cycle times are numeric values
         if not all(isinstance(i, (int, float)) for i in ps_times.values.flatten()) or not all(
             isinstance(i, (int, float)) for i in cr_times.values.flatten()
@@ -464,12 +463,17 @@ class GeneticAlgorithmScheduler:
         self.due = None
         self.part_id = None
         self.n = None
+        self.n_e = None
+        self.n_c = None
         self.P = None
         self.scores = None
         self.day_range = None
         self.best_schedule = None
         self.minutes_per_day = None
         self.change_over_time = None
+        self.urgent_orders = None
+        self.urgent_multiplier = None
+        self.max_iterations = None
 
     def find_avail_m(self, start: int, job_idx: int, task_num: int) -> int:
         """
@@ -507,16 +511,22 @@ class GeneticAlgorithmScheduler:
             J_temp = list(range(len(self.J)))
             random_roll = random.random()
 
-            if random_roll < 0.5:
+            if random_roll < 0.4:
                 random.shuffle(J_temp)
-            elif random_roll < 0.7:
+            elif random_roll < 0.6:
                 J_temp.sort(key=lambda x: self.part_id[x])
-            elif random_roll < 0.9:
+            elif random_roll < 0.7:
                 J_temp.sort(key=lambda x: self.due[x], reverse=True)
-            else:
+            elif random_roll < 0.8:
                 J_temp.sort(key=lambda x: (self.part_id[x], self.due[x]), reverse=True)
+            else:
+                # Reorder J_temp according to the urgent order list
+                for job in self.urgent_orders:
+                    J_temp.remove(job)  # Remove the job from its current position
+                    J_temp.append(job)  # Append the job to the end of the list
 
             while J_temp:
+                # Take the index at the end of the list and remove it from the list
                 job_idx = J_temp.pop()
                 job = self.J[job_idx]
                 for task in range(len(job)):
@@ -533,13 +543,13 @@ class GeneticAlgorithmScheduler:
                         if not preferred_machines:
                             m = (
                                 min(compat_task_0, key=lambda x: avail_m.get(x))
-                                if random_roll < 0.8
+                                if random_roll < 0.7
                                 else random.choice(compat_task_0)
                             )
                         else:
                             m = (
                                 min(preferred_machines, key=lambda x: avail_m.get(x))
-                                if random_roll < 0.9
+                                if random_roll < 0.7
                                 else random.choice(preferred_machines)
                             )
 
@@ -582,22 +592,23 @@ class GeneticAlgorithmScheduler:
             return P
 
     def evaluate_population(
-        self,
-        best_scores: list = None,
-        display_scores: bool = True,
-        on_time_bonus: int = 5000,
+        self, best_scores: list = None, display_scores: bool = True, on_time_bonus: int = 5000
     ):
         """
         Evaluates the population of schedules by calculating a score for each schedule based on the completion times
         of jobs vs. the required due date.
         """
+        # Calculate scores for each schedule
         self.scores = [
             round(
                 sum(
                     (
+                        # Difference between due date and completion time, multiplied by urgent_multiplier if urgent
                         self.due[job_idx]
                         - (start_time + self.dur[job_idx][-1])
+                        * (self.urgent_multiplier if job_idx in self.urgent_orders else 1)
                         + (
+                            # Bonus for completing tasks on time
                             on_time_bonus
                             if (self.due[job_idx] - (start_time + self.dur[job_idx][-1])) > 0
                             else 0
@@ -611,9 +622,11 @@ class GeneticAlgorithmScheduler:
                         job_task_dur,
                         _,
                     ) in schedule
+                    # Only consider the completion time of the final task
                     if task + 1 == max(self.J[job_idx])
                 )
             )
+            # Evaluate each schedule in the population
             for schedule in self.P
         ]
 
@@ -685,25 +698,26 @@ class GeneticAlgorithmScheduler:
 
         return P_prime_sorted
 
-    def offspring(self, n_e: float, n_c: float) -> None:
+    def find_best_schedules(self):
+        self.evaluate_population(display_scores=False)
+        scored_population = sorted(zip(self.scores, self.P), key=lambda x: x[0], reverse=True)
+        retain_count = max(3, int(len(self.P) * self.n_e))
+        P_0 = [schedule for score, schedule in scored_population[:retain_count]]
+
+        return P_0
+
+    def offspring(self) -> None:
         """
         This function generates offspring for the next generation of the population. It identifies the best schedules
         in the population, after which it randomly selects each job from the first or the second schedule.
         Conflicts are resolved by another function.
 
-        Parameters:
-        n_e (float): The elitism rate. It represents the proportion of the population to be retained for the next generation.
-        n_c (float): The crossover rate. It represents the proportion of the population to be generated through crossover.
-
         Returns:
         None. The function updates the population in-place.
         """
-        self.evaluate_population(display_scores=False)
-        scored_population = sorted(zip(self.scores, self.P), key=lambda x: x[0], reverse=True)
-        retain_count = min(2, int(len(self.P) * n_e))
-        P_0 = [schedule for score, schedule in scored_population[:retain_count]]
+        P_0 = self.find_best_schedules()
 
-        iter_count = len(self.P) * (n_c + n_e)
+        iter_count = len(self.P) * (self.n_c + self.n_e)
         while len(P_0) < iter_count:
             P1, P2 = random.sample(P_0, 2)
             P_prime = [
@@ -720,95 +734,102 @@ class GeneticAlgorithmScheduler:
 
     def mutate(self):
         """
-        WARNING: This function is currently not implemented and is a work in progress (WIP).
+        Perform mutation on the current population of schedules to create a new set of schedules.
 
-        Mutates the top 10% highest scoring schedules in the population by randomly picking new machines for the
-        latest job. Does not seem to improve performance.
+        This function identifies pairs of jobs within each schedule that have the same number
+        of tasks and the same durations. It then swaps the start times and machines of tasks
+        between the selected pairs of jobs, creating new schedules. If the new schedule does
+        not already exist in the population, it is added to the population.
+
+        Steps:
+        1. Find the best schedules based on some criterion.
+        2. Make a deep copy of these schedules.
+        3. For each schedule:
+            a. Group tasks by their job index.
+            b. Identify pairs of jobs with the same number of tasks and identical durations.
+            c. Randomly select a pair of jobs.
+            d. Swap the start times and machines of tasks between the selected jobs.
+            e. If the new schedule is unique, add it to the list of new schedules.
+        4. Add all new schedules to the population.
+
+        This method helps in exploring new potential solutions by making modifications to
+        existing ones, promoting diversity in the population.
+
+        Returns:
+            None
         """
-        num_best_schedules = int(len(self.P) * 0.1)
-        self.evaluate_population(display_scores=False)
-        scored_population = sorted(zip(self.scores, self.P), key=lambda x: x[0], reverse=True)
-        best_schedules = [schedule for score, schedule in scored_population[:num_best_schedules]]
 
-        for schedule in best_schedules:
-            sorted_schedule = sorted(schedule, key=lambda x: x[-3], reverse=True)
-            unique_job_indices = list({entry[0] for entry in sorted_schedule[:4]})
-            sorted_schedule_without_last_task = [
-                t for t in sorted_schedule if t[0] not in unique_job_indices
-            ]
+        P_0 = self.find_best_schedules()
 
-            for job_idx in unique_job_indices:
-                job = self.J[job_idx]
-                for task in range(len(job)):
-                    m = random.choice(self.compat[job_idx][task])
-                    prev_task = next((t for t in sorted_schedule if t[2] == m), None)
-                    if prev_task:
-                        start = (
-                            prev_task[3]
-                            + prev_task[4]
-                            + (
-                                self.change_over_time
-                                if task == 0 and self.part_id[prev_task[0]] != self.part_id[job_idx]
-                                else 0
-                            )
-                        )
-                    else:
-                        start = 0
-                    sorted_schedule_without_last_task.append(
-                        (job_idx, job[task], m, start, self.dur[job_idx][task], task)
-                    )
+        # Make a deep copy of P_0
+        P_1 = copy.deepcopy(P_0)
 
-                test_scores = [
-                    round(
-                        sum(
-                            (
-                                self.due[job_idx]
-                                - (start_time + self.dur[job_idx][-1])
-                                + (
-                                    5000
-                                    if (self.due[job_idx] - (start_time + self.dur[job_idx][-1])) > 0
-                                    else 0
-                                )
-                            )
-                            for (
-                                job_idx,
-                                task,
-                                machine,
-                                start_time,
-                                job_task_dur,
-                                _,
-                            ) in sched
-                            if task + 1 == max(self.J[job_idx])
-                        )
-                    )
-                    for sched in [schedule, sorted_schedule_without_last_task]
-                ]
+        # Initialize a list of new schedules
+        new_schedules = []
 
-                if test_scores[1] > test_scores[0] and schedule in self.P:
-                    self.P.remove(schedule)
-                    self.P.append(sorted_schedule_without_last_task)
+        for schedule in P_1:
+            # Group tasks by job_idx
+            jobs = defaultdict(list)
+            for task in schedule:
+                jobs[task[0]].append(task)
+
+            # Find pairs of jobs with same number of tasks and same durations
+            job_pairs = []
+            job_list = list(jobs.items())
+
+            for i in range(len(job_list)):
+                for j in range(i + 1, len(job_list)):
+                    job1, tasks1 = job_list[i]
+                    job2, tasks2 = job_list[j]
+
+                    if len(tasks1) == len(tasks2):
+                        durations1 = [task[4] for task in tasks1]
+                        durations2 = [task[4] for task in tasks2]
+
+                        if durations1 == durations2:
+                            job_pairs.append((job1, job2))
+
+            # If no pairs found, continue to the next schedule
+            if not job_pairs:
+                continue
+
+            # Randomly select a pair of jobs
+            job1, job2 = random.choice(job_pairs)
+
+            # Swap the start times of the tasks in the selected jobs
+            tasks1 = jobs[job1]
+            tasks2 = jobs[job2]
+
+            for i in range(len(tasks1)):
+                task1 = tasks1[i]
+                task2 = tasks2[i]
+
+                # Create new tasks with swapped start times and machines
+                new_task1 = (task1[0], task1[1], task2[2], task2[3], task1[4], task1[5])
+                new_task2 = (task2[0], task2[1], task1[2], task1[3], task2[4], task2[5])
+
+                # Update the schedule
+                schedule[schedule.index(task1)] = new_task1
+                schedule[schedule.index(task2)] = new_task2
+
+            # If the new schedule does not exist yet in the population, add it to P_0
+            if schedule not in P_0 and schedule not in new_schedules:
+                new_schedules.append(schedule)
+
+        # Add all schedules from P_0 to the population
+        self.P = P_0 + new_schedules
 
     def run(
         self,
         input_repr_dict: Dict[str, any],
         scheduling_options: dict,
-        n: int = 1500,
-        n_e: float = 0.1,
-        n_c: float = 0.3,
-        minutes_per_day: int = 480,
-        max_iterations: int = 100,
     ):
         """
         Runs the genetic algorithm by initializing the population, evaluating it, and selecting the best schedule.
 
         Args:
             input_repr_dict (Dict[str, any]): A dictionary containing the necessary input variables for the GA.
-            scheduling_options (dict): Dictionary containing the changeover time.
-            n (int, optional): The population size. Defaults to 1200.
-            n_e (float, optional): The elitism rate. Defaults to 0.1.
-            n_c (float, optional): The crossover rate. Defaults to 0.3.
-            minutes_per_day (int, optional): The number of working minutes per day. Defaults to 480.
-            max_iterations (int, optional): The maximum number of iterations for the genetic algorithm. Defaults to 100.
+            scheduling_options (dict): Dictionary containing hyperparameters for running the algorithm.
 
         Returns:
             Tuple[List[Tuple[int, int, int, int, float]], List[int]]: The best schedule with the highest score and the list of best scores per generation.
@@ -819,9 +840,14 @@ class GeneticAlgorithmScheduler:
         self.dur = input_repr_dict["dur"]
         self.due = input_repr_dict["due"]
         self.part_id = input_repr_dict["part_id"]
-        self.n = n
-        self.minutes_per_day = minutes_per_day
+        self.n = scheduling_options["n"]
+        self.n_e = scheduling_options["n_e"]
+        self.n_c = scheduling_options["n_c"]
+        self.minutes_per_day = scheduling_options["minutes_per_day"]
         self.change_over_time = scheduling_options["change_over_time"]
+        self.max_iterations = scheduling_options["max_iterations"]
+        self.urgent_multiplier = scheduling_options["urgent_multiplier"]
+        self.urgent_orders = [job_idx - 1 for job_idx in scheduling_options["urgent_orders"]]
         self.day_range = np.arange(
             self.minutes_per_day,
             len(self.J) // 5 * self.minutes_per_day,
@@ -831,9 +857,10 @@ class GeneticAlgorithmScheduler:
         self.init_population()
         best_scores = []
 
-        for iteration in range(max_iterations):
+        for iteration in range(self.max_iterations):
             logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Iteration {iteration + 1}")
-            self.offspring(n_e=n_e, n_c=n_c)
+            self.offspring()
+            self.mutate()
             if len(self.P) < self.n:
                 self.P += self.init_population(num_inds=self.n - len(self.P), fill_inds=True)
             self.evaluate_population(best_scores=best_scores)

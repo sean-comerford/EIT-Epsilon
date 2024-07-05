@@ -51,7 +51,14 @@ machine_dict: {
 
 scheduling_options:
   start_date: "2023-03-18T09:00"
-  change_over_time: 120
+  change_over_time: 180
+  n: 1500
+  n_e: 0.1
+  n_c: 0.3
+  minutes_per_day: 480
+  max_iterations: 20
+  urgent_multiplier: 3
+  urgent_orders: []
   column_mapping: {
     'Job ID': 'Order',
     'Created Date': 'Order_date',
