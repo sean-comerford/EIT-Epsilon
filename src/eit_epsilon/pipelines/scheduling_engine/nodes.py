@@ -204,7 +204,14 @@ class Shop:
             job_compat = []
             for task in job_tasks:
                 if task in task_to_machines:
-                    machines = task_to_machines[task]
+                    # Cementless products have all 7 tasks, cemented products can skip manual prep thus have fewer tasks
+                    if task != 1 or len(job_tasks) == 7:
+                        machines = task_to_machines[task]
+                    else:
+                        machines = task_to_machines[
+                            99
+                        ]  # HAAS machines that can only handle cemented products
+
                 else:
                     raise ValueError("Invalid task number!")
                 job_compat.append(machines)

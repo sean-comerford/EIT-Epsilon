@@ -5,7 +5,8 @@ task_to_machines: {
   4: [12, 13, 14],  # Manual Prep
   5: [7, 8, 9, 10],  # Inspection (again)
   6: [15],  # Final Wash
-  7: [16, 17]  # Final inspection
+  7: [16, 17],  # Final inspection
+  99: [1, 2, 3]  # HAAS (only cemented)
 }
 
 machine_qty_dict: {
@@ -52,11 +53,11 @@ machine_dict: {
 scheduling_options:
   start_date: "2023-03-18T09:00"
   change_over_time: 120
-  n: 1800
+  n: 2000
   n_e: 0.1
   n_c: 0.3
   minutes_per_day: 480
-  max_iterations: 100
+  max_iterations: 30
   urgent_multiplier: 3
   urgent_orders: []
   column_mapping: {
