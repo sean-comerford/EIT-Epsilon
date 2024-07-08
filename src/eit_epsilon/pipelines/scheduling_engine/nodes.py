@@ -698,7 +698,16 @@ class GeneticAlgorithmScheduler:
 
         return P_prime_sorted
 
-    def find_best_schedules(self):
+    def find_best_schedules(self) -> List:
+        """
+        This method evaluates the population, sorts them based on their scores in descending order,
+        and retains the top schedules based on a specified retention count. The retention count is
+        the maximum of 3 or the product of the length of the population and a specified ratio.
+
+        Returns:
+            P_0 (List): The list of top schedules based on their scores.
+        """
+
         self.evaluate_population(display_scores=False)
         scored_population = sorted(zip(self.scores, self.P), key=lambda x: x[0], reverse=True)
         retain_count = max(3, int(len(self.P) * self.n_e))
@@ -742,7 +751,7 @@ class GeneticAlgorithmScheduler:
         not already exist in the population, it is added to the population.
 
         Steps:
-        1. Find the best schedules based on some criterion.
+        1. Find the best schedules based on evaluation score.
         2. Make a deep copy of these schedules.
         3. For each schedule:
             a. Group tasks by their job index.
@@ -957,7 +966,7 @@ def create_start_end_time(
     croom_reformatted_orders["Start_time_date"] = None
 
     def working_hours_shift(row):
-        days = [d * 480 for d in range(1, 6)]
+        days = [d * scheduling_options["minutes_per_day"] for d in range(1, 25)]
 
         for k, day in enumerate(days):
             if row["Start_time"] < day:
@@ -965,7 +974,7 @@ def create_start_end_time(
                     base_date
                     + pd.to_timedelta(row["Start_time"], unit="m")
                     + pd.Timedelta(days=k)
-                    - pd.Timedelta(minutes=480 * k)
+                    - pd.Timedelta(minutes=scheduling_options["minutes_per_day"] * k)
                 )
                 break
         return row
