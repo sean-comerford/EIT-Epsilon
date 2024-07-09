@@ -50,15 +50,15 @@ machine_dict: {
 }
 
 scheduling_options:
-  start_date: "2023-03-18T09:00"
-  change_over_time: 120
-  n: 1800
-  n_e: 0.1
-  n_c: 0.3
-  minutes_per_day: 480
-  max_iterations: 100
-  urgent_multiplier: 3
-  urgent_orders: []
+  start_date: "2023-03-18T09:00"  # Starting date used to calculate difference with due date
+  change_over_time: 120  # Minutes required to do a changeover on the HAAS machines
+  n: 1800  # Number of random schedules to generate
+  n_e: 0.1  # Proportion of best schedules to automatically pass on to the next generation (e.g.: 10%)
+  n_c: 0.3  # Proportion of children to generate in the offspring function
+  minutes_per_day: 480  # Number of working minutes per day (8 hours * 60 minutes)
+  max_iterations: 100  # Maximum number of iterations/generations to run the algorithm
+  urgent_multiplier: 3  # Multiplier for (completion_time - due_date) for urgent_orders
+  urgent_orders: []  # List of job indices of urgent orders
   column_mapping: {
     'Job ID': 'Order',
     'Created Date': 'Order_date',

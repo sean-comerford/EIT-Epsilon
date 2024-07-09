@@ -788,12 +788,14 @@ class GeneticAlgorithmScheduler:
 
             for i in range(len(job_list)):
                 for j in range(i + 1, len(job_list)):
-                    job1, tasks1 = job_list[i]
-                    job2, tasks2 = job_list[j]
+                    job1, task_details_1 = job_list[i]
+                    job2, task_details_2 = job_list[j]
 
-                    if len(tasks1) == len(tasks2):
-                        durations1 = [task[4] for task in tasks1]
-                        durations2 = [task[4] for task in tasks2]
+                    if len(task_details_1) == len(task_details_2):
+                        # task_details follow this format: (job_index, task_num, machine, start_time, duration)
+                        # hence index 4 is the duration
+                        durations1 = [task_detail[4] for task_detail in task_details_1]
+                        durations2 = [task_detail[4] for task_detail in task_details_2]
 
                         if durations1 == durations2:
                             job_pairs.append((job1, job2))
@@ -814,6 +816,7 @@ class GeneticAlgorithmScheduler:
                 task2 = tasks2[i]
 
                 # Create new tasks with swapped start times and machines
+                # task_details follow this format: (job_index, task_num, machine, start_time, duration, task_index)
                 new_task1 = (task1[0], task1[1], task2[2], task2[3], task1[4], task1[5])
                 new_task2 = (task2[0], task2[1], task1[2], task1[3], task2[4], task2[5])
 
