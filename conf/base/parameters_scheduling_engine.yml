@@ -56,7 +56,7 @@ scheduling_options:
   n_e: 0.1  # Proportion of best schedules to automatically pass on to the next generation (e.g.: 10%)
   n_c: 0.3  # Proportion of children to generate in the offspring function
   minutes_per_day: 480  # Number of working minutes per day (8 hours * 60 minutes)
-  max_iterations: 120  # Maximum number of iterations/generations to run the algorithm
+  max_iterations: 80  # Maximum number of iterations/generations to run the algorithm
   urgent_multiplier: 8  # Multiplier for (completion_time - due_date) for urgent_orders
   urgent_orders: [1, 2, 3]  # List of job indices of urgent orders; starting from 1
   column_mapping: {

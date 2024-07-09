@@ -804,7 +804,10 @@ class GeneticAlgorithmScheduler:
                     job2, task_details_2 = job_list[j]
 
                     # Append if the part ID matches for a pair
-                    if task_details_1[-1] == task_details_2[-1]:
+                    if (
+                        len(task_details_1) == len(task_details_2)
+                        and task_details_1[-1] == task_details_2[-1]
+                    ):
                         # task_details format: (job_index, task, machine, start_time, duration, task_num, part_id)
                         # hence the last field is the part_id
                         job_pairs.append((job1, job2))
