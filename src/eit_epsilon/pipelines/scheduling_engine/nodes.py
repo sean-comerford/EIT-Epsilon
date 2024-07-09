@@ -605,12 +605,12 @@ class GeneticAlgorithmScheduler:
                     (
                         # Difference between due date and completion time, multiplied by urgent_multiplier if urgent
                         self.due[job_idx]
-                        - (start_time + self.dur[job_idx][-1])
+                        - (start_time + job_task_dur)
                         * (self.urgent_multiplier if job_idx in self.urgent_orders else 1)
                         + (
                             # Bonus for completing tasks on time
                             on_time_bonus
-                            if (self.due[job_idx] - (start_time + self.dur[job_idx][-1])) > 0
+                            if (self.due[job_idx] - (start_time + job_task_dur)) > 0
                             else 0
                         )
                     )
