@@ -394,6 +394,7 @@ class JobShop(Job, Shop):
         ps_cycle_times: pd.DataFrame,
         machine_qty_dict: Dict[str, int],
         task_to_machines: Dict[int, List[int]],
+        scheduling_options: Dict[str, any],
     ) -> Dict[str, any]:
         """
         Builds the GA representation:
@@ -411,6 +412,7 @@ class JobShop(Job, Shop):
             ps_cycle_times (pd.DataFrame): The PS cycle times.
             machine_qty_dict (Dict[str, int]): The machine quantity dictionary.
             task_to_machines (Dict[int, List[int]]): The task to machines dictionary.
+            scheduling_options (Dict[str, any]): The scheduling options dictionary.
 
         Returns:
             Dict[str, any]: The GA representation.
@@ -419,7 +421,11 @@ class JobShop(Job, Shop):
         M = self.create_machines(machine_qty_dict)
         compat = self.get_compatibility(J, croom_processed_orders, task_to_machines)
         dur = self.get_duration_matrix(J, croom_processed_orders, cr_cycle_times, ps_cycle_times)
-        due = self.get_due_date(croom_processed_orders)
+        due = self.get_due_date(
+            croom_processed_orders,
+            date=scheduling_options["start_date"],
+            working_minutes=scheduling_options["minutes_per_day"],
+        )
         part_id = self.get_part_id(croom_processed_orders)
 
         def is_nested_list_of_numbers(lst):
@@ -584,7 +590,17 @@ class GeneticAlgorithmScheduler:
                         )
                         start = max(avail_m[m], P_j[-1][3] + self.dur[job_idx][task - 1])
 
-                    P_j.append((job_idx, job[task], m, start, self.dur[job_idx][task], task))
+                    P_j.append(
+                        (
+                            job_idx,
+                            job[task],
+                            m,
+                            start,
+                            self.dur[job_idx][task],
+                            task,
+                            self.part_id[job_idx],
+                        )
+                    )
                     avail_m[m] = self.find_avail_m(start, job_idx, task)
                     product_m[m] = self.part_id[job_idx]
 
@@ -617,12 +633,12 @@ class GeneticAlgorithmScheduler:
                     (
                         # Difference between due date and completion time, multiplied by urgent_multiplier if urgent
                         self.due[job_idx]
-                        - (start_time + self.dur[job_idx][-1])
+                        - (start_time + job_task_dur)
                         * (self.urgent_multiplier if job_idx in self.urgent_orders else 1)
                         + (
                             # Bonus for completing tasks on time
                             on_time_bonus
-                            if (self.due[job_idx] - (start_time + self.dur[job_idx][-1])) > 0
+                            if (self.due[job_idx] - (start_time + job_task_dur)) > 0
                             else 0
                         )
                     )
@@ -632,6 +648,7 @@ class GeneticAlgorithmScheduler:
                         machine,
                         start_time,
                         job_task_dur,
+                        _,
                         _,
                     ) in schedule
                     # Only consider the completion time of the final task
@@ -650,18 +667,18 @@ class GeneticAlgorithmScheduler:
             best_scores.append(max(self.scores))
 
     def resolve_conflict(
-        self, P_prime: List[Tuple[int, int, int, int, int, int]]
-    ) -> (List)[Tuple[int, int, int, int, int, int]]:
+        self, P_prime: List[Tuple[int, int, int, int, int, int, str]]
+    ) -> (List)[Tuple[int, int, int, int, int, int, str]]:
         """
         This function resolves conflicts in a given schedule. If tasks are planned on the same machine at the same time,
         it finds the first available time for each task to start on the machine.
 
         Parameters:
-        P_prime (List[Tuple[int, int, int, int, int, int]]): A list of tuples where each tuple represents a task.
+        P_prime (List[Tuple[int, int, int, int, int, int, str]]): A list of tuples where each tuple represents a task.
         Each task is represented as (job index, task, machine, start time, duration, task number).
 
         Returns:
-        P_prime_sorted (List[Tuple[int, int, int, int, int, int]]): A sorted list of tuples where each tuple
+        P_prime_sorted (List[Tuple[int, int, int, int, int, int, str]]): A sorted list of tuples where each tuple
         represents a task. Each task is represented as (job index, job, machine, start time, duration, task number).
         """
         P_prime_sorted = []
@@ -675,7 +692,7 @@ class GeneticAlgorithmScheduler:
             job_tasks = sorted([entry for entry in P_prime if entry[0] == job_idx], key=lambda x: x[1])
 
             for task_entry in job_tasks:
-                _, task, m, _, part_id, task_num = task_entry
+                _, task, m, _, _, task_num, _ = task_entry
 
                 if task_num == 0:
                     start = (
@@ -705,6 +722,7 @@ class GeneticAlgorithmScheduler:
                         start,
                         self.dur[job_idx][task_num],
                         task_num,
+                        self.part_id[job_idx],
                     )
                 )
 
@@ -800,15 +818,17 @@ class GeneticAlgorithmScheduler:
 
             for i in range(len(job_list)):
                 for j in range(i + 1, len(job_list)):
-                    job1, tasks1 = job_list[i]
-                    job2, tasks2 = job_list[j]
+                    job1, task_details_1 = job_list[i]
+                    job2, task_details_2 = job_list[j]
 
-                    if len(tasks1) == len(tasks2):
-                        durations1 = [task[4] for task in tasks1]
-                        durations2 = [task[4] for task in tasks2]
-
-                        if durations1 == durations2:
-                            job_pairs.append((job1, job2))
+                    # Append if the part ID matches for a pair
+                    if (
+                        len(task_details_1) == len(task_details_2)
+                        and task_details_1[-1] == task_details_2[-1]
+                    ):
+                        # task_details format: (job_index, task, machine, start_time, duration, task_num, part_id)
+                        # hence the last field is the part_id
+                        job_pairs.append((job1, job2))
 
             # If no pairs found, continue to the next schedule
             if not job_pairs:
@@ -826,8 +846,9 @@ class GeneticAlgorithmScheduler:
                 task2 = tasks2[i]
 
                 # Create new tasks with swapped start times and machines
-                new_task1 = (task1[0], task1[1], task2[2], task2[3], task1[4], task1[5])
-                new_task2 = (task2[0], task2[1], task1[2], task1[3], task2[4], task2[5])
+                # task_details follow this format: (job_index, task_num, machine, start_time, duration, task_index)
+                new_task1 = (task1[0], task1[1], task2[2], task2[3], task1[4], task1[5], task1[6])
+                new_task2 = (task2[0], task2[1], task1[2], task1[3], task2[4], task2[5], task2[6])
 
                 # Update the schedule
                 schedule[schedule.index(task1)] = new_task1
@@ -889,7 +910,8 @@ class GeneticAlgorithmScheduler:
         schedules_and_scores = sorted(zip(self.P, self.scores), key=lambda x: x[1], reverse=True)
         self.best_schedule = schedules_and_scores[0][0]
         logger.info(
-            f"Snippet of best schedule (job, task, machine, start_time, duration): {self.best_schedule[:4]}"
+            f"Snippet of best schedule (job, task, machine, start_time, duration, task_num, part_id): "
+            f"{self.best_schedule[:2]}"
         )
 
         return self.best_schedule, best_scores
@@ -919,7 +941,7 @@ def reformat_output(
     # Convert best schedule into a dataframe
     schedule_df = pd.DataFrame(
         best_schedule,
-        columns=["job", "task", "machine", "starting_time", "duration", "task_num"],
+        columns=["job", "task", "machine", "starting_time", "duration", "task_num", "part_id"],
     )
 
     # Round the starting time and duration

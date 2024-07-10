@@ -39,6 +39,7 @@ def create_pipeline(**kwargs) -> Pipeline:
                     "ps_cycle_times",
                     "params:machine_qty_dict",
                     "params:task_to_machines",
+                    "params:scheduling_options",
                 ],
                 outputs="input_repr_dict",
                 name="build_ga_representation",
