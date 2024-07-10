@@ -382,6 +382,7 @@ class JobShop(Job, Shop):
         ps_cycle_times: pd.DataFrame,
         machine_qty_dict: Dict[str, int],
         task_to_machines: Dict[int, List[int]],
+        scheduling_options: Dict[str, any],
     ) -> Dict[str, any]:
         """
         Builds the GA representation:
@@ -399,6 +400,7 @@ class JobShop(Job, Shop):
             ps_cycle_times (pd.DataFrame): The PS cycle times.
             machine_qty_dict (Dict[str, int]): The machine quantity dictionary.
             task_to_machines (Dict[int, List[int]]): The task to machines dictionary.
+            scheduling_options (Dict[str, any]): The scheduling options dictionary.
 
         Returns:
             Dict[str, any]: The GA representation.
@@ -407,7 +409,11 @@ class JobShop(Job, Shop):
         M = self.create_machines(machine_qty_dict)
         compat = self.get_compatibility(J, task_to_machines)
         dur = self.get_duration_matrix(J, croom_processed_orders, cr_cycle_times, ps_cycle_times)
-        due = self.get_due_date(croom_processed_orders)
+        due = self.get_due_date(
+            croom_processed_orders,
+            date=scheduling_options["start_date"],
+            working_minutes=scheduling_options["minutes_per_day"],
+        )
         part_id = self.get_part_id(croom_processed_orders)
 
         def is_nested_list_of_numbers(lst):
