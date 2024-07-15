@@ -24,12 +24,13 @@ class Job:
     """
 
     @staticmethod
-    def filter_in_scope_op1(data: pd.DataFrame) -> pd.DataFrame:
+    def filter_in_scope(data: pd.DataFrame, operation: str = "OP 1") -> pd.DataFrame:
         """
         Filters the data to include only in-scope operations for OP 1.
 
         Args:
             data (pd.DataFrame): The input data.
+            operation (str, optional): The operation for which to filter data. Defaults to 'OP 1'.
 
         Returns:
             pd.DataFrame: The filtered data.
@@ -38,19 +39,31 @@ class Job:
         logger.info(f"Total order data: {data.shape}")
 
         # Apply the filter
-        inscope_data = data[
-            (
-                data["Part Description"].str.contains("OP 1")
-                | data["Part Description"].str.contains("ATT ")
-            )
-            & (~data["On Hold?"])
-            & (~data["Part Description"].str.contains("OP 2"))
-        ]
+        if operation == "OP 1":
+            in_scope_data = data[
+                (
+                    data["Part Description"].str.contains("OP 1")
+                    | data["Part Description"].str.contains("ATT ")
+                )
+                & (~data["On Hold?"])
+                & (~data["Part Description"].str.contains("OP 2"))
+            ]
+
+        elif operation == "OP 2":
+            in_scope_data = data[
+                (data["Part Description"].str.contains("OP 2"))
+                & (~data["On Hold?"])
+                & (~data["Part Description"].str.contains("OP 1"))
+            ]
+
+        else:
+            logger.error(f"Invalid operation: {operation} - Only 'OP 1' and 'OP 2' are supported")
+            raise ValueError("Invalid operation")
 
         # Debug statement
-        logger.info(f"In-scope data for OP 1: {inscope_data.shape}")
+        logger.info(f"In-scope data for {operation}: {in_scope_data.shape}")
 
-        return inscope_data
+        return in_scope_data
 
     @staticmethod
     def extract_info(data: pd.DataFrame) -> pd.DataFrame:
@@ -74,8 +87,13 @@ class Job:
                 lambda y: ("LEFT" if "LEFT" in y.upper() else ("RIGHT" if "RIGHT" in y.upper() else ""))
             ),
             Cementless=lambda x: x["Part Description"].apply(
-                lambda y: "CLS" if "CLS" in y.upper() else "C"
+                lambda y: "CLS" if "CLS" in y.upper() else "CTD"
             ),
+        )
+
+        # Create custom Part ID
+        data["Custom Part ID"] = (
+            data["Type"] + "-" + data["Size"] + "-" + data["Orientation"] + "-" + data["Cementless"]
         )
 
         # Debug statement
@@ -110,13 +128,14 @@ class Job:
             logger.info(f"Part ID consistency check passed")
 
     @staticmethod
-    def create_jobs_op1(data: pd.DataFrame) -> List[List[int]]:
+    def create_jobs(data: pd.DataFrame, operation: str = "OP 1") -> List[List[int]]:
         """
         Creates jobs representation for the GA, defined as J.
         Cemented products do not have to go through manual prep in OP 1.
 
         Args:
             data (pd.DataFrame): The input data.
+            operation (str, optional): The operation for which to create jobs. Defaults to 'OP 1'.
 
         Returns:
             List[List[int]]: The list of jobs.
@@ -129,10 +148,27 @@ class Job:
         logger.info(f"Proportion of cementless products: {cementless_percentage:.1f}%")
 
         # Populate J
-        J = [
-            [1, 2, 3, 4, 5, 6, 7] if cementless == "CLS" else [1, 2, 3, 6, 7]
-            for cementless in data["Cementless"]
-        ]
+        if operation == "OP 1":
+            op1_data = data[~data["Part Description"].str.contains("OP 2")]
+
+            J = [
+                [1, 2, 3, 4, 5, 6, 7] if cementless == "CLS" else [1, 2, 3, 6, 7]
+                for cementless in op1_data["Cementless"]
+            ]
+
+        elif operation == "OP 2":
+            op2_data = data[data["Part Description"].str.contains("OP 2")]
+
+            J = [
+                [10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+                if cementless == "CLS"
+                else [10, 11, 12, 13, 14, 16, 17, 18, 19]
+                for cementless in op2_data["Cementless"]
+            ]
+
+        else:
+            logger.error(f"Invalid operation: {operation} - Only 'OP 1' and 'OP 2' are supported")
+            raise ValueError("Invalid operation")
 
         if not len(J) == len(data):
             logger.error(
@@ -141,13 +177,16 @@ class Job:
             )
 
         # Debug statement
-        logger.info(f"Snippet of Jobs for OP 1: {J[:2]}")
+        logger.info(f"Snippet of Jobs for {operation}: {J[:2]}")
 
         return J
 
     @staticmethod
-    def get_part_id(data: pd.DataFrame) -> List[int]:
-        part_id = data["Part ID"].to_list()
+    def get_part_id(data: pd.DataFrame) -> List[str]:
+        part_id = data["Custom Part ID"]
+
+        # Convert the series to a list
+        part_id = part_id.tolist()
 
         # Show snippet of Part IDs
         logger.info(f"Snippet of Part IDs: {part_id[:5]}")
@@ -196,6 +235,7 @@ class Shop:
 
         Args:
             J (List[List[int]]): The list of jobs.
+            croom_processed_orders (pd.DataFrame): The DataFrame containing processed orders.
             task_to_machines (Dict[int, List[int]]): The dictionary mapping tasks to machines.
 
         Returns:
@@ -207,7 +247,7 @@ class Shop:
             for task in job_tasks:
                 if task in task_to_machines:
                     # Check the table containing all data on jobs for 'Cementless' status for the job index
-                    if task == 1 and croom_processed_orders.loc[i, "Cementless"] == "C":
+                    if task == 1 and croom_processed_orders.loc[i, "Cementless"] == "CTD":
                         machines = task_to_machines[
                             99
                         ]  # HAAS machines that can only handle cemented products
@@ -226,8 +266,10 @@ class Shop:
 
     @staticmethod
     def preprocess_cycle_times(
-        cycle_times: pd.DataFrame, last_task_minutes: int = 4
-    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        monza_cycle_times_op1: pd.DataFrame,
+        monza_cycle_times_op2: pd.DataFrame,
+        last_task_minutes: int = 4,
+    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """
         Preprocesses the cycle times:
             1.) Remove empty rows and columns
@@ -237,25 +279,26 @@ class Shop:
             5.) Split data for cruciate retaining and posterior stabilizing products
 
         Args:
-            cycle_times (pd.DataFrame): The cycle times data.
+            monza_cycle_times_op1 (pd.DataFrame): The OP 1 cycle times data.
+            monza_cycle_times_op2 (pd.DataFrame): The OP 2 cycle times data.
             last_task_minutes (int, optional): The duration of the last task. Defaults to 4 minutes.
 
         Returns:
-            Tuple[pd.DataFrame, pd.DataFrame]: The preprocessed PS and CR cycle times.
+            Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]: The preprocessed PS-, CR-, and OP 2 cycle times.
         """
-        cycle_times.columns = cycle_times.iloc[1]
-        cycle_times = cycle_times.iloc[2:, 1:]
-        cycle_times.index = range(1, len(cycle_times) + 1)
+        monza_cycle_times_op1.columns = monza_cycle_times_op1.iloc[1]
+        monza_cycle_times_op1 = monza_cycle_times_op1.iloc[2:, 1:]
+        monza_cycle_times_op1.index = range(1, len(monza_cycle_times_op1) + 1)
 
         def extract_number(s: str) -> str:
             match = re.search(r"\d+N?", s)
             return match.group(0) if match else s
 
-        cycle_times.columns = [extract_number(col) for col in cycle_times.columns]
-        cycle_times.loc[7] = cycle_times.loc[7].fillna(last_task_minutes)
+        monza_cycle_times_op1.columns = [extract_number(col) for col in monza_cycle_times_op1.columns]
+        monza_cycle_times_op1.loc[7] = monza_cycle_times_op1.loc[7].fillna(last_task_minutes)
         ps_times, cr_times = (
-            cycle_times.iloc[:8, 2 : math.ceil(cycle_times.shape[1] / 2) + 1],
-            cycle_times.iloc[:8, math.ceil(cycle_times.shape[1] / 2) + 1 :],
+            monza_cycle_times_op1.iloc[:8, 2 : math.ceil(monza_cycle_times_op1.shape[1] / 2) + 1],
+            monza_cycle_times_op1.iloc[:8, math.ceil(monza_cycle_times_op1.shape[1] / 2) + 1 :],
         )
 
         # Debug statement
@@ -286,14 +329,28 @@ class Shop:
                 extra={"markup": True},
             )
 
-        return ps_times, cr_times
+        # Operation 2 - set headers
+        monza_cycle_times_op2.columns = monza_cycle_times_op2.iloc[1]
+        monza_cycle_times_op2 = monza_cycle_times_op2.iloc[2:, 1:6]
+
+        # Drop unknown machines
+        # TODO: Verify with Eamon
+        monza_cycle_times_op2 = monza_cycle_times_op2[
+            ~monza_cycle_times_op2["Operation type"].isin(["FPI", "RA testing "])
+        ]
+
+        # Update the index according to the tasks of OP2
+        monza_cycle_times_op2.index = range(10, 10 + len(monza_cycle_times_op2))
+
+        return ps_times, cr_times, monza_cycle_times_op2
 
     @staticmethod
     def get_duration_matrix(
         J: List[List[int]],
-        inscope_orders: pd.DataFrame,
+        in_scope_orders: pd.DataFrame,
         cr_times: pd.DataFrame,
         ps_times: pd.DataFrame,
+        op2_times: pd.DataFrame,
     ) -> List[List[float]]:
         """
         Gets the duration matrix for the jobs.
@@ -304,9 +361,10 @@ class Shop:
 
         Args:
             J (List[List[int]]): The list of jobs.
-            inscope_orders (pd.DataFrame): The in-scope orders.
+            in_scope_orders (pd.DataFrame): The in-scope orders.
             cr_times (pd.DataFrame): The CR cycle times.
             ps_times (pd.DataFrame): The PS cycle times.
+            op2_times (pd.DataFrame): The Operation 2 cycle times - no distinction between CR and PS.
 
         Returns:
             List[List[float]]: The duration matrix.
@@ -315,12 +373,20 @@ class Shop:
         for i, job in enumerate(J):
             job_dur = []
             for task in job:
-                times = cr_times if inscope_orders.iloc[i]["Type"] == "CR" else ps_times
-                duration = round(
-                    times.loc[task, inscope_orders.iloc[i]["Size"]]
-                    * inscope_orders.iloc[i]["Order Qty"],
-                    1,
-                )
+                if (
+                    task < 10
+                ):  # Operation 1 tasks are in the range 1-10, Operation 2 tasks are in the range 10-20
+                    times = cr_times if in_scope_orders.iloc[i]["Type"] == "CR" else ps_times
+                    duration = round(
+                        times.loc[task, in_scope_orders.iloc[i]["Size"]]
+                        * in_scope_orders.iloc[i]["Order Qty"],
+                        1,
+                    )
+                else:
+                    duration = round(
+                        op2_times.loc[task, "Actual "] * in_scope_orders.iloc[i]["Order Qty"],
+                        1,
+                    )
                 job_dur.append(duration)
             dur.append(job_dur)
 
@@ -331,7 +397,7 @@ class Shop:
 
     @staticmethod
     def get_due_date(
-        inscope_orders: pd.DataFrame,
+        in_scope_orders: pd.DataFrame,
         date: str = "2024-03-18",
         working_minutes: int = 480,
     ) -> List[int]:
@@ -339,7 +405,7 @@ class Shop:
         Gets the due dates for the in-scope orders.
 
         Args:
-            inscope_orders (pd.DataFrame): The in-scope orders.
+            in_scope_orders (pd.DataFrame): The in-scope orders.
             date (str): The reference date in 'YYYY-MM-DD' format. Defaults to '2024-03-18'.
             working_minutes (int, optional): The number of working minutes per day. Defaults to 480.
 
@@ -347,7 +413,7 @@ class Shop:
             List[int]: The list of due dates in working minutes.
         """
         due = []
-        for due_date in inscope_orders["Due Date "]:
+        for due_date in in_scope_orders["Due Date "]:
             if pd.Timestamp(date) > due_date:
                 working_days = -len(pd.bdate_range(due_date, date)) * working_minutes
             else:
@@ -379,19 +445,35 @@ class JobShop(Job, Shop):
         Returns:
             pd.DataFrame: The preprocessed orders.
         """
-        inscope_data = self.filter_in_scope_op1(croom_open_orders).pipe(self.extract_info)
-        self.check_part_id_consistency(inscope_data)
+        in_scope_data_op1 = self.filter_in_scope(croom_open_orders).pipe(self.extract_info)
+        in_scope_data_op2 = self.filter_in_scope(croom_open_orders, operation="OP 2").pipe(
+            self.extract_info
+        )
+
+        # Combine both Operation 1 and Operation 2 data
+        in_scope_data = pd.concat([in_scope_data_op1, in_scope_data_op2], axis=0)
+
+        if not len(in_scope_data) == (len(in_scope_data_op1) + len(in_scope_data_op2)):
+            logging.warning(
+                f"Length of concatenated data: {len(in_scope_data)}, "
+                f"while length of OP 1 data: {len(in_scope_data_op1)}, "
+                f"and length of OP 2 data: {len(in_scope_data_op2)}"
+            )
+
+        # Check if all part IDs are consistent across different operations
+        self.check_part_id_consistency(in_scope_data)
 
         # Reset index
-        inscope_data.reset_index(inplace=True, drop=True)
+        in_scope_data.reset_index(inplace=True, drop=True)
 
-        return inscope_data
+        return in_scope_data
 
     def build_ga_representation(
         self,
         croom_processed_orders: pd.DataFrame,
         cr_cycle_times: pd.DataFrame,
         ps_cycle_times: pd.DataFrame,
+        op2_cycle_times: pd.DataFrame,
         machine_qty_dict: Dict[str, int],
         task_to_machines: Dict[int, List[int]],
         scheduling_options: Dict[str, any],
@@ -410,6 +492,7 @@ class JobShop(Job, Shop):
             croom_processed_orders (pd.DataFrame): The processed orders.
             cr_cycle_times (pd.DataFrame): The CR cycle times.
             ps_cycle_times (pd.DataFrame): The PS cycle times.
+            op2_cycle_times (pd.DataFrame): The Operation 2 cycle times.
             machine_qty_dict (Dict[str, int]): The machine quantity dictionary.
             task_to_machines (Dict[int, List[int]]): The task to machines dictionary.
             scheduling_options (Dict[str, any]): The scheduling options dictionary.
@@ -417,10 +500,18 @@ class JobShop(Job, Shop):
         Returns:
             Dict[str, any]: The GA representation.
         """
-        J = self.create_jobs_op1(croom_processed_orders)
+        J_op_1 = self.create_jobs(croom_processed_orders)
+        J_op_2 = self.create_jobs(croom_processed_orders, operation="OP 2")
+
+        # Combine jobs from both operations (Operation 1 and Operation 2) into one list of jobs (J)
+        J = J_op_1 + J_op_2
+
+        # Create the rest of the required inputs
         M = self.create_machines(machine_qty_dict)
         compat = self.get_compatibility(J, croom_processed_orders, task_to_machines)
-        dur = self.get_duration_matrix(J, croom_processed_orders, cr_cycle_times, ps_cycle_times)
+        dur = self.get_duration_matrix(
+            J, croom_processed_orders, cr_cycle_times, ps_cycle_times, op2_cycle_times
+        )
         due = self.get_due_date(
             croom_processed_orders,
             date=scheduling_options["start_date"],
@@ -517,6 +608,9 @@ class GeneticAlgorithmScheduler:
         if num_inds is None:
             num_inds = self.n
 
+        # Extract the part size from the custom part id
+        part_size = [id.split("-")[1] for id in self.part_id]
+
         P = []
         percentages = np.arange(10, 101, 10)
 
@@ -555,7 +649,7 @@ class GeneticAlgorithmScheduler:
                         preferred_machines = [
                             key
                             for key in compat_task_0
-                            if product_m.get(key) == self.part_id[job_idx] or product_m.get(key) == 0
+                            if product_m.get(key) == part_size[job_idx] or product_m.get(key) == 0
                         ]
 
                         if not preferred_machines:
@@ -573,13 +667,13 @@ class GeneticAlgorithmScheduler:
 
                         start = (
                             avail_m[m]
-                            if product_m[m] == 0 or self.part_id[job_idx] == product_m[m]
+                            if product_m[m] == 0 or part_size[job_idx] == product_m[m]
                             else avail_m[m]
                             + self.change_over_time
                             + max((changeover_finish_time - avail_m[m]), 0)
                         )
 
-                        if product_m[m] != 0 and self.part_id[job_idx] != product_m[m]:
+                        if product_m[m] != 0 and part_size[job_idx] != product_m[m]:
                             changeover_finish_time = start
                     else:
                         compat_with_task = self.compat[job_idx][task]
@@ -602,7 +696,7 @@ class GeneticAlgorithmScheduler:
                         )
                     )
                     avail_m[m] = self.find_avail_m(start, job_idx, task)
-                    product_m[m] = self.part_id[job_idx]
+                    product_m[m] = part_size[job_idx]
 
             if P_j not in P:
                 P.append(P_j)
