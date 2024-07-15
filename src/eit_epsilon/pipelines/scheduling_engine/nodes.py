@@ -156,6 +156,12 @@ class Job:
                 for cementless in op1_data["Cementless"]
             ]
 
+            if not len(J) == len(op1_data):
+                logger.error(
+                    "[bold red blink]J is not of the same length as processed orders![/]",
+                    extra={"markup": True},
+                )
+
         elif operation == "OP 2":
             op2_data = data[data["Part Description"].str.contains("OP 2")]
 
@@ -166,15 +172,15 @@ class Job:
                 for cementless in op2_data["Cementless"]
             ]
 
+            if not len(J) == len(op2_data):
+                logger.error(
+                    "[bold red blink]J is not of the same length as processed orders![/]",
+                    extra={"markup": True},
+                )
+
         else:
             logger.error(f"Invalid operation: {operation} - Only 'OP 1' and 'OP 2' are supported")
             raise ValueError("Invalid operation")
-
-        if not len(J) == len(data):
-            logger.error(
-                "[bold red blink]J is not of the same length as processed orders![/]",
-                extra={"markup": True},
-            )
 
         # Debug statement
         logger.info(f"Snippet of Jobs for {operation}: {J[:2]}")
@@ -202,21 +208,17 @@ class Shop:
     """
 
     @staticmethod
-    def create_machines(machine_qty_dict: Dict[str, int]) -> List[int]:
+    def create_machines(task_to_machines: Dict[int, List[int]]) -> List[int]:
         """
-        Creates a list of machines based on the quantity dictionary.
+        Creates a list of machines based on all the unique machines in the task_to_machines dictionary.
 
         Args:
-            machine_qty_dict (Dict[str, int]): The dictionary of machine quantities.
+            task_to_machines (Dict[int, List[int]]): The dictionary of machine quantities.
 
         Returns:
             List[int]: The list of machines.
         """
-        total_machines = sum(machine_qty_dict.values())
-        M = list(range(1, total_machines + 1))
-
-        # Debug statement
-        logger.info(f"Machine list (M): {M}")
+        M = list(set([machine for machines in task_to_machines.values() for machine in machines]))
 
         return M
 
@@ -450,8 +452,17 @@ class JobShop(Job, Shop):
             self.extract_info
         )
 
+        # Add an extra column
+        in_scope_data_op1["operation"] = "OP1"
+        in_scope_data_op2["operation"] = "OP2"
+
         # Combine both Operation 1 and Operation 2 data
         in_scope_data = pd.concat([in_scope_data_op1, in_scope_data_op2], axis=0)
+
+        # Add the operation to the custom part id
+        in_scope_data["Custom Part ID"] = (
+            in_scope_data["Custom Part ID"] + "-" + in_scope_data["operation"]
+        )
 
         if not len(in_scope_data) == (len(in_scope_data_op1) + len(in_scope_data_op2)):
             logging.warning(
@@ -507,7 +518,7 @@ class JobShop(Job, Shop):
         J = J_op_1 + J_op_2
 
         # Create the rest of the required inputs
-        M = self.create_machines(machine_qty_dict)
+        M = self.create_machines(task_to_machines)
         compat = self.get_compatibility(J, croom_processed_orders, task_to_machines)
         dur = self.get_duration_matrix(
             J, croom_processed_orders, cr_cycle_times, ps_cycle_times, op2_cycle_times
@@ -682,6 +693,7 @@ class GeneticAlgorithmScheduler:
                             if random_roll < 0.85
                             else random.choice(compat_with_task)
                         )
+
                         start = max(avail_m[m], P_j[-1][3] + self.dur[job_idx][task - 1])
 
                     P_j.append(
