@@ -183,7 +183,9 @@ class Shop:
 
     @staticmethod
     def get_compatibility(
-        J: List[List[int]], task_to_machines: Dict[int, List[int]]
+        J: List[List[int]],
+        croom_processed_orders: pd.DataFrame,
+        task_to_machines: Dict[int, List[int]],
     ) -> List[List[List[int]]]:
         """
         Gets the compatibility of tasks to machines.
@@ -200,13 +202,20 @@ class Shop:
             List[List[List[int]]]: The compatibility list.
         """
         compat = []
-        for job_tasks in J:
+        for i, job_tasks in enumerate(J):
             job_compat = []
             for task in job_tasks:
                 if task in task_to_machines:
-                    machines = task_to_machines[task]
+                    # Check the table containing all data on jobs for 'Cementless' status for the job index
+                    if task == 1 and croom_processed_orders.loc[i, "Cementless"] == "C":
+                        machines = task_to_machines[
+                            99
+                        ]  # HAAS machines that can only handle cemented products
+                    else:
+                        machines = task_to_machines[task]
+
                 else:
-                    raise ValueError("Invalid task number!")
+                    raise ValueError(f"Invalid task number! Task: {task}")
                 job_compat.append(machines)
             compat.append(job_compat)
 
@@ -373,6 +382,9 @@ class JobShop(Job, Shop):
         inscope_data = self.filter_in_scope_op1(croom_open_orders).pipe(self.extract_info)
         self.check_part_id_consistency(inscope_data)
 
+        # Reset index
+        inscope_data.reset_index(inplace=True, drop=True)
+
         return inscope_data
 
     def build_ga_representation(
@@ -407,7 +419,7 @@ class JobShop(Job, Shop):
         """
         J = self.create_jobs_op1(croom_processed_orders)
         M = self.create_machines(machine_qty_dict)
-        compat = self.get_compatibility(J, task_to_machines)
+        compat = self.get_compatibility(J, croom_processed_orders, task_to_machines)
         dur = self.get_duration_matrix(J, croom_processed_orders, cr_cycle_times, ps_cycle_times)
         due = self.get_due_date(
             croom_processed_orders,
