@@ -612,6 +612,32 @@ class GeneticAlgorithmScheduler:
                 return day
         return start + self.dur[job_idx][task_num]
 
+    def pick_early_machine(
+        self, job_idx: int, task: int, avail_m: Dict[int, int], random_roll: float, prob: float = 0.85
+    ) -> int:
+        """
+        Selects a machine for the given task based on availability and compatibility.
+        There is a chance of 'prob' to select the machine that comes available earliest,
+        otherwise a random machine is picked.
+
+        Parameters:
+        - job_idx (int): Index of the job.
+        - task (int): Index of the task within the job.
+        - avail_m (Dict[int, int]): A dictionary with machine IDs as keys and their available times as values.
+        - random_roll (float): A random number to decide the selection strategy.
+        - prob (float): Probability to pick the earliest available compatible machine.
+
+        Returns:
+        - int: The selected machine ID.
+        """
+        compat_with_task = self.compat[job_idx][task]
+        if random_roll < prob:
+            m = min(compat_with_task, key=lambda x: avail_m.get(x))
+        else:
+            m = random.choice(compat_with_task)
+
+        return m
+
     def init_population(self, num_inds: int = None, fill_inds: bool = False):
         """
         Initializes the population of schedules. Each schedule is a list of tasks assigned to machines with start times.
@@ -622,6 +648,9 @@ class GeneticAlgorithmScheduler:
         # Extract the part size from the custom part id
         part_size = [id.split("-")[1] for id in self.part_id]
 
+        # Extract the operation from custom part id
+        operation = [id.split("-")[-1] for id in self.part_id]
+
         P = []
         percentages = np.arange(10, 101, 10)
 
@@ -631,9 +660,13 @@ class GeneticAlgorithmScheduler:
             changeover_finish_time = 0
             P_j = []
 
+            # Create a temporary copy of J
             J_temp = list(range(len(self.J)))
+
+            # Generate a random float [0, 1]
             random_roll = random.random()
 
+            # Based on the random number we either randomly shuffle or apply some sorting logic
             if random_roll < 0.4:
                 random.shuffle(J_temp)
             elif random_roll < 0.6:
@@ -655,46 +688,53 @@ class GeneticAlgorithmScheduler:
                 for task in range(len(job)):
                     random_roll = random.random()
 
-                    if task == 0:
-                        compat_task_0 = self.compat[job_idx][task]
-                        preferred_machines = [
-                            key
-                            for key in compat_task_0
-                            if product_m.get(key) == part_size[job_idx] or product_m.get(key) == 0
-                        ]
+                    if operation[job_idx] == "OP1":
+                        if task == 0:
+                            compat_task_0 = self.compat[job_idx][task]
+                            preferred_machines = [
+                                key
+                                for key in compat_task_0
+                                if product_m.get(key) == part_size[job_idx] or product_m.get(key) == 0
+                            ]
 
-                        if not preferred_machines:
-                            m = (
-                                min(compat_task_0, key=lambda x: avail_m.get(x))
-                                if random_roll < 0.7
-                                else random.choice(compat_task_0)
+                            if not preferred_machines:
+                                m = self.pick_early_machine(
+                                    job_idx, task, avail_m, random_roll, prob=0.7
+                                )
+                            else:
+                                m = (
+                                    min(preferred_machines, key=lambda x: avail_m.get(x))
+                                    if random_roll < 0.7
+                                    else random.choice(preferred_machines)
+                                )
+
+                            start = (
+                                avail_m[m]
+                                if product_m[m] == 0 or part_size[job_idx] == product_m[m]
+                                else avail_m[m]
+                                + self.change_over_time
+                                + max((changeover_finish_time - avail_m[m]), 0)
                             )
+
+                            if product_m[m] != 0 and part_size[job_idx] != product_m[m]:
+                                changeover_finish_time = start
                         else:
-                            m = (
-                                min(preferred_machines, key=lambda x: avail_m.get(x))
-                                if random_roll < 0.7
-                                else random.choice(preferred_machines)
-                            )
+                            m = self.pick_early_machine(job_idx, task, avail_m, random_roll)
+                            start = max(avail_m[m], P_j[-1][3] + self.dur[job_idx][task - 1])
 
-                        start = (
-                            avail_m[m]
-                            if product_m[m] == 0 or part_size[job_idx] == product_m[m]
-                            else avail_m[m]
-                            + self.change_over_time
-                            + max((changeover_finish_time - avail_m[m]), 0)
-                        )
+                    elif operation[job_idx] == "OP2":
+                        if task == 0:
+                            m = self.pick_early_machine(job_idx, task, avail_m, random_roll)
+                            start = avail_m[m]
+                        else:
+                            m = self.pick_early_machine(job_idx, task, avail_m, random_roll)
+                            start = max(avail_m[m], P_j[-1][3] + self.dur[job_idx][task - 1])
 
-                        if product_m[m] != 0 and part_size[job_idx] != product_m[m]:
-                            changeover_finish_time = start
                     else:
-                        compat_with_task = self.compat[job_idx][task]
-                        m = (
-                            min(compat_with_task, key=lambda x: avail_m.get(x))
-                            if random_roll < 0.85
-                            else random.choice(compat_with_task)
+                        logger.error(
+                            f"Invalid operation: {operation} - Only 'OP1' and 'OP2' are supported"
                         )
-
-                        start = max(avail_m[m], P_j[-1][3] + self.dur[job_idx][task - 1])
+                        raise ValueError("Invalid operation")
 
                     P_j.append(
                         (
