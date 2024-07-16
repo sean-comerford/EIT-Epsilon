@@ -24,20 +24,6 @@ task_to_machines: {
   99: [1, 2, 3]  # HAAS (only cemented)
 }
 
-machine_qty_dict: {
-  'HAAS': 6,
-  'Inspection': 4,
-  'First Wash': 1,
-  'Manual Prep': 3,
-  'Final Wash': 1,
-  'Final Inspection': 2,
-  'Ceramic Drag': 1,
-  'Wash 2': 1,
-  'Plastic Drag': 1,
-  'Nutshell Drag': 1,
-  'Polishing': 2
-}
-
 column_mapping_reformat: {
   'job': 'Job',
   'starting_time': 'Start_time',
@@ -84,7 +70,7 @@ scheduling_options:
   n_e: 0.1  # Proportion of best schedules to automatically pass on to the next generation (e.g.: 10%)
   n_c: 0.3  # Proportion of children to generate in the offspring function
   minutes_per_day: 480  # Number of working minutes per day (8 hours * 60 minutes)
-  max_iterations: 100  # Maximum number of iterations/generations to run the algorithm
+  max_iterations: 10  # Maximum number of iterations/generations to run the algorithm
   urgent_multiplier: 3  # Multiplier for (completion_time - due_date) for urgent_orders
   urgent_orders: []  # List of job indices of urgent orders; starting from 1
   column_mapping: {

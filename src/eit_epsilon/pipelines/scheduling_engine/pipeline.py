@@ -38,7 +38,6 @@ def create_pipeline(**kwargs) -> Pipeline:
                     "cr_cycle_times",
                     "ps_cycle_times",
                     "op2_cycle_times",
-                    "params:machine_qty_dict",
                     "params:task_to_machines",
                     "params:scheduling_options",
                 ],

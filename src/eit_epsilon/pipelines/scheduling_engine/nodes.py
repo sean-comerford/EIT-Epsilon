@@ -485,7 +485,6 @@ class JobShop(Job, Shop):
         cr_cycle_times: pd.DataFrame,
         ps_cycle_times: pd.DataFrame,
         op2_cycle_times: pd.DataFrame,
-        machine_qty_dict: Dict[str, int],
         task_to_machines: Dict[int, List[int]],
         scheduling_options: Dict[str, any],
     ) -> Dict[str, any]:
@@ -504,7 +503,6 @@ class JobShop(Job, Shop):
             cr_cycle_times (pd.DataFrame): The CR cycle times.
             ps_cycle_times (pd.DataFrame): The PS cycle times.
             op2_cycle_times (pd.DataFrame): The Operation 2 cycle times.
-            machine_qty_dict (Dict[str, int]): The machine quantity dictionary.
             task_to_machines (Dict[int, List[int]]): The task to machines dictionary.
             scheduling_options (Dict[str, any]): The scheduling options dictionary.
 
