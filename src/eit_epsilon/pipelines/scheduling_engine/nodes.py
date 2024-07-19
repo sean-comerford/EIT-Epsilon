@@ -636,8 +636,8 @@ class GeneticAlgorithmScheduler:
 
         return m
 
+    @staticmethod
     def slack_logic(
-        self,
         m: int,
         avail_m: Dict[int, int],
         slack_m: Dict[int, List],
@@ -646,18 +646,55 @@ class GeneticAlgorithmScheduler:
         previous_task_dur: float,
         current_task_dur: float,
     ):
+        """
+        Determine the start time for a task on a machine, considering machine availability and existing slack time.
+
+        Args:
+            m (int): The machine identifier.
+            avail_m (Dict[int, int]): Dictionary mapping machine IDs to their available times.
+            slack_m (Dict[int, List]): Dictionary mapping machine IDs to their slack windows (tuples of start and end times).
+            slack_time_used (bool): Flag indicating whether slack time has been used.
+            previous_task_start (float): The start time of the previous task.
+            previous_task_dur (float): The duration of the previous task.
+            current_task_dur (float): The duration of the current task.
+
+        Returns:
+            Tuple[float, bool]: A tuple containing the determined start time for the current task and a boolean indicating
+            whether slack time was used.
+
+        The function operates as follows:
+        1. Initializes the `start` variable to `None`.
+        2. Checks if the previous task ends after the machine becomes available. If so:
+            - Sets `start` to the completion time of the previous task.
+            - Adds a slack window representing the time between the machine becoming available and the new task's start time.
+        3. If the previous task does not overlap the machine's availability:
+            - Iterates over existing slack windows for the machine.
+            - Checks if the task can fit within any slack window:
+                - Sets `start` to the later of the slack window's start or the previous task's end.
+                - Removes the used slack window.
+                - Adds new slack windows for any remaining time before or after the task within the original slack window.
+                - Sets `slack_time_used` to `True` if a slack window is used.
+        4. If no slack time is used, sets `start` to the machine's available time.
+        5. Logs a warning if no valid start time is determined.
+        6. Returns the `start` time and the `slack_time_used` flag.
+        """
+
+        # Initialize start variable
+        start = None
+
         # If the previous task is completed later than the new machine comes available
         if previous_task_start + previous_task_dur > avail_m[m]:
-            # Start time is the completion of the previous task
+            # Start time is the completion of the previous task of the job in question
             start = previous_task_start + previous_task_dur
 
             # Difference between the moment the machine becomes available and the new tasks starts is slack
+            # e.g.: machine comes available at 100, new task can only start at 150, slack = (100, 150)
             slack_m[m].append((avail_m[m], start))
 
         else:
             # Loop over slack in this machine
             for unused_time in slack_m[m]:
-                # If the unused time + duration of task is less than the new starting time of the machine
+                # If the unused time + duration of task is less than the end of the slack window
                 if (
                     max(unused_time[0], (previous_task_start + previous_task_dur)) + current_task_dur
                 ) < unused_time[1]:
@@ -668,7 +705,9 @@ class GeneticAlgorithmScheduler:
                     # Remove the slack period if it has been used
                     slack_m[m].remove(unused_time)
 
-                    # Append new slack time: previous slack time with the new finishing time
+                    # We add the remaining time between when the task finishes and the end of the slack window
+                    # as a new slack window
+                    # e.g.: original slack = (100, 150), task planned now takes (110, 130), new slack = (130, 150)
                     slack_m[m].append(
                         (
                             (
@@ -679,16 +718,23 @@ class GeneticAlgorithmScheduler:
                         )
                     )
 
-                    # Append another slack window if previous start was not at the beginning of the slack window
+                    # Append another slack window if previous start was not at the beginning of the slack window,
+                    # in this case there is still some time between when the machine comes available and when the
+                    # task starts
+                    # e.g. original slack = (100, 150), task planned now takes (110, 130), new slack = (100, 110)
                     if start == (previous_task_start + previous_task_dur):
                         slack_m[m].append((unused_time[0], start))
 
                     slack_time_used = True
+                    # break the loop if a suitable start time has been found in the slack
                     break
 
             # If slack time is not used, start when the machine becomes available
             if not slack_time_used:
                 start = avail_m[m]
+
+        if start is None:
+            logger.warning("No real start time was defined!")
 
         return start, slack_time_used
 
@@ -742,6 +788,9 @@ class GeneticAlgorithmScheduler:
                 job = self.J[job_idx]
                 for task in range(len(job)):
                     random_roll = random.random()
+
+                    # New boolean to track if the task is planned during slack time,
+                    # if so we do not need to update avail_m
                     slack_time_used = False
 
                     if operation[job_idx] == "OP1":
