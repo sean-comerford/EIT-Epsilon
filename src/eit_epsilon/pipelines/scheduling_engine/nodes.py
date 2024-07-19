@@ -77,15 +77,19 @@ class Job:
             pd.DataFrame: The data with extracted information.
         """
         data = data.assign(
+            # CR: Cruciate retaining, PS: Posterior stabilizing
             Type=lambda x: x["Part Description"].apply(
                 lambda y: "CR" if "CR" in y else ("PS" if "PS" in y else "")
             ),
+            # Range 1-10 with optional 'N' for some sizes; e.g. '5N' (Not sure what this stands for)
             Size=lambda x: x["Part Description"].apply(
                 lambda y: (re.search(r"Sz (\d+N?)", y).group(1) if re.search(r"Sz (\d+N?)", y) else "")
             ),
+            # LEFT or RIGHT orientation
             Orientation=lambda x: x["Part Description"].apply(
                 lambda y: ("LEFT" if "LEFT" in y.upper() else ("RIGHT" if "RIGHT" in y.upper() else ""))
             ),
+            # CLS: Cementless, CTD: Cemented
             Cementless=lambda x: x["Part Description"].apply(
                 lambda y: "CLS" if "CLS" in y.upper() else "CTD"
             ),
@@ -611,7 +615,12 @@ class GeneticAlgorithmScheduler:
         return start + self.dur[job_idx][task_num]
 
     def pick_early_machine(
-        self, job_idx: int, task: int, avail_m: Dict[int, int], random_roll: float, prob: float = 0.85
+        self,
+        job_idx: int,
+        task_idx: int,
+        avail_m: Dict[int, int],
+        random_roll: float,
+        prob: float = 0.85,
     ) -> int:
         """
         Selects a machine for the given task based on availability and compatibility.
@@ -628,7 +637,7 @@ class GeneticAlgorithmScheduler:
         Returns:
         - int: The selected machine ID.
         """
-        compat_with_task = self.compat[job_idx][task]
+        compat_with_task = self.compat[job_idx][task_idx]
         if random_roll < prob:
             m = min(compat_with_task, key=lambda x: avail_m.get(x))
         else:
@@ -636,9 +645,38 @@ class GeneticAlgorithmScheduler:
 
         return m
 
-    def init_population(self, num_inds: int = None, fill_inds: bool = False):
+    def init_population(
+        self, num_inds: int = None, fill_inds: bool = False
+    ) -> Union[None, List[List[Tuple[int, int, int, float, float, int, str]]]]:
         """
         Initializes the population of schedules. Each schedule is a list of tasks assigned to machines with start times.
+
+        Args:
+            num_inds (int, optional): Number of individuals (schedules) to generate. If None, uses self.n. Defaults to None.
+            fill_inds (bool, optional): Flag indicating whether to fill individuals in the population or return them.
+                                        Defaults to False.
+
+        Returns:
+            Union[None, List[List[Tuple[int, int, int, float, float, int, str]]]]:
+                - If fill_inds is False, updates self.P with the generated population.
+                - If fill_inds is True, returns the generated population.
+
+        The function operates as follows:
+        1. Sets `num_inds` to `self.n` if it is not provided.
+        2. Extracts part sizes and operations from `self.part_id`.
+        3. Initializes the population list `P` and a range of percentages for logging progress.
+        4. For each individual:
+            - Initializes availability and product tracking dictionaries for machines.
+            - Creates a temporary job list and shuffles or sorts it based on a random roll.
+            - Processes each job, assigning tasks to machines based on compatibility, availability, and operation type.
+            - Updates machine availability and product tracking after each task assignment.
+            - Adds the proposed schedule to the population if it is unique.
+            - Logs progress at certain percentages if `fill_inds` is False.
+        5. Sets `self.P` to the generated population or returns it based on `fill_inds`.
+
+        Note:
+            - OP1 and OP2 represent different operation types with specific logic for task assignment.
+            - Compatibility and availability are considered for machine assignment, with preference given to certain conditions.
         """
         if num_inds is None:
             num_inds = self.n
@@ -677,28 +715,45 @@ class GeneticAlgorithmScheduler:
                 # Reorder J_temp according to the urgent order list
                 for job in self.urgent_orders:
                     J_temp.remove(job)  # Remove the job from its current position
-                    J_temp.append(job)  # Append the job to the end of the list
+                    J_temp.append(
+                        job
+                    )  # Append the job to the end of the list (this means it will be picked first)
 
+            # While our list of jobs is not empty
             while J_temp:
                 # Take the index at the end of the list and remove it from the list
                 job_idx = J_temp.pop()
+
+                # Extract the corresponding job
                 job = self.J[job_idx]
-                for task in range(len(job)):
+
+                # Loop over the tasks in the job
+                for task_idx in range(len(job)):
+                    # Generate random float [0, 1]
                     random_roll = random.random()
 
+                    # Conditional logic; separate flow for OP1 and OP2
                     if operation[job_idx] == "OP1":
-                        if task == 0:
-                            compat_task_0 = self.compat[job_idx][task]
+                        # Logic for first task in OP1 (HAAS machines)
+                        if task_idx == 0:
+                            compat_task_0 = self.compat[job_idx][task_idx]
+                            # Preferred machines are those that have not been used yet or processed the same
+                            # size previously (in this case no changeover is required)
+                            # Note: no changeover needed for the first task on a HAAS machine is an assumption
                             preferred_machines = [
                                 key
                                 for key in compat_task_0
                                 if product_m.get(key) == part_size[job_idx] or product_m.get(key) == 0
                             ]
 
+                            # If no preferred machines can be found, pick one that comes available earliest
+                            # with a higher probability
                             if not preferred_machines:
                                 m = self.pick_early_machine(
-                                    job_idx, task, avail_m, random_roll, prob=0.7
+                                    job_idx, task_idx, avail_m, random_roll, prob=0.7
                                 )
+                            # If there are preferred machines, pick the preferred machine that comes available
+                            # earliest with a higher probability
                             else:
                                 m = (
                                     min(preferred_machines, key=lambda x: avail_m.get(x))
@@ -706,6 +761,9 @@ class GeneticAlgorithmScheduler:
                                     else random.choice(preferred_machines)
                                 )
 
+                            # Start time is the time that the machine comes available if no changeover is required
+                            # else, the changeover time is added, and an optional waiting time if we need to wait
+                            # for another changeover to finish first (only one changeover can happen concurrently)
                             start = (
                                 avail_m[m]
                                 if product_m[m] == 0 or part_size[job_idx] == product_m[m]
@@ -714,19 +772,34 @@ class GeneticAlgorithmScheduler:
                                 + max((changeover_finish_time - avail_m[m]), 0)
                             )
 
+                            # If a changeover happened, we update the time someone comes available to do another
+                            # changeover
                             if product_m[m] != 0 and part_size[job_idx] != product_m[m]:
                                 changeover_finish_time = start
                         else:
-                            m = self.pick_early_machine(job_idx, task, avail_m, random_roll)
-                            start = max(avail_m[m], P_j[-1][3] + self.dur[job_idx][task - 1])
+                            # If not the first task in the job, we pick the earliest machine to come available
+                            # with a higher probability
+                            m = self.pick_early_machine(job_idx, task_idx, avail_m, random_roll)
+
+                            # Start time of the task is the latest of the time the machine comes available and
+                            # the time that the previous task finishes
+                            start = max(avail_m[m], P_j[-1][3] + self.dur[job_idx][task_idx - 1])
 
                     elif operation[job_idx] == "OP2":
-                        if task == 0:
-                            m = self.pick_early_machine(job_idx, task, avail_m, random_roll)
+                        if task_idx == 0:
+                            # If first task in OP2: pick machine that comes available earliest with a higher
+                            # probability
+                            m = self.pick_early_machine(job_idx, task_idx, avail_m, random_roll)
+
+                            # Start time is always when the machine comes available (due to being the first task)
                             start = avail_m[m]
                         else:
-                            m = self.pick_early_machine(job_idx, task, avail_m, random_roll)
-                            start = max(avail_m[m], P_j[-1][3] + self.dur[job_idx][task - 1])
+                            # Pick early machine with higher probability
+                            m = self.pick_early_machine(job_idx, task_idx, avail_m, random_roll)
+
+                            # Start time of the task is the latest of the time the machine comes available and
+                            # the time that the previous task finishes
+                            start = max(avail_m[m], P_j[-1][3] + self.dur[job_idx][task_idx - 1])
 
                     else:
                         logger.error(
@@ -734,20 +807,22 @@ class GeneticAlgorithmScheduler:
                         )
                         raise ValueError("Invalid operation")
 
+                    # Append the task to our proposed schedule
                     P_j.append(
                         (
                             job_idx,
-                            job[task],
+                            job[task_idx],  # Actual task number (as in task_to_machines_dict)
                             m,
                             start,
-                            self.dur[job_idx][task],
-                            task,
+                            self.dur[job_idx][task_idx],
+                            task_idx,  # Task index
                             self.part_id[job_idx],
                         )
                     )
-                    avail_m[m] = self.find_avail_m(start, job_idx, task)
+                    avail_m[m] = self.find_avail_m(start, job_idx, task_idx)
                     product_m[m] = part_size[job_idx]
 
+            # Add proposed schedule to population (list of proposed schedules) if it is not in there already
             if P_j not in P:
                 P.append(P_j)
             else:
@@ -776,8 +851,7 @@ class GeneticAlgorithmScheduler:
                 sum(
                     (
                         # Difference between due date and completion time, multiplied by urgent_multiplier if urgent
-                        self.due[job_idx]
-                        - (start_time + job_task_dur)
+                        (self.due[job_idx] - (start_time + job_task_dur))
                         * (self.urgent_multiplier if job_idx in self.urgent_orders else 1)
                         + (
                             # Bonus for completing tasks on time
@@ -833,12 +907,16 @@ class GeneticAlgorithmScheduler:
 
         for job_idx in range(len(self.J)):
             job = self.J[job_idx]
+
+            # We have a list of tuples, where each tuple stands for a task in a proposed schedule
+            # We filter all the tuples for ones belonging to a specific job_idx (first field of the tuple) and sort
             job_tasks = sorted([entry for entry in P_prime if entry[0] == job_idx], key=lambda x: x[1])
 
+            # Loop over the tasks one by one
             for task_entry in job_tasks:
-                _, task, m, _, _, task_num, _ = task_entry
+                _, task, m, _, _, task_idx, _ = task_entry
 
-                if task_num == 0:
+                if task_idx == 0:
                     start = (
                         avail_m[m]
                         if product_m[m] == 0 or self.part_id[job_idx] == product_m[m]
@@ -851,21 +929,21 @@ class GeneticAlgorithmScheduler:
                 else:
                     start = max(
                         avail_m[m],
-                        start_times[job_idx] + self.dur[job_idx][task_num - 1],
+                        start_times[job_idx] + self.dur[job_idx][task_idx - 1],
                     )
                 start_times[job_idx] = start
 
-                avail_m[m] = self.find_avail_m(start, job_idx, task_num)
+                avail_m[m] = self.find_avail_m(start, job_idx, task_idx)
                 product_m[m] = self.part_id[job_idx]
 
                 P_prime_sorted.append(
                     (
                         job_idx,
-                        job[task_num],
+                        job[task_idx],
                         m,
                         start,
-                        self.dur[job_idx][task_num],
-                        task_num,
+                        self.dur[job_idx][task_idx],
+                        task_idx,
                         self.part_id[job_idx],
                     )
                 )
@@ -970,7 +1048,7 @@ class GeneticAlgorithmScheduler:
                         len(task_details_1) == len(task_details_2)
                         and task_details_1[-1] == task_details_2[-1]
                     ):
-                        # task_details format: (job_index, task, machine, start_time, duration, task_num, part_id)
+                        # task_details format: (job_index, task, machine, start_time, duration, task_idx, part_id)
                         # hence the last field is the part_id
                         job_pairs.append((job1, job2))
 
@@ -990,7 +1068,7 @@ class GeneticAlgorithmScheduler:
                 task2 = tasks2[i]
 
                 # Create new tasks with swapped start times and machines
-                # task_details follow this format: (job_index, task_num, machine, start_time, duration, task_index)
+                # task_details follow this format: (job_index, task, machine, start_time, duration, task_index, part_id)
                 new_task1 = (task1[0], task1[1], task2[2], task2[3], task1[4], task1[5], task1[6])
                 new_task2 = (task2[0], task2[1], task1[2], task1[3], task2[4], task2[5], task2[6])
 
@@ -1054,7 +1132,7 @@ class GeneticAlgorithmScheduler:
         schedules_and_scores = sorted(zip(self.P, self.scores), key=lambda x: x[1], reverse=True)
         self.best_schedule = schedules_and_scores[0][0]
         logger.info(
-            f"Snippet of best schedule (job, task, machine, start_time, duration, task_num, part_id): "
+            f"Snippet of best schedule (job, task, machine, start_time, duration, task_idx, part_id): "
             f"{self.best_schedule[:2]}"
         )
 
@@ -1085,7 +1163,7 @@ def reformat_output(
     # Convert best schedule into a dataframe
     schedule_df = pd.DataFrame(
         best_schedule,
-        columns=["job", "task", "machine", "starting_time", "duration", "task_num", "part_id"],
+        columns=["job", "task", "machine", "starting_time", "duration", "task_idx", "part_id"],
     )
 
     # Round the starting time and duration
