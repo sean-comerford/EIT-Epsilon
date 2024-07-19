@@ -903,7 +903,6 @@ class GeneticAlgorithmScheduler:
         avail_m = {m: 0 for m in self.M}
         product_m = {m: 0 for m in self.M}
         changeover_finish_time = 0
-        start_times = {j: 0 for j in range(len(self.J))}
 
         for job_idx in range(len(self.J)):
             job = self.J[job_idx]
@@ -929,9 +928,9 @@ class GeneticAlgorithmScheduler:
                 else:
                     start = max(
                         avail_m[m],
-                        start_times[job_idx] + self.dur[job_idx][task_idx - 1],
+                        P_prime_sorted[-1][3]
+                        + P_prime_sorted[-1][4],  # Previous task start + previous task duration
                     )
-                start_times[job_idx] = start
 
                 avail_m[m] = self.find_avail_m(start, job_idx, task_idx)
                 product_m[m] = self.part_id[job_idx]
