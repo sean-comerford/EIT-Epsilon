@@ -597,22 +597,22 @@ class GeneticAlgorithmScheduler:
         self.urgent_multiplier = None
         self.max_iterations = None
 
-    def find_avail_m(self, start: int, job_idx: int, task_num: int) -> int:
+    def find_avail_m(self, start: int, job_idx: int, task_idx: int) -> int:
         """
         Finds the next available time for a machine to start a task, considering the working day duration.
 
         Args:
             start (int): The starting time in the schedule in minutes.
             job_idx (int): The index of the job in the job list.
-            task_num (int): The task number within the job.
+            task_idx (int): The task number within the job.
 
         Returns:
             int: The next available time for the machine to start the task.
         """
         for day in self.day_range:
-            if start < day <= start + self.dur[job_idx][task_num]:
+            if start < day <= start + self.dur[job_idx][task_idx]:
                 return day
-        return start + self.dur[job_idx][task_num]
+        return start + self.dur[job_idx][task_idx]
 
     def pick_early_machine(
         self,
@@ -644,7 +644,6 @@ class GeneticAlgorithmScheduler:
             m = random.choice(compat_with_task)
 
         return m
-
 
     @staticmethod
     def slack_logic(
@@ -886,7 +885,7 @@ class GeneticAlgorithmScheduler:
                                 changeover_finish_time = start
 
                         else:
-                            m = self.pick_early_machine(job_idx, task, avail_m, random_roll)
+                            m = self.pick_early_machine(job_idx, task_idx, avail_m, random_roll)
                             start, slack_time_used = self.slack_logic(
                                 m,
                                 avail_m,
@@ -894,7 +893,7 @@ class GeneticAlgorithmScheduler:
                                 slack_time_used,
                                 P_j[-1][3],
                                 P_j[-1][4],
-                                self.dur[job_idx][task],
+                                self.dur[job_idx][task_idx],
                             )
 
                     elif operation[job_idx] == "OP2":
@@ -906,8 +905,7 @@ class GeneticAlgorithmScheduler:
                             # Start time is always when the machine comes available (due to being the first task)
                             start = avail_m[m]
                         else:
-
-                            m = self.pick_early_machine(job_idx, task, avail_m, random_roll)
+                            m = self.pick_early_machine(job_idx, task_idx, avail_m, random_roll)
                             start, slack_time_used = self.slack_logic(
                                 m,
                                 avail_m,
@@ -915,7 +913,7 @@ class GeneticAlgorithmScheduler:
                                 slack_time_used,
                                 P_j[-1][3],
                                 P_j[-1][4],
-                                self.dur[job_idx][task],
+                                self.dur[job_idx][task_idx],
                             )
 
                     else:
@@ -936,9 +934,9 @@ class GeneticAlgorithmScheduler:
                             self.part_id[job_idx],
                         )
                     )
-                    
+
                     if not slack_time_used:
-                        avail_m[m] = self.find_avail_m(start, job_idx, task)
+                        avail_m[m] = self.find_avail_m(start, job_idx, task_idx)
 
                     product_m[m] = part_size[job_idx]
 
@@ -1037,12 +1035,11 @@ class GeneticAlgorithmScheduler:
 
             # Loop over the tasks one by one
             for task_entry in job_tasks:
-
-                _, task, m, _, _, task_num, _ = task_entry
+                _, task, m, _, _, task_idx, _ = task_entry
                 slack_time_used = False
 
                 if operation[job_idx] == "OP1":
-                    if task_num == 0:
+                    if task_idx == 0:
                         start = (
                             avail_m[m]
                             if product_m[m] == 0 or self.part_id[job_idx] == product_m[m]
@@ -1058,13 +1055,13 @@ class GeneticAlgorithmScheduler:
                             avail_m,
                             slack_m,
                             slack_time_used,
-                            start_times[job_idx],
-                            self.dur[job_idx][task_num - 1],
-                            self.dur[job_idx][task_num],
+                            P_prime_sorted[-1][3],
+                            P_prime_sorted[-1][4],
+                            self.dur[job_idx][task_idx],
                         )
 
                 elif operation[job_idx] == "OP2":
-                    if task_num == 0:
+                    if task_idx == 0:
                         start = avail_m[m]
                     else:
                         start, slack_time_used = self.slack_logic(
@@ -1072,17 +1069,14 @@ class GeneticAlgorithmScheduler:
                             avail_m,
                             slack_m,
                             slack_time_used,
-                            start_times[job_idx],
-                            self.dur[job_idx][task_num - 1],
-                            self.dur[job_idx][task_num],
+                            P_prime_sorted[-1][3],
+                            P_prime_sorted[-1][4],
+                            self.dur[job_idx][task_idx],
                         )
-
-                # Record start time
-                start_times[job_idx] = start
 
                 # If slack time is used no need to update latest machine availability
                 if not slack_time_used:
-                    avail_m[m] = self.find_avail_m(start, job_idx, task_num)
+                    avail_m[m] = self.find_avail_m(start, job_idx, task_idx)
 
                 product_m[m] = self.part_id[job_idx]
 
