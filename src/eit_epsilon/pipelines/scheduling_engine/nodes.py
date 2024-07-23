@@ -780,6 +780,8 @@ class GeneticAlgorithmScheduler:
             - OP1 and OP2 represent different operation types with specific logic for task assignment.
             - Compatibility and availability are considered for machine assignment, with preference given to certain conditions.
         """
+        # If the number of individuals to create is not strictly defined we create the same amount as the
+        # whole population (this happens in generation 0)
         if num_inds is None:
             num_inds = self.n
 
@@ -885,6 +887,8 @@ class GeneticAlgorithmScheduler:
                                 changeover_finish_time = start
 
                         else:
+                            # If not the first task in the job, we pick the earliest machine to come available
+                            # with a higher probability
                             m = self.pick_early_machine(job_idx, task_idx, avail_m, random_roll)
                             start, slack_time_used = self.slack_logic(
                                 m,
@@ -972,7 +976,7 @@ class GeneticAlgorithmScheduler:
                         (self.due[job_idx] - (start_time + job_task_dur))
                         * (self.urgent_multiplier if job_idx in self.urgent_orders else 1)
                         + (
-                            # Bonus for completing tasks on time
+                            # Fixed size bonus for completing the job on time
                             on_time_bonus
                             if (self.due[job_idx] - (start_time + job_task_dur)) > 0
                             else 0
@@ -1017,6 +1021,7 @@ class GeneticAlgorithmScheduler:
         P_prime_sorted (List[Tuple[int, int, int, int, int, int, str]]): A sorted list of tuples where each tuple
         represents a task. Each task is represented as (job index, job, machine, start time, duration, task number).
         """
+        # Initialize an empty list to hold tasks for this proposed schedule
         P_prime_sorted = []
         avail_m = {m: 0 for m in self.M}
         slack_m = {m: [] for m in self.M}
@@ -1026,6 +1031,7 @@ class GeneticAlgorithmScheduler:
         # Extract the operation from custom part id
         operation = [id.split("-")[-1] for id in self.part_id]
 
+        # Loop over the jobs in the job list (J)
         for job_idx in range(len(self.J)):
             job = self.J[job_idx]
 
@@ -1037,9 +1043,12 @@ class GeneticAlgorithmScheduler:
             for task_entry in job_tasks:
                 _, task, m, _, _, task_idx, _ = task_entry
                 slack_time_used = False
+                start = None
 
                 if operation[job_idx] == "OP1":
                     if task_idx == 0:
+                        # Start whenever the first machine becomes available + optional changeover time
+                        # + optional time we have to wait for changeover mechanic to complete previous changeover
                         start = (
                             avail_m[m]
                             if product_m[m] == 0 or self.part_id[job_idx] == product_m[m]
@@ -1047,39 +1056,52 @@ class GeneticAlgorithmScheduler:
                             + self.change_over_time
                             + max((changeover_finish_time - avail_m[m]), 0)
                         )
+                        # Update changeover mechanic availability
                         if product_m[m] != 0 and self.part_id[job_idx] != product_m[m]:
                             changeover_finish_time = start
                     else:
+                        # Start depends if usable slack time is available
                         start, slack_time_used = self.slack_logic(
                             m,
                             avail_m,
                             slack_m,
                             slack_time_used,
-                            P_prime_sorted[-1][3],
-                            P_prime_sorted[-1][4],
-                            self.dur[job_idx][task_idx],
+                            P_prime_sorted[-1][3],  # Previous task start time
+                            P_prime_sorted[-1][4],  # Previous task duration
+                            self.dur[job_idx][task_idx],  # Current task duration
                         )
 
                 elif operation[job_idx] == "OP2":
                     if task_idx == 0:
+                        # Start whenever the first machine becomes available
                         start = avail_m[m]
                     else:
+                        # Start depends if usable slack time is available
                         start, slack_time_used = self.slack_logic(
                             m,
                             avail_m,
                             slack_m,
                             slack_time_used,
-                            P_prime_sorted[-1][3],
-                            P_prime_sorted[-1][4],
-                            self.dur[job_idx][task_idx],
+                            P_prime_sorted[-1][3],  # Previous task start time
+                            P_prime_sorted[-1][4],  # Previous task duration
+                            self.dur[job_idx][task_idx],  # Current task duration
                         )
 
                 # If slack time is used no need to update latest machine availability
                 if not slack_time_used:
                     avail_m[m] = self.find_avail_m(start, job_idx, task_idx)
 
+                # Record part ID of the latest product to be processed on a machine for changeovers
                 product_m[m] = self.part_id[job_idx]
 
+                # Issue warning if 'start' is still not defined after loop
+                if start is None:
+                    logger.warning(
+                        f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - No start time found for job {job_idx+1}, "
+                        f"task {task_idx+1}, machine {m+1}"
+                    )
+
+                # Add the task to the sorted list of tasks in this proposed schedule
                 P_prime_sorted.append(
                     (
                         job_idx,
@@ -1366,6 +1388,9 @@ def create_start_end_time(
     croom_reformatted_orders["Start_time_date"] = None
 
     def working_hours_shift(row):
+        """
+        Maps 480 working minutes per day (8 hours * 60 minutes) to real job starting times between 09:00-17:00 each day
+        """
         days = [d * scheduling_options["minutes_per_day"] for d in range(1, 25)]
 
         for k, day in enumerate(days):
@@ -1392,6 +1417,7 @@ def create_start_end_time(
     croom_reformatted_orders.sort_values(by="Start_time", inplace=True)
 
     # Check if the start time for each task within each job is later than the completion time of the previous task
+    # If this error is raised the schedule is invalid
     for job_id in croom_reformatted_orders["Job"].unique():
         job_schedule = croom_reformatted_orders[croom_reformatted_orders["Job"] == job_id]
         for i in range(1, len(job_schedule)):
@@ -1401,7 +1427,9 @@ def create_start_end_time(
                     f"is earlier than the completion time of the previous task!"
                 )
 
-    # Check if the start time for each task within each job is later than the completion time of the previous task
+    # Check if the start time for each task on each machine is later than the completion time of the previous task
+    # on that machine
+    # If this error is raised the schedule is invalid
     for machine in croom_reformatted_orders["Machine"].unique():
         machine_schedule = croom_reformatted_orders[
             croom_reformatted_orders["Machine"] == machine
