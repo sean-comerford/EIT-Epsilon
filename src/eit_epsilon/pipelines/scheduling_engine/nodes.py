@@ -97,7 +97,7 @@ class Job:
 
         # Create custom Part ID
         data["Custom Part ID"] = (
-            data["Type"] + "-" + data["Size"] + "-" + data["Orientation"] + "-" + data["Cementless"]
+            data["Orientation"] + "-" + data["Type"] + "-" + data["Size"] + "-" + data["Cementless"]
         )
 
         # Debug statement
@@ -622,7 +622,7 @@ class GeneticAlgorithmScheduler:
         task_idx: int,
         avail_m: Dict[int, int],
         random_roll: float,
-        prob: float = 0.85,
+        prob: float = 0.75,
     ) -> int:
         """
         Selects a machine for the given task based on availability and compatibility.
@@ -698,17 +698,19 @@ class GeneticAlgorithmScheduler:
         # Define previous task finish
         previous_task_finish = previous_task_start + previous_task_dur
 
+        if m in [""]:
+            start = avail_m[m] + changeover_duration
+
         # If the previous task is completed later than the new machine comes available
         if previous_task_finish > avail_m[m]:
             # Start time is the completion of the previous task of the job in question
             start = previous_task_finish + changeover_duration
-            # logger.info("Extra slack time!")
 
             # Difference between the moment the machine becomes available and the new tasks starts is slack
             # e.g.: machine comes available at 100, new task can only start at 150, slack = (100, 150)
             # We subtract changeover_duration, because even though the task actually starts later,
             # the changeover_duration cannot be used for a different task
-            # slack_m[m].append((avail_m[m], start - changeover_duration))
+            slack_m[m].append((avail_m[m], start - changeover_duration))
 
         else:
             # Loop over slack in this machine
@@ -801,7 +803,7 @@ class GeneticAlgorithmScheduler:
             num_inds = self.n
 
         # Extract the part size from the custom part id
-        part_size = [id.split("-")[1] for id in self.part_id]
+        part_size = [id.split("-")[2] for id in self.part_id]
 
         # Extract the operation from custom part id
         operation = [id.split("-")[-1] for id in self.part_id]
@@ -856,88 +858,68 @@ class GeneticAlgorithmScheduler:
                     # if so we do not need to update avail_m
                     slack_time_used = False
 
-                    # Conditional logic; separate flow for OP1 and OP2
-                    if operation[job_idx] == "OP1":
+                    # Conditional logic; separate flow for first task of OP1 (HAAS)
+                    if operation[job_idx] == "OP1" and task_idx == 0:
                         # Logic for first task in OP1 (HAAS machines)
-                        if task_idx == 0:
-                            compat_task_0 = self.compat[job_idx][task_idx]
-                            # Preferred machines are those that have not been used yet or processed the same
-                            # size previously (in this case no changeover is required)
-                            # Note: no changeover needed for the first task on a HAAS machine is an assumption
-                            preferred_machines = [
-                                key
-                                for key in compat_task_0
-                                if product_m.get(key) == part_size[job_idx] or product_m.get(key) == 0
-                            ]
+                        compat_task_0 = self.compat[job_idx][task_idx]
+                        # Preferred machines are those that have not been used yet or processed the same
+                        # size previously (in this case no changeover is required)
+                        # Note: no changeover needed for the first task on a HAAS machine is an assumption
+                        preferred_machines = [
+                            key
+                            for key in compat_task_0
+                            if product_m.get(key) == part_size[job_idx] or product_m.get(key) == 0
+                        ]
 
-                            # If no preferred machines can be found, pick one that comes available earliest
-                            # with a higher probability
-                            if not preferred_machines:
-                                m = self.pick_early_machine(
-                                    job_idx, task_idx, avail_m, random_roll, prob=0.7
-                                )
-                            # If there are preferred machines, pick the preferred machine that comes available
-                            # earliest with a higher probability
+                        # If no preferred machines can be found, pick one that comes available earliest
+                        # with a higher probability
+                        if not preferred_machines:
+                            m = self.pick_early_machine(
+                                job_idx, task_idx, avail_m, random_roll, prob=0.7
+                            )
+                        # If there are preferred machines, pick the preferred machine that comes available
+                        # earliest with a higher probability
+                        else:
+                            m = (
+                                min(preferred_machines, key=lambda x: avail_m.get(x))
+                                if random_roll < 0.7
+                                else random.choice(preferred_machines)
+                            )
+
+                        # Start time is the time that the machine comes available if no changeover is required
+                        # else, the changeover time is added, and an optional waiting time if we need to wait
+                        # for another changeover to finish first (only one changeover can happen concurrently)
+                        start = (
+                            avail_m[m]
+                            if product_m[m] == 0 or part_size[job_idx] == product_m[m]
+                            else avail_m[m]
+                            + self.change_over_time_op1
+                            + max((changeover_finish_time - avail_m[m]), 0)
+                        )
+
+                        # If a changeover happened, we update the time someone comes available to do another
+                        # changeover
+                        if product_m[m] != 0 and part_size[job_idx] != product_m[m]:
+                            changeover_finish_time = start
+
+                    else:
+                        # Pick a machine with preference for one available earliest
+                        m = self.pick_early_machine(job_idx, task_idx, avail_m, random_roll)
+
+                        # Initialize changeover time to 0
+                        changeover_time = 0
+
+                        # If m is in changeover machines and the last size was not the same
+                        # TODO: Use fitting dictionary instead
+                        if m in self.change_over_machines_op2:
+                            if product_m.get(m) == part_size[job_idx] or product_m.get(m) == 0:
+                                changeover_time = 0
                             else:
-                                m = (
-                                    min(preferred_machines, key=lambda x: avail_m.get(x))
-                                    if random_roll < 0.7
-                                    else random.choice(preferred_machines)
-                                )
+                                changeover_time = self.change_over_time_op2
 
-                            # Start time is the time that the machine comes available if no changeover is required
-                            # else, the changeover time is added, and an optional waiting time if we need to wait
-                            # for another changeover to finish first (only one changeover can happen concurrently)
-                            start = (
-                                avail_m[m]
-                                if product_m[m] == 0 or part_size[job_idx] == product_m[m]
-                                else avail_m[m]
-                                + self.change_over_time_op1
-                                + max((changeover_finish_time - avail_m[m]), 0)
-                            )
-
-                            # If a changeover happened, we update the time someone comes available to do another
-                            # changeover
-                            if product_m[m] != 0 and part_size[job_idx] != product_m[m]:
-                                changeover_finish_time = start
-
+                        if task_idx == 0:
+                            start = avail_m[m] + changeover_time
                         else:
-                            # If not the first task in the job, we pick the earliest machine to come available
-                            # with a higher probability
-                            m = self.pick_early_machine(job_idx, task_idx, avail_m, random_roll)
-                            start, slack_time_used = self.slack_logic(
-                                m,
-                                avail_m,
-                                slack_m,
-                                slack_time_used,
-                                P_j[-1][3],
-                                P_j[-1][4],
-                                self.dur[job_idx][task_idx],
-                            )
-
-                    elif operation[job_idx] == "OP2":
-                        if task_idx == 0:  # Ceramic drag
-                            # If first task in OP2: pick machine that comes available earliest with a higher
-                            # probability
-                            m = self.pick_early_machine(job_idx, task_idx, avail_m, random_roll)
-
-                            # Start time is always when the machine comes available (due to being the first task)
-                            start = avail_m[m]
-
-                        else:
-                            m = self.pick_early_machine(job_idx, task_idx, avail_m, random_roll)
-
-                            # Initialize changeover time to 0
-                            changeover_time = 0
-
-                            # If m is in changeover machines and the last size was not the same
-                            # TODO: Use fitting dictionary instead
-                            if m in self.change_over_machines_op2:
-                                if product_m.get(m) == part_size[job_idx] or product_m.get(m) == 0:
-                                    changeover_time = 0
-                                else:
-                                    changeover_time = self.change_over_time_op2
-
                             start, slack_time_used = self.slack_logic(
                                 m,
                                 avail_m,
@@ -948,12 +930,6 @@ class GeneticAlgorithmScheduler:
                                 self.dur[job_idx][task_idx],
                                 changeover_time,
                             )
-
-                    else:
-                        logger.error(
-                            f"Invalid operation: {operation} - Only 'OP1' and 'OP2' are supported"
-                        )
-                        raise ValueError("Invalid operation")
 
                     # Append the task to our proposed schedule
                     P_j.append(
@@ -1101,19 +1077,29 @@ class GeneticAlgorithmScheduler:
                         )
 
                 elif operation[job_idx] == "OP2":
+                    # Initialize changeover time to 0
+                    changeover_time = 0
+
+                    # If m is in changeover machines and the last size was not the same
+                    # TODO: Use fitting dictionary instead
+                    if m in self.change_over_machines_op2:
+                        if product_m.get(m) == self.part_id[job_idx] or product_m.get(m) == 0:
+                            changeover_time = 0
+                        else:
+                            changeover_time = self.change_over_time_op2
+
                     if task_idx == 0:
-                        # Start whenever the first machine becomes available
-                        start = avail_m[m]
+                        start = avail_m[m] + changeover_time
                     else:
-                        # Start depends if usable slack time is available
                         start, slack_time_used = self.slack_logic(
                             m,
                             avail_m,
                             slack_m,
                             slack_time_used,
-                            P_prime_sorted[-1][3],  # Previous task start time
-                            P_prime_sorted[-1][4],  # Previous task duration
-                            self.dur[job_idx][task_idx],  # Current task duration
+                            P_prime_sorted[-1][3],
+                            P_prime_sorted[-1][4],
+                            self.dur[job_idx][task_idx],
+                            changeover_time,
                         )
 
                 # If slack time is used no need to update latest machine availability
@@ -1239,10 +1225,9 @@ class GeneticAlgorithmScheduler:
                     job2, task_details_2 = job_list[j]
 
                     # Append if the part ID matches for a pair
-                    if (
-                        len(task_details_1) == len(task_details_2)
-                        and task_details_1[-1] == task_details_2[-1]
-                    ):
+                    # Each job consists of multiple tuples for tasks, so we need to select any task
+                    # and extract the part ID (except for the orientation (left vs. right) as this has no influence)
+                    if task_details_1[0][-1].split("-")[1:] == task_details_2[0][-1].split("-")[1:]:
                         # task_details format: (job_index, task, machine, start_time, duration, task_idx, part_id)
                         # hence the last field is the part_id
                         job_pairs.append((job1, job2))
@@ -1320,11 +1305,11 @@ class GeneticAlgorithmScheduler:
 
         for iteration in range(self.max_iterations):
             logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Iteration {iteration + 1}")
-            # self.offspring()
-            # self.mutate()
+            self.evaluate_population(best_scores=best_scores)
+            self.offspring()
+            self.mutate()
             if len(self.P) < self.n:
                 self.P += self.init_population(num_inds=self.n - len(self.P), fill_inds=True)
-            self.evaluate_population(best_scores=best_scores)
 
         schedules_and_scores = sorted(zip(self.P, self.scores), key=lambda x: x[1], reverse=True)
         self.best_schedule = schedules_and_scores[0][0]
