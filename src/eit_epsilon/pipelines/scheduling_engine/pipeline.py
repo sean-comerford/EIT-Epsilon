@@ -46,7 +46,12 @@ def create_pipeline(**kwargs) -> Pipeline:
             ),
             node(
                 func=genetic_algorithm.run,
-                inputs=["input_repr_dict", "params:scheduling_options"],
+                inputs=[
+                    "input_repr_dict",
+                    "params:scheduling_options",
+                    "compatibility_dict_op1",
+                    "compatibility_dict_op2",
+                ],
                 outputs=["best_schedule", "best_scores"],
                 name="mock_genetic_algorithm",
             ),
