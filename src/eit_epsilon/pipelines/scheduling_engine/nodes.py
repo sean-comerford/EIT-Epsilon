@@ -929,7 +929,11 @@ class GeneticAlgorithmScheduler:
                         preferred_machines = [
                             key
                             for key in compat_task_0
-                            if product_m.get(key) == self.part_id[job_idx] or product_m.get(key) == 0
+                            if (
+                                product_m.get(key) == 0
+                                or product_m.get(key) == self.part_id[job_idx]
+                                or product_m.get(key) in self.compatibility_dict[self.part_id[job_idx]]
+                            )
                         ]
 
                         # If no preferred machines can be found, pick one that comes available earliest
@@ -953,9 +957,9 @@ class GeneticAlgorithmScheduler:
                         start = (
                             avail_m[m]
                             if (
-                                product_m[m] == 0
-                                or product_m[m] == self.part_id[job_idx]
-                                or product_m[m] in self.compatibility_dict[self.part_id[job_idx]]
+                                product_m.get(m) == 0
+                                or product_m.get(m) == self.part_id[job_idx]
+                                or product_m.get(m) in self.compatibility_dict[self.part_id[job_idx]]
                             )
                             else avail_m[m]
                             + self.change_over_time_op1
@@ -979,9 +983,9 @@ class GeneticAlgorithmScheduler:
                             changeover_time = (
                                 0
                                 if (
-                                    product_m[m] == 0
-                                    or product_m[m] == self.part_id[job_idx]
-                                    or product_m[m] in self.compatibility_dict[self.part_id[job_idx]]
+                                    product_m.get(m) == 0
+                                    or product_m.get(m) == self.part_id[job_idx]
+                                    or product_m.get(m) in self.compatibility_dict[self.part_id[job_idx]]
                                 )
                                 else self.change_over_time_op2
                             )
@@ -1124,16 +1128,20 @@ class GeneticAlgorithmScheduler:
                     start = (
                         avail_m[m]
                         if (
-                            product_m[m] == 0
-                            or product_m[m] == self.part_id[job_idx]
-                            or product_m[m] in self.compatibility_dict[self.part_id[job_idx]]
+                            product_m.get(m) == 0
+                            or product_m.get(m) == self.part_id[job_idx]
+                            or product_m.get(m) in self.compatibility_dict[self.part_id[job_idx]]
                         )
                         else avail_m[m]
                         + self.change_over_time_op1
                         + max((changeover_finish_time - avail_m[m]), 0)
                     )
                     # Update changeover mechanic availability
-                    if product_m[m] != 0 and self.part_id[job_idx] != product_m[m]:
+                    if (
+                        product_m.get(m) != 0
+                        and product_m.get(m) != self.part_id[job_idx]
+                        and product_m.get(m) not in self.compatibility_dict[self.part_id[job_idx]]
+                    ):
                         changeover_finish_time = start
 
                 else:
@@ -1145,9 +1153,9 @@ class GeneticAlgorithmScheduler:
                         changeover_time = (
                             0
                             if (
-                                product_m[m] == 0
-                                or product_m[m] == self.part_id[job_idx]
-                                or product_m[m] in self.compatibility_dict[self.part_id[job_idx]]
+                                product_m.get(m) == 0
+                                or product_m.get(m) == self.part_id[job_idx]
+                                or product_m.get(m) in self.compatibility_dict[self.part_id[job_idx]]
                             )
                             else self.change_over_time_op2
                         )
