@@ -389,8 +389,9 @@ class Shop:
                         1,
                     )
                 else:
+                    # TODO: Check if using the max. batch size makes sense for all machines.
                     duration = round(
-                        op2_times.loc[task, "Actual "] * in_scope_orders.iloc[i]["Order Qty"],
+                        op2_times.loc[task, "Actual "] * 12,  # in_scope_orders.iloc[i]["Order Qty"],
                         1,
                     )
                 job_dur.append(duration)
@@ -1189,8 +1190,8 @@ class GeneticAlgorithmScheduler:
         2. Make a deep copy of these schedules.
         3. For each schedule:
             a. Group tasks by their job index.
-            b. Identify pairs of jobs with the same number of tasks and identical durations.
-            c. Randomly select a pair of jobs.
+            b. Identify pairs of jobs with the same number of tasks, identical durations and compatible part IDs.
+            c. Randomly select a pair of jobs up to four times.
             d. Swap the start times and machines of tasks between the selected jobs.
             e. If the new schedule is unique, add it to the list of new schedules.
         4. Add all new schedules to the population.
@@ -1226,36 +1227,64 @@ class GeneticAlgorithmScheduler:
                     job2, task_details_2 = job_list[j]
 
                     # Append if the part ID matches for a pair
-                    # Each job consists of multiple tuples for tasks, so we need to select any task
-                    # and extract the part ID (except for the orientation (left vs. right) as this has no influence)
-                    if task_details_1[0][-1] == task_details_2[0][-1]:  # .split("-")[1:]
-                        # task_details format: (job_index, task, machine, start_time, duration, task_idx, part_id)
-                        # hence the last field is the part_id
-                        job_pairs.append((job1, job2))
+                    # Each job consists of multiple tuples for tasks, we will check if the number of tasks is the same
+                    # and then if the duration of all tasks matches
+                    if len(task_details_1) == len(task_details_2):
+                        # The third last field in the task tuple is the duration
+                        all_durations_match = all(
+                            task1[-3] == task2[-3]
+                            for task1, task2 in zip(task_details_1, task_details_2)
+                        )
+
+                        if all_durations_match:
+                            # Extract custom part ID's
+                            custom_part_id_1 = task_details_1[0][-1]
+                            custom_part_id_2 = task_details_2[0][-1]
+
+                            # Check compatibility in both dictionaries safely
+                            # This is required to make sure no extra changeover will be needed due to mutation
+                            compat_op1 = custom_part_id_1 in self.compatibility_dict_op1.get(
+                                custom_part_id_2, []
+                            )
+                            compat_op2 = custom_part_id_1 in self.compatibility_dict_op2.get(
+                                custom_part_id_2, []
+                            )
+
+                            # If the part ID between the jobs is the same, or they are compatible append to job pairs
+                            if (custom_part_id_1 == custom_part_id_2) or compat_op1 or compat_op2:
+                                job_pairs.append((job1, job2))
 
             # If no pairs found, continue to the next schedule
             if not job_pairs:
                 continue
 
-            # Randomly select a pair of jobs
-            job1, job2 = random.choice(job_pairs)
+            # Randomly select a pair of jobs (at least once, but up to four times)
+            for _ in range(random.randint(1, 4)):
+                job1, job2 = random.choice(job_pairs)
 
-            # Swap the start times of the tasks in the selected jobs
-            tasks1 = jobs[job1]
-            tasks2 = jobs[job2]
+                # Remove all entries in job_pairs where either job1 or job2 appears
+                # This ensures that we do not mutate the same job multiple times
+                job_pairs = [
+                    (j1, j2) for j1, j2 in job_pairs if j1 not in (job1, job2) and j2 not in (job1, job2)
+                ]
 
-            for i in range(len(tasks1)):
-                task1 = tasks1[i]
-                task2 = tasks2[i]
+                # Swap the start times of the tasks in the selected jobs
+                tasks1 = jobs[job1]
+                tasks2 = jobs[job2]
 
-                # Create new tasks with swapped start times and machines
-                # task_details follow this format: (job_index, task, machine, start_time, duration, task_index, part_id)
-                new_task1 = (task1[0], task1[1], task2[2], task2[3], task1[4], task1[5], task1[6])
-                new_task2 = (task2[0], task2[1], task1[2], task1[3], task2[4], task2[5], task2[6])
+                for i in range(len(tasks1)):
+                    task1 = tasks1[i]
+                    task2 = tasks2[i]
 
-                # Update the schedule
-                schedule[schedule.index(task1)] = new_task1
-                schedule[schedule.index(task2)] = new_task2
+                    # Create new tasks with swapped start times and machines
+                    # task_details follow this format:
+                    # (job_index, task, machine, start_time, duration, task_index, part_id)
+                    new_task1 = (task1[0], task1[1], task2[2], task2[3], task1[4], task1[5], task1[6])
+                    new_task2 = (task2[0], task2[1], task1[2], task1[3], task2[4], task2[5], task2[6])
+
+                    # Update the schedule
+                    schedule[schedule.index(task1)] = new_task1
+                    schedule[schedule.index(task2)] = new_task2
 
             # If the new schedule does not exist yet in the population, add it to P_0
             if schedule not in P_0 and schedule not in new_schedules:
