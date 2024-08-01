@@ -619,7 +619,7 @@ class GeneticAlgorithmScheduler:
                 return day
         return start + self.dur[job_idx][task_idx]
 
-    def adjust_changeover_finish_time(self, changeover_finish_time: int) -> int:
+    def adjust_changeover_finish_time(self, start_time: int) -> int:
         """
         Adjusts the changeover finish time to ensure it completes before the working day ends.
         Practically this means that if a changeover is set to take 3 hours, it cannot be scheduled to start
@@ -636,14 +636,14 @@ class GeneticAlgorithmScheduler:
         """
 
         # Calculate the current day's range
-        day_multiple = (changeover_finish_time // self.minutes_per_day) * self.minutes_per_day
+        day_multiple = (start_time // self.minutes_per_day) * self.minutes_per_day
         start_of_range = day_multiple + (self.minutes_per_day - self.change_over_time_op1)
         end_of_range = day_multiple + self.minutes_per_day
 
         # Check if the changeover_finish_time falls in the range and adjust accordingly
-        if start_of_range < changeover_finish_time < end_of_range:
+        if start_of_range < start_time < end_of_range:
             return end_of_range
-        return changeover_finish_time
+        return start_time
 
     def pick_early_machine(
         self,
@@ -922,9 +922,10 @@ class GeneticAlgorithmScheduler:
                                 or product_m[m] == self.part_id[job_idx]
                                 or product_m[m] in self.compatibility_dict_op1[self.part_id[job_idx]]
                             )
-                            else avail_m[m]
+                            else self.adjust_changeover_finish_time(
+                                avail_m[m] + max((changeover_finish_time - avail_m[m]), 0)
+                            )
                             + self.change_over_time_op1
-                            + max((changeover_finish_time - avail_m[m]), 0)
                         )
 
                         # If a changeover happened, we update the time someone comes available to do another
