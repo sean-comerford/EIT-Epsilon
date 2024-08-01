@@ -619,6 +619,32 @@ class GeneticAlgorithmScheduler:
                 return day
         return start + self.dur[job_idx][task_idx]
 
+    def adjust_changeover_finish_time(self, changeover_finish_time: int) -> int:
+        """
+        Adjusts the changeover finish time to ensure it completes before the working day ends.
+        Practically this means that if a changeover is set to take 3 hours, it cannot be scheduled to start
+        in the last 3 hours of the working day. It will instead be pushed to the next workday.
+
+        If the changeover finish time is between the range of 300 and 480 (exclusive)
+        for any day multiple of 480, it will be set to the next multiple of 480.
+
+        Args:
+        changeover_finish_time (int): The original changeover finish time in minutes.
+
+        Returns:
+        int: The adjusted changeover finish time.
+        """
+
+        # Calculate the current day's range
+        day_multiple = (changeover_finish_time // self.minutes_per_day) * self.minutes_per_day
+        start_of_range = day_multiple + (self.minutes_per_day - self.change_over_time_op1)
+        end_of_range = day_multiple + self.minutes_per_day
+
+        # Check if the changeover_finish_time falls in the range and adjust accordingly
+        if start_of_range < changeover_finish_time < end_of_range:
+            return end_of_range
+        return changeover_finish_time
+
     def pick_early_machine(
         self,
         job_idx: int,
@@ -904,18 +930,18 @@ class GeneticAlgorithmScheduler:
                         # If a changeover happened, we update the time someone comes available to do another
                         # changeover
                         if product_m[m] != 0 and self.part_id[job_idx] != product_m[m]:
-                            changeover_finish_time = start
+                            changeover_finish_time = self.adjust_changeover_finish_time(start)
 
                     else:
                         # Pick a machine with preference for one available earliest
                         m = self.pick_early_machine(job_idx, task_idx, avail_m, random_roll)
 
                         # Initialize changeover time to 0
-                        changeover_time = 0
+                        changeover_duration = 0
 
                         # If m is in changeover machines and the last size was not the same
                         if m in self.change_over_machines_op2:
-                            changeover_time = (
+                            changeover_duration = (
                                 0
                                 if (
                                     product_m[m] == 0
@@ -926,7 +952,7 @@ class GeneticAlgorithmScheduler:
                             )
 
                         if task_idx == 0:
-                            start = avail_m[m] + changeover_time
+                            start = avail_m[m] + changeover_duration
                         else:
                             start, slack_time_used = self.slack_logic(
                                 m,
@@ -936,7 +962,7 @@ class GeneticAlgorithmScheduler:
                                 P_j[-1][3],
                                 P_j[-1][4],
                                 self.dur[job_idx][task_idx],
-                                changeover_time,
+                                changeover_duration,
                             )
 
                     # Append the task to our proposed schedule
@@ -1077,11 +1103,11 @@ class GeneticAlgorithmScheduler:
 
                 else:
                     # Initialize changeover time to 0
-                    changeover_time = 0
+                    changeover_duration = 0
 
                     # If m is in changeover machines and the last size was not the same
                     if m in self.change_over_machines_op2:
-                        changeover_time = (
+                        changeover_duration = (
                             0
                             if (
                                 product_m[m] == 0
@@ -1091,7 +1117,7 @@ class GeneticAlgorithmScheduler:
                             else self.change_over_time_op2
                         )
                     if task_idx == 0:
-                        start = avail_m[m] + changeover_time
+                        start = avail_m[m] + changeover_duration
                     else:
                         start, slack_time_used = self.slack_logic(
                             m,
@@ -1101,7 +1127,7 @@ class GeneticAlgorithmScheduler:
                             P_prime_sorted[-1][3],
                             P_prime_sorted[-1][4],
                             self.dur[job_idx][task_idx],
-                            changeover_time,
+                            changeover_duration,
                         )
 
                 # If slack time is used no need to update latest machine availability
