@@ -10,6 +10,7 @@ import random
 import logging
 from pandas.api.types import is_string_dtype
 import plotly
+import itertools
 from typing import List, Dict, Tuple, Union
 from collections import defaultdict
 
@@ -484,6 +485,67 @@ class JobShop(Job, Shop):
 
         return in_scope_data
 
+    @staticmethod
+    def build_changeover_compatibility(croom_processed_orders, size_categories):
+        # Define attributes
+        sizes = croom_processed_orders["Size"].unique()
+        orientations = croom_processed_orders["Orientation"].unique()
+        types = croom_processed_orders["Type"].unique()
+        cementing_methods = croom_processed_orders["Cementless"].unique()
+        operations = croom_processed_orders["operation"].unique()
+
+        # Helper function to determine the size category
+        def get_size_category(size):
+            for category, sizes in size_categories.items():
+                if size in sizes:
+                    return category
+            return None
+
+        # Generate all possible part IDs
+        part_ids = [
+            f"{orientation}-{type}-{size}-{cementing}-{op}"
+            for orientation, type, size, cementing, op in itertools.product(
+                orientations, types, sizes, cementing_methods, operations
+            )
+        ]
+
+        # Create combined compatibility dictionary
+        combined_compatibility_dict = {}
+
+        for part_id in part_ids:
+            orientation, type, size, cementing, op = part_id.split("-")
+            size_category = get_size_category(size)
+
+            compatible_parts = []
+
+            for other_part_id in part_ids:
+                if other_part_id == part_id:
+                    continue
+
+                (
+                    other_orientation,
+                    other_type,
+                    other_size,
+                    other_cementing,
+                    other_op,
+                ) = other_part_id.split("-")
+                other_size_category = get_size_category(other_size)
+
+                # OP1 compatibility rules
+                if op == "OP1" and other_op == "OP1":
+                    if size == other_size and cementing == other_cementing:
+                        compatible_parts.append(other_part_id)
+
+                # OP2 compatibility rules
+                elif op == "OP2" and other_op == "OP2":
+                    if type == other_type and size_category == other_size_category:
+                        if type == "CR" or (type == "PS" and cementing == other_cementing):
+                            compatible_parts.append(other_part_id)
+
+            combined_compatibility_dict[part_id] = compatible_parts
+
+        return combined_compatibility_dict
+
     def build_ga_representation(
         self,
         croom_processed_orders: pd.DataFrame,
@@ -596,8 +658,7 @@ class GeneticAlgorithmScheduler:
         self.change_over_time_op1 = None
         self.change_over_time_op2 = None
         self.change_over_machines_op2 = None
-        self.compatibility_dict_op1 = None
-        self.compatibility_dict_op2 = None
+        self.compatibility_dict = None
         self.urgent_orders = None
         self.urgent_multiplier = None
         self.max_iterations = None
@@ -894,7 +955,7 @@ class GeneticAlgorithmScheduler:
                             if (
                                 product_m[m] == 0
                                 or product_m[m] == self.part_id[job_idx]
-                                or product_m[m] in self.compatibility_dict_op1[self.part_id[job_idx]]
+                                or product_m[m] in self.compatibility_dict[self.part_id[job_idx]]
                             )
                             else avail_m[m]
                             + self.change_over_time_op1
@@ -920,7 +981,7 @@ class GeneticAlgorithmScheduler:
                                 if (
                                     product_m[m] == 0
                                     or product_m[m] == self.part_id[job_idx]
-                                    or product_m[m] in self.compatibility_dict_op2[self.part_id[job_idx]]
+                                    or product_m[m] in self.compatibility_dict[self.part_id[job_idx]]
                                 )
                                 else self.change_over_time_op2
                             )
@@ -1065,7 +1126,7 @@ class GeneticAlgorithmScheduler:
                         if (
                             product_m[m] == 0
                             or product_m[m] == self.part_id[job_idx]
-                            or product_m[m] in self.compatibility_dict_op1[self.part_id[job_idx]]
+                            or product_m[m] in self.compatibility_dict[self.part_id[job_idx]]
                         )
                         else avail_m[m]
                         + self.change_over_time_op1
@@ -1086,7 +1147,7 @@ class GeneticAlgorithmScheduler:
                             if (
                                 product_m[m] == 0
                                 or product_m[m] == self.part_id[job_idx]
-                                or product_m[m] in self.compatibility_dict_op2[self.part_id[job_idx]]
+                                or product_m[m] in self.compatibility_dict[self.part_id[job_idx]]
                             )
                             else self.change_over_time_op2
                         )
@@ -1243,15 +1304,12 @@ class GeneticAlgorithmScheduler:
 
                             # Check compatibility in both dictionaries safely
                             # This is required to make sure no extra changeover will be needed due to mutation
-                            compat_op1 = custom_part_id_1 in self.compatibility_dict_op1.get(
-                                custom_part_id_2, []
-                            )
-                            compat_op2 = custom_part_id_1 in self.compatibility_dict_op2.get(
+                            compat_op = custom_part_id_1 in self.compatibility_dict.get(
                                 custom_part_id_2, []
                             )
 
                             # If the part ID between the jobs is the same, or they are compatible append to job pairs
-                            if (custom_part_id_1 == custom_part_id_2) or compat_op1 or compat_op2:
+                            if (custom_part_id_1 == custom_part_id_2) or compat_op:
                                 job_pairs.append((job1, job2))
 
             # If no pairs found, continue to the next schedule
@@ -1293,19 +1351,14 @@ class GeneticAlgorithmScheduler:
         # Add all schedules from P_0 to the population
         self.P = P_0 + new_schedules
 
-    def run(
-        self,
-        input_repr_dict: Dict[str, any],
-        scheduling_options: dict,
-        compatibility_dict_op1: dict,
-        compatibility_dict_op2: dict,
-    ):
+    def run(self, input_repr_dict: Dict[str, any], scheduling_options: dict, compatibility_dict: dict):
         """
         Runs the genetic algorithm by initializing the population, evaluating it, and selecting the best schedule.
 
         Args:
             input_repr_dict (Dict[str, any]): A dictionary containing the necessary input variables for the GA.
             scheduling_options (dict): Dictionary containing hyperparameters for running the algorithm.
+            compatibility_dict (dict): Dictionary containing the compatibility information for changeovers.
 
         Returns:
             Tuple[List[Tuple[int, int, int, int, float]], List[int]]: The best schedule with the highest score and the list of best scores per generation.
@@ -1323,8 +1376,7 @@ class GeneticAlgorithmScheduler:
         self.change_over_time_op1 = scheduling_options["change_over_time_op1"]
         self.change_over_time_op2 = scheduling_options["change_over_time_op2"]
         self.change_over_machines_op2 = scheduling_options["change_over_machines_op2"]
-        self.compatibility_dict_op1 = compatibility_dict_op1
-        self.compatibility_dict_op2 = compatibility_dict_op2
+        self.compatibility_dict = compatibility_dict
         self.max_iterations = scheduling_options["max_iterations"]
         self.urgent_multiplier = scheduling_options["urgent_multiplier"]
         self.urgent_orders = [job_idx - 1 for job_idx in scheduling_options["urgent_orders"]]
