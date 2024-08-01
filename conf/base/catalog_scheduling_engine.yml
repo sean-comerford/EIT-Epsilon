@@ -124,6 +124,7 @@ gantt_chart_json:
       pattern_shape: Job
       title: Production Schedule
       hover_name: Order
+
       hover_data: ['Order_date', 'Due_date', 'task', 'Custom Part ID']
       template: simple_white
       color_discrete_sequence: ['rgb(41, 24, 107)', 'rgb(42, 35, 160)', 'rgb(15, 71, 153)',
@@ -144,6 +145,7 @@ gantt_chart_json:
             'Wash-1', 'Inspection-4', 'Inspection-3', 'Inspection-2',
             'Inspection-1', 'HAAS-6', 'HAAS-5', 'HAAS-4', 'HAAS-3', 'HAAS-2', 'HAAS-1'
           ]
+
       title: Production Schedule for Operation 1 & 2
       autosize: True
       title_font_family: Arial

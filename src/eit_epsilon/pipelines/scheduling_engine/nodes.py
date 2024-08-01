@@ -879,6 +879,7 @@ class GeneticAlgorithmScheduler:
                                 else avail_m[m]
                                 + self.change_over_time
                                 + max((changeover_finish_time - avail_m[m]), 0)
+
                             )
 
                             # If a changeover happened, we update the time someone comes available to do another
