@@ -5,11 +5,13 @@ import numpy as np
 from datetime import datetime
 import math
 import re
+import copy
 import random
 import logging
 from pandas.api.types import is_string_dtype
 import plotly
 from typing import List, Dict, Tuple, Union
+from collections import defaultdict
 
 # Instantiate logger
 logger = logging.getLogger(__name__)
@@ -22,12 +24,13 @@ class Job:
     """
 
     @staticmethod
-    def filter_in_scope_op1(data: pd.DataFrame) -> pd.DataFrame:
+    def filter_in_scope(data: pd.DataFrame, operation: str = "OP 1") -> pd.DataFrame:
         """
         Filters the data to include only in-scope operations for OP 1.
 
         Args:
             data (pd.DataFrame): The input data.
+            operation (str, optional): The operation for which to filter data. Defaults to 'OP 1'.
 
         Returns:
             pd.DataFrame: The filtered data.
@@ -36,19 +39,31 @@ class Job:
         logger.info(f"Total order data: {data.shape}")
 
         # Apply the filter
-        inscope_data = data[
-            (
-                data["Part Description"].str.contains("OP 1")
-                | data["Part Description"].str.contains("ATT ")
-            )
-            & (~data["On Hold?"])
-            & (~data["Part Description"].str.contains("OP 2"))
-        ]
+        if operation == "OP 1":
+            in_scope_data = data[
+                (
+                    data["Part Description"].str.contains("OP 1")
+                    | data["Part Description"].str.contains("ATT ")
+                )
+                & (~data["On Hold?"])
+                & (~data["Part Description"].str.contains("OP 2"))
+            ]
+
+        elif operation == "OP 2":
+            in_scope_data = data[
+                (data["Part Description"].str.contains("OP 2"))
+                & (~data["On Hold?"])
+                & (~data["Part Description"].str.contains("OP 1"))
+            ]
+
+        else:
+            logger.error(f"Invalid operation: {operation} - Only 'OP 1' and 'OP 2' are supported")
+            raise ValueError("Invalid operation")
 
         # Debug statement
-        logger.info(f"In-scope data for OP 1: {inscope_data.shape}")
+        logger.info(f"In-scope data for {operation}: {in_scope_data.shape}")
 
-        return inscope_data
+        return in_scope_data
 
     @staticmethod
     def extract_info(data: pd.DataFrame) -> pd.DataFrame:
@@ -62,18 +77,27 @@ class Job:
             pd.DataFrame: The data with extracted information.
         """
         data = data.assign(
+            # CR: Cruciate retaining, PS: Posterior stabilizing
             Type=lambda x: x["Part Description"].apply(
                 lambda y: "CR" if "CR" in y else ("PS" if "PS" in y else "")
             ),
+            # Range 1-10 with optional 'N' for some sizes; e.g. '5N' (Not sure what this stands for)
             Size=lambda x: x["Part Description"].apply(
                 lambda y: (re.search(r"Sz (\d+N?)", y).group(1) if re.search(r"Sz (\d+N?)", y) else "")
             ),
+            # LEFT or RIGHT orientation
             Orientation=lambda x: x["Part Description"].apply(
                 lambda y: ("LEFT" if "LEFT" in y.upper() else ("RIGHT" if "RIGHT" in y.upper() else ""))
             ),
+            # CLS: Cementless, CTD: Cemented
             Cementless=lambda x: x["Part Description"].apply(
-                lambda y: "CLS" if "CLS" in y.upper() else "C"
+                lambda y: "CLS" if "CLS" in y.upper() else "CTD"
             ),
+        )
+
+        # Create custom Part ID
+        data["Custom Part ID"] = (
+            data["Type"] + "-" + data["Size"] + "-" + data["Orientation"] + "-" + data["Cementless"]
         )
 
         # Debug statement
@@ -108,13 +132,14 @@ class Job:
             logger.info(f"Part ID consistency check passed")
 
     @staticmethod
-    def create_jobs_op1(data: pd.DataFrame) -> List[List[int]]:
+    def create_jobs(data: pd.DataFrame, operation: str = "OP 1") -> List[List[int]]:
         """
         Creates jobs representation for the GA, defined as J.
         Cemented products do not have to go through manual prep in OP 1.
 
         Args:
             data (pd.DataFrame): The input data.
+            operation (str, optional): The operation for which to create jobs. Defaults to 'OP 1'.
 
         Returns:
             List[List[int]]: The list of jobs.
@@ -127,25 +152,51 @@ class Job:
         logger.info(f"Proportion of cementless products: {cementless_percentage:.1f}%")
 
         # Populate J
-        J = [
-            [1, 2, 3, 4, 5, 6, 7] if cementless == "CLS" else [1, 2, 3, 6, 7]
-            for cementless in data["Cementless"]
-        ]
+        if operation == "OP 1":
+            op1_data = data[~data["Part Description"].str.contains("OP 2")]
 
-        if not len(J) == len(data):
-            logger.error(
-                "[bold red blink]J is not of the same length as processed orders![/]",
-                extra={"markup": True},
-            )
+            J = [
+                [1, 2, 3, 4, 5, 6, 7] if cementless == "CLS" else [1, 2, 3, 6, 7]
+                for cementless in op1_data["Cementless"]
+            ]
+
+            if not len(J) == len(op1_data):
+                logger.error(
+                    "[bold red blink]J is not of the same length as processed orders![/]",
+                    extra={"markup": True},
+                )
+
+        elif operation == "OP 2":
+            op2_data = data[data["Part Description"].str.contains("OP 2")]
+
+            J = [
+                [10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+                if cementless == "CLS"
+                else [10, 11, 12, 13, 14, 16, 17, 18, 19]
+                for cementless in op2_data["Cementless"]
+            ]
+
+            if not len(J) == len(op2_data):
+                logger.error(
+                    "[bold red blink]J is not of the same length as processed orders![/]",
+                    extra={"markup": True},
+                )
+
+        else:
+            logger.error(f"Invalid operation: {operation} - Only 'OP 1' and 'OP 2' are supported")
+            raise ValueError("Invalid operation")
 
         # Debug statement
-        logger.info(f"Snippet of Jobs for OP 1: {J[:2]}")
+        logger.info(f"Snippet of Jobs for {operation}: {J[:2]}")
 
         return J
 
     @staticmethod
-    def get_part_id(data: pd.DataFrame) -> List[int]:
-        part_id = data["Part ID"].to_list()
+    def get_part_id(data: pd.DataFrame) -> List[str]:
+        part_id = data["Custom Part ID"]
+
+        # Convert the series to a list
+        part_id = part_id.tolist()
 
         # Show snippet of Part IDs
         logger.info(f"Snippet of Part IDs: {part_id[:5]}")
@@ -161,27 +212,25 @@ class Shop:
     """
 
     @staticmethod
-    def create_machines(machine_qty_dict: Dict[str, int]) -> List[int]:
+    def create_machines(task_to_machines: Dict[int, List[int]]) -> List[int]:
         """
-        Creates a list of machines based on the quantity dictionary.
+        Creates a list of machines based on all the unique machines in the task_to_machines dictionary.
 
         Args:
-            machine_qty_dict (Dict[str, int]): The dictionary of machine quantities.
+            task_to_machines (Dict[int, List[int]]): The dictionary of machine quantities.
 
         Returns:
             List[int]: The list of machines.
         """
-        total_machines = sum(machine_qty_dict.values())
-        M = list(range(1, total_machines + 1))
-
-        # Debug statement
-        logger.info(f"Machine list (M): {M}")
+        M = list(set([machine for machines in task_to_machines.values() for machine in machines]))
 
         return M
 
     @staticmethod
     def get_compatibility(
-        J: List[List[int]], task_to_machines: Dict[int, List[int]]
+        J: List[List[int]],
+        croom_processed_orders: pd.DataFrame,
+        task_to_machines: Dict[int, List[int]],
     ) -> List[List[List[int]]]:
         """
         Gets the compatibility of tasks to machines.
@@ -192,19 +241,27 @@ class Shop:
 
         Args:
             J (List[List[int]]): The list of jobs.
+            croom_processed_orders (pd.DataFrame): The DataFrame containing processed orders.
             task_to_machines (Dict[int, List[int]]): The dictionary mapping tasks to machines.
 
         Returns:
             List[List[List[int]]]: The compatibility list.
         """
         compat = []
-        for job_tasks in J:
+        for i, job_tasks in enumerate(J):
             job_compat = []
             for task in job_tasks:
                 if task in task_to_machines:
-                    machines = task_to_machines[task]
+                    # Check the table containing all data on jobs for 'Cementless' status for the job index
+                    if task == 1 and croom_processed_orders.loc[i, "Cementless"] == "CTD":
+                        machines = task_to_machines[
+                            99
+                        ]  # HAAS machines that can only handle cemented products
+                    else:
+                        machines = task_to_machines[task]
+
                 else:
-                    raise ValueError("Invalid task number!")
+                    raise ValueError(f"Invalid task number! Task: {task}")
                 job_compat.append(machines)
             compat.append(job_compat)
 
@@ -215,8 +272,10 @@ class Shop:
 
     @staticmethod
     def preprocess_cycle_times(
-        cycle_times: pd.DataFrame, last_task_minutes: int = 4
-    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        monza_cycle_times_op1: pd.DataFrame,
+        monza_cycle_times_op2: pd.DataFrame,
+        last_task_minutes: int = 4,
+    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """
         Preprocesses the cycle times:
             1.) Remove empty rows and columns
@@ -226,25 +285,26 @@ class Shop:
             5.) Split data for cruciate retaining and posterior stabilizing products
 
         Args:
-            cycle_times (pd.DataFrame): The cycle times data.
+            monza_cycle_times_op1 (pd.DataFrame): The OP 1 cycle times data.
+            monza_cycle_times_op2 (pd.DataFrame): The OP 2 cycle times data.
             last_task_minutes (int, optional): The duration of the last task. Defaults to 4 minutes.
 
         Returns:
-            Tuple[pd.DataFrame, pd.DataFrame]: The preprocessed PS and CR cycle times.
+            Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]: The preprocessed PS-, CR-, and OP 2 cycle times.
         """
-        cycle_times.columns = cycle_times.iloc[1]
-        cycle_times = cycle_times.iloc[2:, 1:]
-        cycle_times.index = range(1, len(cycle_times) + 1)
+        monza_cycle_times_op1.columns = monza_cycle_times_op1.iloc[1]
+        monza_cycle_times_op1 = monza_cycle_times_op1.iloc[2:, 1:]
+        monza_cycle_times_op1.index = range(1, len(monza_cycle_times_op1) + 1)
 
         def extract_number(s: str) -> str:
             match = re.search(r"\d+N?", s)
             return match.group(0) if match else s
 
-        cycle_times.columns = [extract_number(col) for col in cycle_times.columns]
-        cycle_times.loc[7] = cycle_times.loc[7].fillna(last_task_minutes)
+        monza_cycle_times_op1.columns = [extract_number(col) for col in monza_cycle_times_op1.columns]
+        monza_cycle_times_op1.loc[7] = monza_cycle_times_op1.loc[7].fillna(last_task_minutes)
         ps_times, cr_times = (
-            cycle_times.iloc[:8, 2 : math.ceil(cycle_times.shape[1] / 2) + 1],
-            cycle_times.iloc[:8, math.ceil(cycle_times.shape[1] / 2) + 1 :],
+            monza_cycle_times_op1.iloc[:8, 2 : math.ceil(monza_cycle_times_op1.shape[1] / 2) + 1],
+            monza_cycle_times_op1.iloc[:8, math.ceil(monza_cycle_times_op1.shape[1] / 2) + 1 :],
         )
 
         # Debug statement
@@ -275,14 +335,28 @@ class Shop:
                 extra={"markup": True},
             )
 
-        return ps_times, cr_times
+        # Operation 2 - set headers
+        monza_cycle_times_op2.columns = monza_cycle_times_op2.iloc[1]
+        monza_cycle_times_op2 = monza_cycle_times_op2.iloc[2:, 1:6]
+
+        # Drop unknown machines
+        # TODO: Verify with Eamon
+        monza_cycle_times_op2 = monza_cycle_times_op2[
+            ~monza_cycle_times_op2["Operation type"].isin(["FPI", "RA testing "])
+        ]
+
+        # Update the index according to the tasks of OP2
+        monza_cycle_times_op2.index = range(10, 10 + len(monza_cycle_times_op2))
+
+        return ps_times, cr_times, monza_cycle_times_op2
 
     @staticmethod
     def get_duration_matrix(
         J: List[List[int]],
-        inscope_orders: pd.DataFrame,
+        in_scope_orders: pd.DataFrame,
         cr_times: pd.DataFrame,
         ps_times: pd.DataFrame,
+        op2_times: pd.DataFrame,
     ) -> List[List[float]]:
         """
         Gets the duration matrix for the jobs.
@@ -293,9 +367,10 @@ class Shop:
 
         Args:
             J (List[List[int]]): The list of jobs.
-            inscope_orders (pd.DataFrame): The in-scope orders.
+            in_scope_orders (pd.DataFrame): The in-scope orders.
             cr_times (pd.DataFrame): The CR cycle times.
             ps_times (pd.DataFrame): The PS cycle times.
+            op2_times (pd.DataFrame): The Operation 2 cycle times - no distinction between CR and PS.
 
         Returns:
             List[List[float]]: The duration matrix.
@@ -304,12 +379,20 @@ class Shop:
         for i, job in enumerate(J):
             job_dur = []
             for task in job:
-                times = cr_times if inscope_orders.iloc[i]["Type"] == "CR" else ps_times
-                duration = round(
-                    times.loc[task, inscope_orders.iloc[i]["Size"]]
-                    * inscope_orders.iloc[i]["Order Qty"],
-                    1,
-                )
+                if (
+                    task < 10
+                ):  # Operation 1 tasks are in the range 1-10, Operation 2 tasks are in the range 10-20
+                    times = cr_times if in_scope_orders.iloc[i]["Type"] == "CR" else ps_times
+                    duration = round(
+                        times.loc[task, in_scope_orders.iloc[i]["Size"]]
+                        * in_scope_orders.iloc[i]["Order Qty"],
+                        1,
+                    )
+                else:
+                    duration = round(
+                        op2_times.loc[task, "Actual "] * in_scope_orders.iloc[i]["Order Qty"],
+                        1,
+                    )
                 job_dur.append(duration)
             dur.append(job_dur)
 
@@ -320,7 +403,7 @@ class Shop:
 
     @staticmethod
     def get_due_date(
-        inscope_orders: pd.DataFrame,
+        in_scope_orders: pd.DataFrame,
         date: str = "2024-03-18",
         working_minutes: int = 480,
     ) -> List[int]:
@@ -328,7 +411,7 @@ class Shop:
         Gets the due dates for the in-scope orders.
 
         Args:
-            inscope_orders (pd.DataFrame): The in-scope orders.
+            in_scope_orders (pd.DataFrame): The in-scope orders.
             date (str): The reference date in 'YYYY-MM-DD' format. Defaults to '2024-03-18'.
             working_minutes (int, optional): The number of working minutes per day. Defaults to 480.
 
@@ -336,7 +419,7 @@ class Shop:
             List[int]: The list of due dates in working minutes.
         """
         due = []
-        for due_date in inscope_orders["Due Date "]:
+        for due_date in in_scope_orders["Due Date "]:
             if pd.Timestamp(date) > due_date:
                 working_days = -len(pd.bdate_range(due_date, date)) * working_minutes
             else:
@@ -368,18 +451,46 @@ class JobShop(Job, Shop):
         Returns:
             pd.DataFrame: The preprocessed orders.
         """
-        inscope_data = self.filter_in_scope_op1(croom_open_orders).pipe(self.extract_info)
-        self.check_part_id_consistency(inscope_data)
+        in_scope_data_op1 = self.filter_in_scope(croom_open_orders).pipe(self.extract_info)
+        in_scope_data_op2 = self.filter_in_scope(croom_open_orders, operation="OP 2").pipe(
+            self.extract_info
+        )
 
-        return inscope_data
+        # Add an extra column
+        in_scope_data_op1["operation"] = "OP1"
+        in_scope_data_op2["operation"] = "OP2"
+
+        # Combine both Operation 1 and Operation 2 data
+        in_scope_data = pd.concat([in_scope_data_op1, in_scope_data_op2], axis=0)
+
+        # Add the operation to the custom part id
+        in_scope_data["Custom Part ID"] = (
+            in_scope_data["Custom Part ID"] + "-" + in_scope_data["operation"]
+        )
+
+        if not len(in_scope_data) == (len(in_scope_data_op1) + len(in_scope_data_op2)):
+            logging.warning(
+                f"Length of concatenated data: {len(in_scope_data)}, "
+                f"while length of OP 1 data: {len(in_scope_data_op1)}, "
+                f"and length of OP 2 data: {len(in_scope_data_op2)}"
+            )
+
+        # Check if all part IDs are consistent across different operations
+        self.check_part_id_consistency(in_scope_data)
+
+        # Reset index
+        in_scope_data.reset_index(inplace=True, drop=True)
+
+        return in_scope_data
 
     def build_ga_representation(
         self,
         croom_processed_orders: pd.DataFrame,
         cr_cycle_times: pd.DataFrame,
         ps_cycle_times: pd.DataFrame,
-        machine_qty_dict: Dict[str, int],
+        op2_cycle_times: pd.DataFrame,
         task_to_machines: Dict[int, List[int]],
+        scheduling_options: Dict[str, any],
     ) -> Dict[str, any]:
         """
         Builds the GA representation:
@@ -395,17 +506,30 @@ class JobShop(Job, Shop):
             croom_processed_orders (pd.DataFrame): The processed orders.
             cr_cycle_times (pd.DataFrame): The CR cycle times.
             ps_cycle_times (pd.DataFrame): The PS cycle times.
-            machine_qty_dict (Dict[str, int]): The machine quantity dictionary.
+            op2_cycle_times (pd.DataFrame): The Operation 2 cycle times.
             task_to_machines (Dict[int, List[int]]): The task to machines dictionary.
+            scheduling_options (Dict[str, any]): The scheduling options dictionary.
 
         Returns:
             Dict[str, any]: The GA representation.
         """
-        J = self.create_jobs_op1(croom_processed_orders)
-        M = self.create_machines(machine_qty_dict)
-        compat = self.get_compatibility(J, task_to_machines)
-        dur = self.get_duration_matrix(J, croom_processed_orders, cr_cycle_times, ps_cycle_times)
-        due = self.get_due_date(croom_processed_orders)
+        J_op_1 = self.create_jobs(croom_processed_orders)
+        J_op_2 = self.create_jobs(croom_processed_orders, operation="OP 2")
+
+        # Combine jobs from both operations (Operation 1 and Operation 2) into one list of jobs (J)
+        J = J_op_1 + J_op_2
+
+        # Create the rest of the required inputs
+        M = self.create_machines(task_to_machines)
+        compat = self.get_compatibility(J, croom_processed_orders, task_to_machines)
+        dur = self.get_duration_matrix(
+            J, croom_processed_orders, cr_cycle_times, ps_cycle_times, op2_cycle_times
+        )
+        due = self.get_due_date(
+            croom_processed_orders,
+            date=scheduling_options["start_date"],
+            working_minutes=scheduling_options["minutes_per_day"],
+        )
         part_id = self.get_part_id(croom_processed_orders)
 
         def is_nested_list_of_numbers(lst):
@@ -461,127 +585,367 @@ class GeneticAlgorithmScheduler:
         self.due = None
         self.part_id = None
         self.n = None
+        self.n_e = None
+        self.n_c = None
         self.P = None
         self.scores = None
         self.day_range = None
         self.best_schedule = None
         self.minutes_per_day = None
         self.change_over_time = None
+        self.urgent_orders = None
+        self.urgent_multiplier = None
+        self.max_iterations = None
 
-    def find_avail_m(self, start: int, job_idx: int, task_num: int) -> int:
+    def find_avail_m(self, start: int, job_idx: int, task_idx: int) -> int:
         """
         Finds the next available time for a machine to start a task, considering the working day duration.
 
         Args:
             start (int): The starting time in the schedule in minutes.
             job_idx (int): The index of the job in the job list.
-            task_num (int): The task number within the job.
+            task_idx (int): The task number within the job.
 
         Returns:
             int: The next available time for the machine to start the task.
         """
         for day in self.day_range:
-            if start < day <= start + self.dur[job_idx][task_num]:
+            if start < day <= start + self.dur[job_idx][task_idx]:
                 return day
-        return start + self.dur[job_idx][task_num]
+        return start + self.dur[job_idx][task_idx]
 
-    def init_population(self, num_inds: int = None, fill_inds: bool = False):
+    def pick_early_machine(
+        self,
+        job_idx: int,
+        task_idx: int,
+        avail_m: Dict[int, int],
+        random_roll: float,
+        prob: float = 0.85,
+    ) -> int:
+        """
+        Selects a machine for the given task based on availability and compatibility.
+        There is a chance of 'prob' to select the machine that comes available earliest,
+        otherwise a random machine is picked.
+
+        Parameters:
+        - job_idx (int): Index of the job.
+        - task (int): Index of the task within the job.
+        - avail_m (Dict[int, int]): A dictionary with machine IDs as keys and their available times as values.
+        - random_roll (float): A random number to decide the selection strategy.
+        - prob (float): Probability to pick the earliest available compatible machine.
+
+        Returns:
+        - int: The selected machine ID.
+        """
+        compat_with_task = self.compat[job_idx][task_idx]
+        if random_roll < prob:
+            m = min(compat_with_task, key=lambda x: avail_m.get(x))
+        else:
+            m = random.choice(compat_with_task)
+
+        return m
+
+    @staticmethod
+    def slack_logic(
+        m: int,
+        avail_m: Dict[int, int],
+        slack_m: Dict[int, List],
+        slack_time_used: bool,
+        previous_task_start: float,
+        previous_task_dur: float,
+        current_task_dur: float,
+    ):
+        """
+        Determine the start time for a task on a machine, considering machine availability and existing slack time.
+
+        Args:
+            m (int): The machine identifier.
+            avail_m (Dict[int, int]): Dictionary mapping machine IDs to their available times.
+            slack_m (Dict[int, List]): Dictionary mapping machine IDs to their slack windows (tuples of start and end times).
+            slack_time_used (bool): Flag indicating whether slack time has been used.
+            previous_task_start (float): The start time of the previous task.
+            previous_task_dur (float): The duration of the previous task.
+            current_task_dur (float): The duration of the current task.
+
+        Returns:
+            Tuple[float, bool]: A tuple containing the determined start time for the current task and a boolean indicating
+            whether slack time was used.
+
+        The function operates as follows:
+        1. Initializes the `start` variable to `None`.
+        2. Checks if the previous task ends after the machine becomes available. If so:
+            - Sets `start` to the completion time of the previous task.
+            - Adds a slack window representing the time between the machine becoming available and the new task's start time.
+        3. If the previous task does not overlap the machine's availability:
+            - Iterates over existing slack windows for the machine.
+            - Checks if the task can fit within any slack window:
+                - Sets `start` to the later of the slack window's start or the previous task's end.
+                - Removes the used slack window.
+                - Adds new slack windows for any remaining time before or after the task within the original slack window.
+                - Sets `slack_time_used` to `True` if a slack window is used.
+        4. If no slack time is used, sets `start` to the machine's available time.
+        5. Logs a warning if no valid start time is determined.
+        6. Returns the `start` time and the `slack_time_used` flag.
+        """
+
+        # Initialize start variable
+        start = None
+
+        # If the previous task is completed later than the new machine comes available
+        if previous_task_start + previous_task_dur > avail_m[m]:
+            # Start time is the completion of the previous task of the job in question
+            start = previous_task_start + previous_task_dur
+
+            # Difference between the moment the machine becomes available and the new tasks starts is slack
+            # e.g.: machine comes available at 100, new task can only start at 150, slack = (100, 150)
+            slack_m[m].append((avail_m[m], start))
+
+        else:
+            # Loop over slack in this machine
+            for unused_time in slack_m[m]:
+                # If the unused time + duration of task is less than the end of the slack window
+                if (
+                    max(unused_time[0], (previous_task_start + previous_task_dur)) + current_task_dur
+                ) < unused_time[1]:
+                    # New starting time is the largest of the beginning of the slack time or the time when the
+                    # previous task of the job is completed
+                    start = max(unused_time[0], (previous_task_start + previous_task_dur))
+
+                    # Remove the slack period if it has been used
+                    slack_m[m].remove(unused_time)
+
+                    # We add the remaining time between when the task finishes and the end of the slack window
+                    # as a new slack window
+                    # e.g.: original slack = (100, 150), task planned now takes (110, 130), new slack = (130, 150)
+                    slack_m[m].append(
+                        (
+                            (
+                                max(unused_time[0], (previous_task_start + previous_task_dur))
+                                + current_task_dur
+                            ),
+                            unused_time[1],
+                        )
+                    )
+
+                    # Append another slack window if previous start was not at the beginning of the slack window,
+                    # in this case there is still some time between when the machine comes available and when the
+                    # task starts
+                    # e.g. original slack = (100, 150), task planned now takes (110, 130), new slack = (100, 110)
+                    if start == (previous_task_start + previous_task_dur):
+                        slack_m[m].append((unused_time[0], start))
+
+                    slack_time_used = True
+                    # break the loop if a suitable start time has been found in the slack
+                    break
+
+            # If slack time is not used, start when the machine becomes available
+            if not slack_time_used:
+                start = avail_m[m]
+
+        if start is None:
+            logger.warning("No real start time was defined!")
+
+        return start, slack_time_used
+
+    def init_population(
+        self, num_inds: int = None, fill_inds: bool = False
+    ) -> Union[None, List[List[Tuple[int, int, int, float, float, int, str]]]]:
         """
         Initializes the population of schedules. Each schedule is a list of tasks assigned to machines with start times.
+
+        Args:
+            num_inds (int, optional): Number of individuals (schedules) to generate. If None, uses self.n. Defaults to None.
+            fill_inds (bool, optional): Flag indicating whether to fill individuals in the population or return them.
+                                        Defaults to False.
+
+        Returns:
+            Union[None, List[List[Tuple[int, int, int, float, float, int, str]]]]:
+                - If fill_inds is False, updates self.P with the generated population.
+                - If fill_inds is True, returns the generated population.
+
+        The function operates as follows:
+        1. Sets `num_inds` to `self.n` if it is not provided.
+        2. Extracts part sizes and operations from `self.part_id`.
+        3. Initializes the population list `P` and a range of percentages for logging progress.
+        4. For each individual:
+            - Initializes availability and product tracking dictionaries for machines.
+            - Creates a temporary job list and shuffles or sorts it based on a random roll.
+            - Processes each job, assigning tasks to machines based on compatibility, availability, and operation type.
+            - Updates machine availability and product tracking after each task assignment.
+            - Adds the proposed schedule to the population if it is unique.
+            - Logs progress at certain percentages if `fill_inds` is False.
+        5. Sets `self.P` to the generated population or returns it based on `fill_inds`.
+
+        Note:
+            - OP1 and OP2 represent different operation types with specific logic for task assignment.
+            - Compatibility and availability are considered for machine assignment, with preference given to certain conditions.
         """
+        # If the number of individuals to create is not strictly defined we create the same amount as the
+        # whole population (this happens in generation 0)
         if num_inds is None:
             num_inds = self.n
+
+        # Extract the part size from the custom part id
+        part_size = [id.split("-")[1] for id in self.part_id]
+
+        # Extract the operation from custom part id
+        operation = [id.split("-")[-1] for id in self.part_id]
 
         P = []
         percentages = np.arange(10, 101, 10)
 
         for i in range(num_inds):
             avail_m = {m: 0 for m in self.M}
+            slack_m = {m: [] for m in self.M}
             product_m = {m: 0 for m in self.M}
             changeover_finish_time = 0
             P_j = []
 
+            # Create a temporary copy of J
             J_temp = list(range(len(self.J)))
+
+            # Generate a random float [0, 1]
             random_roll = random.random()
 
-            if random_roll < 0.5:
+            # Based on the random number we either randomly shuffle or apply some sorting logic
+            if random_roll < 0.4:
                 random.shuffle(J_temp)
-            # Larger chance to sort by part ID
-            elif random_roll < 0.7:
+            elif random_roll < 0.6:
                 J_temp.sort(key=lambda x: self.part_id[x])
-            # Larger chance to sort by due date
-            elif random_roll < 0.9:
+            elif random_roll < 0.7:
                 J_temp.sort(key=lambda x: self.due[x], reverse=True)
-            # Larger chance to sort by part ID and due date
-            else:
+            elif random_roll < 0.8:
                 J_temp.sort(key=lambda x: (self.part_id[x], self.due[x]), reverse=True)
+            else:
+                # Reorder J_temp according to the urgent order list
+                for job in self.urgent_orders:
+                    J_temp.remove(job)  # Remove the job from its current position
+                    J_temp.append(
+                        job
+                    )  # Append the job to the end of the list (this means it will be picked first)
 
+            # While our list of jobs is not empty
             while J_temp:
-                # Pick the last item in the job array list
+                # Take the index at the end of the list and remove it from the list
                 job_idx = J_temp.pop()
+
+                # Extract the corresponding job
                 job = self.J[job_idx]
-                for task in range(len(job)):
+
+                # Loop over the tasks in the job
+                for task_idx in range(len(job)):
+                    # Generate random float [0, 1]
                     random_roll = random.random()
 
-                    if task == 0:
-                        compat_task_0 = self.compat[job_idx][task]
-                        # Preferred machines: compatible machines for the task if they processed the same Part ID
-                        # previously
-                        preferred_machines = [
-                            key
-                            for key in compat_task_0
-                            if product_m.get(key) == self.part_id[job_idx] or product_m.get(key) == 0
-                        ]
+                    # New boolean to track if the task is planned during slack time,
+                    # if so we do not need to update avail_m
+                    slack_time_used = False
 
-                        if not preferred_machines:
-                            m = (
-                                min(compat_task_0, key=lambda x: avail_m.get(x))
-                                # If no preferred machines, 80% chance to pick the one that comes available first
-                                # among compatible machines, otherwise randomly pick a compatible machine
-                                if random_roll < 0.8
-                                else random.choice(compat_task_0)
+                    # Conditional logic; separate flow for OP1 and OP2
+                    if operation[job_idx] == "OP1":
+                        # Logic for first task in OP1 (HAAS machines)
+                        if task_idx == 0:
+                            compat_task_0 = self.compat[job_idx][task_idx]
+                            # Preferred machines are those that have not been used yet or processed the same
+                            # size previously (in this case no changeover is required)
+                            # Note: no changeover needed for the first task on a HAAS machine is an assumption
+                            preferred_machines = [
+                                key
+                                for key in compat_task_0
+                                if product_m.get(key) == part_size[job_idx] or product_m.get(key) == 0
+                            ]
+
+                            # If no preferred machines can be found, pick one that comes available earliest
+                            # with a higher probability
+                            if not preferred_machines:
+                                m = self.pick_early_machine(
+                                    job_idx, task_idx, avail_m, random_roll, prob=0.7
+                                )
+                            # If there are preferred machines, pick the preferred machine that comes available
+                            # earliest with a higher probability
+                            else:
+                                m = (
+                                    min(preferred_machines, key=lambda x: avail_m.get(x))
+                                    if random_roll < 0.7
+                                    else random.choice(preferred_machines)
+                                )
+
+                            # Start time is the time that the machine comes available if no changeover is required
+                            # else, the changeover time is added, and an optional waiting time if we need to wait
+                            # for another changeover to finish first (only one changeover can happen concurrently)
+                            start = (
+                                avail_m[m]
+                                if product_m[m] == 0 or part_size[job_idx] == product_m[m]
+                                else avail_m[m]
+                                + self.change_over_time
+                                + max((changeover_finish_time - avail_m[m]), 0)
+
                             )
+
+                            # If a changeover happened, we update the time someone comes available to do another
+                            # changeover
+                            if product_m[m] != 0 and part_size[job_idx] != product_m[m]:
+                                changeover_finish_time = start
+
                         else:
-                            m = (
-                                min(preferred_machines, key=lambda x: avail_m.get(x))
-                                # If there are preferred machines, 90% chance to pick the one that comes available
-                                # first among preferred machines, otherwise randomly pick a preferred machine
-                                if random_roll < 0.9
-                                else random.choice(preferred_machines)
+                            # If not the first task in the job, we pick the earliest machine to come available
+                            # with a higher probability
+                            m = self.pick_early_machine(job_idx, task_idx, avail_m, random_roll)
+                            start, slack_time_used = self.slack_logic(
+                                m,
+                                avail_m,
+                                slack_m,
+                                slack_time_used,
+                                P_j[-1][3],
+                                P_j[-1][4],
+                                self.dur[job_idx][task_idx],
                             )
 
-                        # Start time for first task (HAAS machine) is defined as follows:
-                        #  - If no changeover is required, start time is end time of previous task on that machine
-                        #  - If a changeover is required, start time is end time of previous task plus the changeover
-                        #    time, plus optional waiting time for changeover to finish if a changeover was already
-                        #    happening on a different machine
-                        start = (
-                            avail_m[m]
-                            if product_m[m] == 0 or self.part_id[job_idx] == product_m[m]
-                            else avail_m[m]
-                            + self.change_over_time
-                            + max((changeover_finish_time - avail_m[m]), 0)
-                        )
+                    elif operation[job_idx] == "OP2":
+                        if task_idx == 0:
+                            # If first task in OP2: pick machine that comes available earliest with a higher
+                            # probability
+                            m = self.pick_early_machine(job_idx, task_idx, avail_m, random_roll)
 
-                        # Update changeover finish time
-                        if product_m[m] != 0 and self.part_id[job_idx] != product_m[m]:
-                            changeover_finish_time = start
+                            # Start time is always when the machine comes available (due to being the first task)
+                            start = avail_m[m]
+                        else:
+                            m = self.pick_early_machine(job_idx, task_idx, avail_m, random_roll)
+                            start, slack_time_used = self.slack_logic(
+                                m,
+                                avail_m,
+                                slack_m,
+                                slack_time_used,
+                                P_j[-1][3],
+                                P_j[-1][4],
+                                self.dur[job_idx][task_idx],
+                            )
+
                     else:
-                        compat_with_task = self.compat[job_idx][task]
-                        m = (
-                            min(compat_with_task, key=lambda x: avail_m.get(x))
-                            # Other tasks than milling & grinding on HAAS:
-                            #  - 85% chance to pick the one that comes available first among compatible machines,
-                            #    otherwise randomly pick a compatible machine
-                            if random_roll < 0.85
-                            else random.choice(compat_with_task)
+                        logger.error(
+                            f"Invalid operation: {operation} - Only 'OP1' and 'OP2' are supported"
                         )
-                        start = max(avail_m[m], P_j[-1][3] + self.dur[job_idx][task - 1])
+                        raise ValueError("Invalid operation")
 
-                    P_j.append((job_idx, job[task], m, start, self.dur[job_idx][task], task))
-                    avail_m[m] = self.find_avail_m(start, job_idx, task)
-                    product_m[m] = self.part_id[job_idx]
+                    # Append the task to our proposed schedule
+                    P_j.append(
+                        (
+                            job_idx,
+                            job[task_idx],  # Actual task number (as in task_to_machines_dict)
+                            m,
+                            start,
+                            self.dur[job_idx][task_idx],
+                            task_idx,  # Task index
+                            self.part_id[job_idx],
+                        )
+                    )
 
+                    if not slack_time_used:
+                        avail_m[m] = self.find_avail_m(start, job_idx, task_idx)
+
+                    product_m[m] = part_size[job_idx]
+
+            # Add proposed schedule to population (list of proposed schedules) if it is not in there already
             if P_j not in P:
                 P.append(P_j)
             else:
@@ -598,24 +962,24 @@ class GeneticAlgorithmScheduler:
             return P
 
     def evaluate_population(
-        self,
-        best_scores: list = None,
-        display_scores: bool = True,
-        on_time_bonus: int = 5000,
+        self, best_scores: list = None, display_scores: bool = True, on_time_bonus: int = 5000
     ):
         """
         Evaluates the population of schedules by calculating a score for each schedule based on the completion times
         of jobs vs. the required due date.
         """
+        # Calculate scores for each schedule
         self.scores = [
             round(
                 sum(
                     (
-                        self.due[job_idx]
-                        - (start_time + self.dur[job_idx][-1])
+                        # Difference between due date and completion time, multiplied by urgent_multiplier if urgent
+                        (self.due[job_idx] - (start_time + job_task_dur))
+                        * (self.urgent_multiplier if job_idx in self.urgent_orders else 1)
                         + (
+                            # Fixed size bonus for completing the job on time
                             on_time_bonus
-                            if (self.due[job_idx] - (start_time + self.dur[job_idx][-1])) > 0
+                            if (self.due[job_idx] - (start_time + job_task_dur)) > 0
                             else 0
                         )
                     )
@@ -626,10 +990,13 @@ class GeneticAlgorithmScheduler:
                         start_time,
                         job_task_dur,
                         _,
+                        _,
                     ) in schedule
+                    # Only consider the completion time of the final task
                     if task + 1 == max(self.J[job_idx])
                 )
             )
+            # Evaluate each schedule in the population
             for schedule in self.P
         ]
 
@@ -641,85 +1008,144 @@ class GeneticAlgorithmScheduler:
             best_scores.append(max(self.scores))
 
     def resolve_conflict(
-        self, P_prime: List[Tuple[int, int, int, int, int, int]]
-    ) -> (List)[Tuple[int, int, int, int, int, int]]:
+        self, P_prime: List[Tuple[int, int, int, int, int, int, str]]
+    ) -> (List)[Tuple[int, int, int, int, int, int, str]]:
         """
         This function resolves conflicts in a given schedule. If tasks are planned on the same machine at the same time,
         it finds the first available time for each task to start on the machine.
 
         Parameters:
-        P_prime (List[Tuple[int, int, int, int, int, int]]): A list of tuples where each tuple represents a task.
+        P_prime (List[Tuple[int, int, int, int, int, int, str]]): A list of tuples where each tuple represents a task.
         Each task is represented as (job index, task, machine, start time, duration, task number).
 
         Returns:
-        P_prime_sorted (List[Tuple[int, int, int, int, int, int]]): A sorted list of tuples where each tuple
+        P_prime_sorted (List[Tuple[int, int, int, int, int, int, str]]): A sorted list of tuples where each tuple
         represents a task. Each task is represented as (job index, job, machine, start time, duration, task number).
         """
+        # Initialize an empty list to hold tasks for this proposed schedule
         P_prime_sorted = []
         avail_m = {m: 0 for m in self.M}
+        slack_m = {m: [] for m in self.M}
         product_m = {m: 0 for m in self.M}
         changeover_finish_time = 0
-        start_times = {j: 0 for j in range(len(self.J))}
 
+        # Extract the operation from custom part id
+        operation = [id.split("-")[-1] for id in self.part_id]
+
+        # Loop over the jobs in the job list (J)
         for job_idx in range(len(self.J)):
             job = self.J[job_idx]
+
+            # We have a list of tuples, where each tuple stands for a task in a proposed schedule
+            # We filter all the tuples for ones belonging to a specific job_idx (first field of the tuple) and sort
             job_tasks = sorted([entry for entry in P_prime if entry[0] == job_idx], key=lambda x: x[1])
 
+            # Loop over the tasks one by one
             for task_entry in job_tasks:
-                _, task, m, _, part_id, task_num = task_entry
+                _, task, m, _, _, task_idx, _ = task_entry
+                slack_time_used = False
+                start = None
 
-                if task_num == 0:
-                    start = (
-                        avail_m[m]
-                        if product_m[m] == 0 or self.part_id[job_idx] == product_m[m]
-                        else avail_m[m]
-                        + self.change_over_time
-                        + max((changeover_finish_time - avail_m[m]), 0)
-                    )
-                    if product_m[m] != 0 and self.part_id[job_idx] != product_m[m]:
-                        changeover_finish_time = start
-                else:
-                    start = max(
-                        avail_m[m],
-                        start_times[job_idx] + self.dur[job_idx][task_num - 1],
-                    )
-                start_times[job_idx] = start
+                if operation[job_idx] == "OP1":
+                    if task_idx == 0:
+                        # Start whenever the first machine becomes available + optional changeover time
+                        # + optional time we have to wait for changeover mechanic to complete previous changeover
+                        start = (
+                            avail_m[m]
+                            if product_m[m] == 0 or self.part_id[job_idx] == product_m[m]
+                            else avail_m[m]
+                            + self.change_over_time
+                            + max((changeover_finish_time - avail_m[m]), 0)
+                        )
+                        # Update changeover mechanic availability
+                        if product_m[m] != 0 and self.part_id[job_idx] != product_m[m]:
+                            changeover_finish_time = start
+                    else:
+                        # Start depends if usable slack time is available
+                        start, slack_time_used = self.slack_logic(
+                            m,
+                            avail_m,
+                            slack_m,
+                            slack_time_used,
+                            P_prime_sorted[-1][3],  # Previous task start time
+                            P_prime_sorted[-1][4],  # Previous task duration
+                            self.dur[job_idx][task_idx],  # Current task duration
+                        )
 
-                avail_m[m] = self.find_avail_m(start, job_idx, task_num)
+                elif operation[job_idx] == "OP2":
+                    if task_idx == 0:
+                        # Start whenever the first machine becomes available
+                        start = avail_m[m]
+                    else:
+                        # Start depends if usable slack time is available
+                        start, slack_time_used = self.slack_logic(
+                            m,
+                            avail_m,
+                            slack_m,
+                            slack_time_used,
+                            P_prime_sorted[-1][3],  # Previous task start time
+                            P_prime_sorted[-1][4],  # Previous task duration
+                            self.dur[job_idx][task_idx],  # Current task duration
+                        )
+
+                # If slack time is used no need to update latest machine availability
+                if not slack_time_used:
+                    avail_m[m] = self.find_avail_m(start, job_idx, task_idx)
+
+                # Record part ID of the latest product to be processed on a machine for changeovers
                 product_m[m] = self.part_id[job_idx]
 
+                # Issue warning if 'start' is still not defined after loop
+                if start is None:
+                    logger.warning(
+                        f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - No start time found for job {job_idx+1}, "
+                        f"task {task_idx+1}, machine {m+1}"
+                    )
+
+                # Add the task to the sorted list of tasks in this proposed schedule
                 P_prime_sorted.append(
                     (
                         job_idx,
-                        job[task_num],
+                        job[task_idx],
                         m,
                         start,
-                        self.dur[job_idx][task_num],
-                        task_num,
+                        self.dur[job_idx][task_idx],
+                        task_idx,
+                        self.part_id[job_idx],
                     )
                 )
 
         return P_prime_sorted
 
-    def offspring(self, n_e: float, n_c: float) -> None:
+    def find_best_schedules(self) -> List:
+        """
+        This method evaluates the population, sorts them based on their scores in descending order,
+        and retains the top schedules based on a specified retention count. The retention count is
+        the maximum of 3 or the product of the length of the population and a specified ratio.
+
+        Returns:
+            P_0 (List): The list of top schedules based on their scores.
+        """
+
+        self.evaluate_population(display_scores=False)
+        scored_population = sorted(zip(self.scores, self.P), key=lambda x: x[0], reverse=True)
+        retain_count = max(3, int(len(self.P) * self.n_e))
+        P_0 = [schedule for score, schedule in scored_population[:retain_count]]
+
+        return P_0
+
+    def offspring(self) -> None:
         """
         This function generates offspring for the next generation of the population. It identifies the best schedules
         in the population, after which it randomly selects each job from the first or the second schedule.
         Conflicts are resolved by another function.
 
-        Parameters:
-        n_e (float): The elitism rate. It represents the proportion of the population to be retained for the next generation.
-        n_c (float): The crossover rate. It represents the proportion of the population to be generated through crossover.
-
         Returns:
         None. The function updates the population in-place.
         """
-        self.evaluate_population(display_scores=False)
-        scored_population = sorted(zip(self.scores, self.P), key=lambda x: x[0], reverse=True)
-        retain_count = min(2, int(len(self.P) * n_e))
-        P_0 = [schedule for score, schedule in scored_population[:retain_count]]
+        P_0 = self.find_best_schedules()
 
-        iter_count = len(self.P) * (n_c + n_e)
+        iter_count = len(self.P) * (self.n_c + self.n_e)
         while len(P_0) < iter_count:
             P1, P2 = random.sample(P_0, 2)
             P_prime = [
@@ -736,95 +1162,105 @@ class GeneticAlgorithmScheduler:
 
     def mutate(self):
         """
-        WARNING: This function is currently not implemented and is a work in progress (WIP).
+        Perform mutation on the current population of schedules to create a new set of schedules.
 
-        Mutates the top 10% highest scoring schedules in the population by randomly picking new machines for the
-        latest job. Does not seem to improve performance.
+        This function identifies pairs of jobs within each schedule that have the same number
+        of tasks and the same durations. It then swaps the start times and machines of tasks
+        between the selected pairs of jobs, creating new schedules. If the new schedule does
+        not already exist in the population, it is added to the population.
+
+        Steps:
+        1. Find the best schedules based on evaluation score.
+        2. Make a deep copy of these schedules.
+        3. For each schedule:
+            a. Group tasks by their job index.
+            b. Identify pairs of jobs with the same number of tasks and identical durations.
+            c. Randomly select a pair of jobs.
+            d. Swap the start times and machines of tasks between the selected jobs.
+            e. If the new schedule is unique, add it to the list of new schedules.
+        4. Add all new schedules to the population.
+
+        This method helps in exploring new potential solutions by making modifications to
+        existing ones, promoting diversity in the population.
+
+        Returns:
+            None
         """
-        num_best_schedules = int(len(self.P) * 0.1)
-        self.evaluate_population(display_scores=False)
-        scored_population = sorted(zip(self.scores, self.P), key=lambda x: x[0], reverse=True)
-        best_schedules = [schedule for score, schedule in scored_population[:num_best_schedules]]
 
-        for schedule in best_schedules:
-            sorted_schedule = sorted(schedule, key=lambda x: x[-3], reverse=True)
-            unique_job_indices = list({entry[0] for entry in sorted_schedule[:4]})
-            sorted_schedule_without_last_task = [
-                t for t in sorted_schedule if t[0] not in unique_job_indices
-            ]
+        P_0 = self.find_best_schedules()
 
-            for job_idx in unique_job_indices:
-                job = self.J[job_idx]
-                for task in range(len(job)):
-                    m = random.choice(self.compat[job_idx][task])
-                    prev_task = next((t for t in sorted_schedule if t[2] == m), None)
-                    if prev_task:
-                        start = (
-                            prev_task[3]
-                            + prev_task[4]
-                            + (
-                                self.change_over_time
-                                if task == 0 and self.part_id[prev_task[0]] != self.part_id[job_idx]
-                                else 0
-                            )
-                        )
-                    else:
-                        start = 0
-                    sorted_schedule_without_last_task.append(
-                        (job_idx, job[task], m, start, self.dur[job_idx][task], task)
-                    )
+        # Make a deep copy of P_0
+        P_1 = copy.deepcopy(P_0)
 
-                test_scores = [
-                    round(
-                        sum(
-                            (
-                                self.due[job_idx]
-                                - (start_time + self.dur[job_idx][-1])
-                                + (
-                                    5000
-                                    if (self.due[job_idx] - (start_time + self.dur[job_idx][-1])) > 0
-                                    else 0
-                                )
-                            )
-                            for (
-                                job_idx,
-                                task,
-                                machine,
-                                start_time,
-                                job_task_dur,
-                                _,
-                            ) in sched
-                            if task + 1 == max(self.J[job_idx])
-                        )
-                    )
-                    for sched in [schedule, sorted_schedule_without_last_task]
-                ]
+        # Initialize a list of new schedules
+        new_schedules = []
 
-                if test_scores[1] > test_scores[0] and schedule in self.P:
-                    self.P.remove(schedule)
-                    self.P.append(sorted_schedule_without_last_task)
+        for schedule in P_1:
+            # Group tasks by job_idx
+            jobs = defaultdict(list)
+            for task in schedule:
+                jobs[task[0]].append(task)
+
+            # Find pairs of jobs with same number of tasks and same durations
+            job_pairs = []
+            job_list = list(jobs.items())
+
+            for i in range(len(job_list)):
+                for j in range(i + 1, len(job_list)):
+                    job1, task_details_1 = job_list[i]
+                    job2, task_details_2 = job_list[j]
+
+                    # Append if the part ID matches for a pair
+                    if (
+                        len(task_details_1) == len(task_details_2)
+                        and task_details_1[-1] == task_details_2[-1]
+                    ):
+                        # task_details format: (job_index, task, machine, start_time, duration, task_idx, part_id)
+                        # hence the last field is the part_id
+                        job_pairs.append((job1, job2))
+
+            # If no pairs found, continue to the next schedule
+            if not job_pairs:
+                continue
+
+            # Randomly select a pair of jobs
+            job1, job2 = random.choice(job_pairs)
+
+            # Swap the start times of the tasks in the selected jobs
+            tasks1 = jobs[job1]
+            tasks2 = jobs[job2]
+
+            for i in range(len(tasks1)):
+                task1 = tasks1[i]
+                task2 = tasks2[i]
+
+                # Create new tasks with swapped start times and machines
+                # task_details follow this format: (job_index, task, machine, start_time, duration, task_index, part_id)
+                new_task1 = (task1[0], task1[1], task2[2], task2[3], task1[4], task1[5], task1[6])
+                new_task2 = (task2[0], task2[1], task1[2], task1[3], task2[4], task2[5], task2[6])
+
+                # Update the schedule
+                schedule[schedule.index(task1)] = new_task1
+                schedule[schedule.index(task2)] = new_task2
+
+            # If the new schedule does not exist yet in the population, add it to P_0
+            if schedule not in P_0 and schedule not in new_schedules:
+                new_schedules.append(schedule)
+
+        # Add all schedules from P_0 to the population
+        self.P = P_0 + new_schedules
 
     def run(
         self,
         input_repr_dict: Dict[str, any],
         scheduling_options: dict,
-        n: int = 1500,
-        n_e: float = 0.1,
-        n_c: float = 0.3,
-        minutes_per_day: int = 480,
-        max_iterations: int = 100,
     ):
         """
         Runs the genetic algorithm by initializing the population, evaluating it, and selecting the best schedule.
 
         Args:
             input_repr_dict (Dict[str, any]): A dictionary containing the necessary input variables for the GA.
-            scheduling_options (dict): Dictionary containing the changeover time.
-            n (int, optional): The population size. Defaults to 1200.
-            n_e (float, optional): The elitism rate. Defaults to 0.1.
-            n_c (float, optional): The crossover rate. Defaults to 0.3.
-            minutes_per_day (int, optional): The number of working minutes per day. Defaults to 480.
-            max_iterations (int, optional): The maximum number of iterations for the genetic algorithm. Defaults to 100.
+            scheduling_options (dict): Dictionary containing hyperparameters for running the algorithm.
 
         Returns:
             Tuple[List[Tuple[int, int, int, int, float]], List[int]]: The best schedule with the highest score and the list of best scores per generation.
@@ -835,9 +1271,14 @@ class GeneticAlgorithmScheduler:
         self.dur = input_repr_dict["dur"]
         self.due = input_repr_dict["due"]
         self.part_id = input_repr_dict["part_id"]
-        self.n = n
-        self.minutes_per_day = minutes_per_day
+        self.n = scheduling_options["n"]
+        self.n_e = scheduling_options["n_e"]
+        self.n_c = scheduling_options["n_c"]
+        self.minutes_per_day = scheduling_options["minutes_per_day"]
         self.change_over_time = scheduling_options["change_over_time"]
+        self.max_iterations = scheduling_options["max_iterations"]
+        self.urgent_multiplier = scheduling_options["urgent_multiplier"]
+        self.urgent_orders = [job_idx - 1 for job_idx in scheduling_options["urgent_orders"]]
         self.day_range = np.arange(
             self.minutes_per_day,
             len(self.J) // 5 * self.minutes_per_day,
@@ -847,9 +1288,10 @@ class GeneticAlgorithmScheduler:
         self.init_population()
         best_scores = []
 
-        for iteration in range(max_iterations):
+        for iteration in range(self.max_iterations):
             logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Iteration {iteration + 1}")
-            self.offspring(n_e=n_e, n_c=n_c)
+            self.offspring()
+            self.mutate()
             if len(self.P) < self.n:
                 self.P += self.init_population(num_inds=self.n - len(self.P), fill_inds=True)
             self.evaluate_population(best_scores=best_scores)
@@ -857,7 +1299,8 @@ class GeneticAlgorithmScheduler:
         schedules_and_scores = sorted(zip(self.P, self.scores), key=lambda x: x[1], reverse=True)
         self.best_schedule = schedules_and_scores[0][0]
         logger.info(
-            f"Snippet of best schedule (job, task, machine, start_time, duration): {self.best_schedule[:4]}"
+            f"Snippet of best schedule (job, task, machine, start_time, duration, task_idx, part_id): "
+            f"{self.best_schedule[:2]}"
         )
 
         return self.best_schedule, best_scores
@@ -887,7 +1330,7 @@ def reformat_output(
     # Convert best schedule into a dataframe
     schedule_df = pd.DataFrame(
         best_schedule,
-        columns=["job", "task", "machine", "starting_time", "duration", "task_num"],
+        columns=["job", "task", "machine", "starting_time", "duration", "task_idx", "part_id"],
     )
 
     # Round the starting time and duration
@@ -946,7 +1389,10 @@ def create_start_end_time(
     croom_reformatted_orders["Start_time_date"] = None
 
     def working_hours_shift(row):
-        days = [d * 480 for d in range(1, 6)]
+        """
+        Maps 480 working minutes per day (8 hours * 60 minutes) to real job starting times between 09:00-17:00 each day
+        """
+        days = [d * scheduling_options["minutes_per_day"] for d in range(1, 25)]
 
         for k, day in enumerate(days):
             if row["Start_time"] < day:
@@ -954,7 +1400,7 @@ def create_start_end_time(
                     base_date
                     + pd.to_timedelta(row["Start_time"], unit="m")
                     + pd.Timedelta(days=k)
-                    - pd.Timedelta(minutes=480 * k)
+                    - pd.Timedelta(minutes=scheduling_options["minutes_per_day"] * k)
                 )
                 break
         return row
@@ -972,6 +1418,7 @@ def create_start_end_time(
     croom_reformatted_orders.sort_values(by="Start_time", inplace=True)
 
     # Check if the start time for each task within each job is later than the completion time of the previous task
+    # If this error is raised the schedule is invalid
     for job_id in croom_reformatted_orders["Job"].unique():
         job_schedule = croom_reformatted_orders[croom_reformatted_orders["Job"] == job_id]
         for i in range(1, len(job_schedule)):
@@ -981,7 +1428,9 @@ def create_start_end_time(
                     f"is earlier than the completion time of the previous task!"
                 )
 
-    # Check if the start time for each task within each job is later than the completion time of the previous task
+    # Check if the start time for each task on each machine is later than the completion time of the previous task
+    # on that machine
+    # If this error is raised the schedule is invalid
     for machine in croom_reformatted_orders["Machine"].unique():
         machine_schedule = croom_reformatted_orders[
             croom_reformatted_orders["Machine"] == machine
