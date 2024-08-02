@@ -936,6 +936,7 @@ class GeneticAlgorithmScheduler:
                             )
                         ]
 
+
                         # If no preferred machines can be found, pick one that comes available earliest
                         # with a higher probability
                         if not preferred_machines:
@@ -949,7 +950,6 @@ class GeneticAlgorithmScheduler:
                                 min(preferred_machines, key=lambda x: avail_m.get(x))
                                 if random_roll < 0.7
                                 else random.choice(preferred_machines)
-                            )
 
                         # Start time is the time that the machine comes available if no changeover is required
                         # else, the changeover time is added, and an optional waiting time if we need to wait
