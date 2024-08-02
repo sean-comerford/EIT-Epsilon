@@ -96,16 +96,19 @@ class JobShop(Job, Shop):
         # Combine jobs from both operations (Operation 1 and Operation 2) into one list of jobs (J)
         J.update(J_op_2)
         
-        partToTasks = self.create_partID_to_task_seq(croom_processed_orders)
+        part_ID_to_task_seq = self.create_partID_to_task_seq(croom_processed_orders)
+        
+        M = self.create_machines(task_to_machines)
+        
+        dur = self.get_duration_matrix(J, part_ID_to_task_seq, croom_processed_orders, cr_cycle_times, ps_cycle_times, op2_cycle_times)
         
         input_repr_dict = {
             "J": J,
-            "part_to_tasks": partToTasks,
-            # "M": M,
-            # "compat": compat,
-            # "dur": dur,
-            # "due": due,
-            # "part_id": part_id,
+            "part_to_tasks": part_ID_to_task_seq,
+            "M": M,            
+            "dur": dur,
+            "task_to_machines": task_to_machines
+            # "due": due, # The due times are part of the J dictionary
         }
         
         return input_repr_dict

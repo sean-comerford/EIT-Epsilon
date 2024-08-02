@@ -4,11 +4,14 @@ import sys
 
 from typing import List, Dict, Tuple
 
-from src.eit_epsilon.pipelines.scheduling_engine.nodes import JobShop
+from src.eit_epsilon.pipelines.scheduling_engine.nodes import JobShop, GeneticAlgorithmScheduler
+
 
 from src.eit_epsilon.pipelines.scheduling_engine.Job import Job as Job2
 from src.eit_epsilon.pipelines.scheduling_engine.Shop import Shop as Shop2
 from src.eit_epsilon.pipelines.scheduling_engine.JobShop import JobShop as JobShop2
+
+from src.eit_epsilon.pipelines.scheduling_engine.GASch import GeneticAlgorithmScheduler as GeneticAlgorithmScheduler2
 
 from src.eit_epsilon.pipelines.scheduling_engine.verification import *
 
@@ -69,9 +72,19 @@ scheduling_options={
     }
 }
 
+# Define OP2 size categories
+size_categories_op2 = {
+    "small": {"1", "2", "3N"},
+    "medium": {"3", "4N", "4", "5N", "5", "6N"},
+    "large": {"6", "7", "8", "9", "10"}
+}
+
 jobshop = JobShop()
 
-df = pd.read_excel(r'C:\Dev\UCD Repos\EIT_Epsilon_UCD_Collaboration\data\01_raw\Week 9 open orders.xlsm', sheet_name='Data Week 9')
+#df = pd.read_excel(r'C:\Dev\UCD Repos\EIT_Epsilon_UCD_Collaboration\data\01_raw\Week 9 open orders.xlsm', sheet_name='Data Week 9')
+df = pd.read_excel(r'C:\Dev\UCD Repos\EIT_Epsilon_UCD_Collaboration\data\01_raw\orders_with_custom_part_id.xlsx', sheet_name='orders_with_custom_part_id')
+
+#df = pd.read_csv(r'C:\Dev\UCD Repos\EIT_Epsilon_UCD_Collaboration\data\01_raw\orders_with_custom_part_id.csv')
 
 ################################################################################################################################
 
@@ -82,12 +95,6 @@ df3 = pd.read_excel(r'C:\Dev\UCD Repos\EIT_Epsilon_UCD_Collaboration\data\01_raw
 
 ps_cycle_times, cr_cycle_times, op2_cycle_times = JobShop.preprocess_cycle_times(df2, df3)
 
-################# Original #################
-
-# JOld1 = JobShop.create_jobs(croom_processed_orders, operation="OP 1")
-# JOld2 = JobShop.create_jobs(croom_processed_orders, operation="OP 2")
-# JOld = JOld1 + JOld2
-
 jShop = JobShop()
 jShop2 = JobShop2()
 
@@ -96,11 +103,16 @@ gaRep2 = jShop2.build_ga_representation(croom_processed_orders, cr_cycle_times, 
 
 verifyJobsMatch(gaRep1['J'], gaRep2['J'])
 verifyTasksMatch(gaRep1['J'], gaRep2['J'], gaRep2['part_to_tasks'])
+verifyMachinesMatch(gaRep1['M'], gaRep2['M'])
+verifyDurationsMatch(gaRep1['dur'], gaRep2['dur'])
 
-# print(str(gaRep2['J']))
+gas1 = GeneticAlgorithmScheduler()
+gas2 = GeneticAlgorithmScheduler2()
 
-# for i, (k, v) in enumerate(gaRep2['J'].items()):
-#   print(f"{gaRep1['J'][i]}  {k} {v}")
+comp = JobShop.build_changeover_compatibility(croom_processed_orders, size_categories_op2)
+
+for k, v in comp.items():
+  print(f"{k}  {v}")
 
 
 ################# New #####################
@@ -125,15 +137,3 @@ verifyTasksMatch(gaRep1['J'], gaRep2['J'], gaRep2['part_to_tasks'])
 # due1 = JobShop.get_due_date(orders)
 
 # print(f"Length of cpo: {len(orders)}   Length of dur1: {len(duration1)}")
-
-# # Check if due times are durations are the same between the two data structures
-# equalDD = True
-# for i, jobID in enumerate(orders['Job ID']):    
-#     durations = [d for (j, task), d in duration2.items() if j == jobID]
-#     if due1[i] != JNew[jobID][1] or duration1[i] != durations:
-#       equalDD = False
-#       print(f"Not equal J: {jobID}\tDue1: {due1[i]}\tDue2: {JNew[jobID][1]}\tDur1: {duration1[i]} Dur2: {durations}")
-# if equalDD: print("Due Times and durations are equal")
-    
-
-
