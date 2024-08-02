@@ -16,7 +16,6 @@ def create_pipeline(**kwargs) -> Pipeline:
     genetic_algorithm = GeneticAlgorithmScheduler()
 
     # Create a pipeline with the jobshop object
-
     pipeline = Pipeline(
         [
             node(

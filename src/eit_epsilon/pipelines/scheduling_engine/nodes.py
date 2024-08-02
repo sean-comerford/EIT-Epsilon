@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 import math
 import re
 import copy
@@ -10,7 +10,7 @@ import random
 import logging
 from pandas.api.types import is_string_dtype
 import plotly
-from typing import List, Dict, Tuple, Union
+from typing import List, Dict, Tuple, Union, Optional
 from collections import defaultdict
 
 # Instantiate logger
@@ -529,7 +529,7 @@ class JobShop(Job, Shop):
         due = self.get_due_date(
             croom_processed_orders,
             date=scheduling_options["start_date"],
-            working_minutes=scheduling_options["minutes_per_day"],
+            working_minutes=1440,  # scheduling_options["minutes_per_day"],
         )
         part_id = self.get_part_id(croom_processed_orders)
 
@@ -570,12 +570,13 @@ class JobShop(Job, Shop):
 class GeneticAlgorithmScheduler:
     """
     Contains all functions to run a genetic algorithm for a flexible job shop scheduling problem (FJSSP):
-
     - Initialize population
     - Evaluate fitness
     - Crossover/Offspring
     - Mutation (Currently not implemented)
     - Run
+
+    Additional utility and helper functions are available.
     """
 
     def __init__(self):
@@ -589,10 +590,12 @@ class GeneticAlgorithmScheduler:
         self.n_e = None
         self.n_c = None
         self.P = None
+        self.start_date = None
         self.scores = None
         self.day_range = None
         self.best_schedule = None
-        self.minutes_per_day = None
+        self.working_minutes_per_day = None
+        self.total_minutes_per_day = None
         self.change_over_time_op1 = None
         self.change_over_time_op2 = None
         self.change_over_machines_op2 = None
@@ -601,10 +604,43 @@ class GeneticAlgorithmScheduler:
         self.urgent_orders = None
         self.urgent_multiplier = None
         self.max_iterations = None
+        self.task_time_buffer = None
+
+    def adjust_start_time(self, start: float) -> float:
+        """
+        Adjusts the start time to ensure it falls within working hours. If the start time is outside the
+        working hours, it is pushed to the start of the next working day. Additionally, if the start time
+        falls on a weekend, it is pushed to the following Monday.
+
+        Args:
+            start (float): The initial start time in minutes from the reference start date.
+
+        Returns:
+            float: The adjusted start time in minutes from the reference start date.
+        """
+        # Convert start_date to datetime object
+        starting_date: datetime = datetime.fromisoformat(self.start_date)
+
+        # Determine the current day cycle start time in minutes
+        current_day_start: float = (start // self.total_minutes_per_day) * self.total_minutes_per_day
+
+        # Check if the start time is within the valid window of the current day cycle
+        if start >= current_day_start + self.working_minutes_per_day:
+            # Adjust to the start of the next day cycle
+            start = current_day_start + self.total_minutes_per_day
+            actual_start_datetime: datetime = starting_date + timedelta(minutes=start)
+
+            # Adjust for weekends
+            while actual_start_datetime.weekday() >= 5:  # 5 is Saturday, 6 is Sunday
+                start += self.total_minutes_per_day
+                actual_start_datetime = starting_date + timedelta(minutes=start)
+
+        return start
 
     def find_avail_m(self, start: int, job_idx: int, task_idx: int) -> int:
         """
         Finds the next available time for a machine to start a task, considering the working day duration.
+        Add 'task_time_buffer' between each task on a machine as switching time.
 
         Args:
             start (int): The starting time in the schedule in minutes.
@@ -614,36 +650,69 @@ class GeneticAlgorithmScheduler:
         Returns:
             int: The next available time for the machine to start the task.
         """
-        for day in self.day_range:
-            if start < day <= start + self.dur[job_idx][task_idx]:
-                return day
-        return start + self.dur[job_idx][task_idx]
+        # Duration of the task
+        duration = self.dur[job_idx][task_idx]
+        # Calculate next available time after the task and buffer
+        next_avail_time = start + duration + self.task_time_buffer
 
-    def adjust_changeover_finish_time(self, start_time: int) -> int:
+        if self.J[job_idx][task_idx] == 1:  # Task 1 corresponds to HAAS machines
+            # Jobs can run overnight and in the weekend for HAAS machines
+            return next_avail_time
+        else:
+            # For other tasks, ensure they are scheduled during working hours
+            next_avail_time = self.adjust_start_time(next_avail_time)
+
+            # Determine if next_avail_time needs to be adjusted further for working hours
+            day_offset = (next_avail_time // self.total_minutes_per_day) * self.total_minutes_per_day
+            time_in_day = next_avail_time % self.total_minutes_per_day
+
+            if time_in_day >= self.working_minutes_per_day:
+                next_avail_time = day_offset + self.total_minutes_per_day
+            elif time_in_day < 0:
+                next_avail_time = day_offset
+
+            return next_avail_time
+
+    def adjust_changeover_finish_time(self, start_time: float) -> float:
         """
-        Adjusts the changeover finish time to ensure it completes before the working day ends.
-        Practically this means that if a changeover is set to take 3 hours, it cannot be scheduled to start
-        in the last 3 hours of the working day. It will instead be pushed to the next workday.
+        Adjusts the changeover start time to ensure it completes before the working day ends.
 
-        If the changeover finish time is between the range of 300 and 480 (exclusive)
-        for any day multiple of 480, it will be set to the next multiple of 480.
+        If the start time is after the last valid time in the working day, it will be pushed to the next working day.
 
         Args:
-        changeover_finish_time (int): The original changeover finish time in minutes.
+        start_time (float): The original changeover start time in minutes.
 
         Returns:
-        int: The adjusted changeover finish time.
+        float: The adjusted changeover start time.
         """
+        # Calculate the valid start time window
+        changeover_duration = self.change_over_time_op1
+        valid_start_window_end = self.working_minutes_per_day - changeover_duration
 
-        # Calculate the current day's range
-        day_multiple = (start_time // self.minutes_per_day) * self.minutes_per_day
-        start_of_range = day_multiple + (self.minutes_per_day - self.change_over_time_op1)
-        end_of_range = day_multiple + self.minutes_per_day
+        # Adjust the start time if necessary
+        adjusted_start_time = self.adjust_start_time(start_time)
 
-        # Check if the changeover_finish_time falls in the range and adjust accordingly
-        if start_of_range < start_time < end_of_range:
-            return end_of_range
-        return start_time
+        # Check if the start time is within the valid start window
+        if (
+            adjusted_start_time
+            < (adjusted_start_time // self.total_minutes_per_day) * self.total_minutes_per_day
+            + valid_start_window_end
+        ):
+            return adjusted_start_time
+        else:
+            # If not, move to the start of the next working day
+            next_working_day_start = (
+                adjusted_start_time // self.total_minutes_per_day
+            ) * self.total_minutes_per_day + self.total_minutes_per_day
+
+            # Adjust for weekends
+            starting_date = datetime.fromisoformat(self.start_date)
+            next_start_datetime = starting_date + timedelta(minutes=next_working_day_start)
+            while next_start_datetime.weekday() >= 5:  # 5 is Saturday, 6 is Sunday
+                next_working_day_start += self.total_minutes_per_day
+                next_start_datetime = starting_date + timedelta(minutes=next_working_day_start)
+
+            return next_working_day_start
 
     def pick_early_machine(
         self,
@@ -676,8 +745,52 @@ class GeneticAlgorithmScheduler:
 
         return m
 
-    @staticmethod
+    def slack_window_check(self, slack: Tuple[float, float]) -> Optional[Tuple[float, float]]:
+        """
+        Check and adjust a given slack time window to ensure it falls within valid working hours.
+
+        Args:
+            slack (Tuple[float, float]): A tuple containing the start and end times of the slack window.
+
+        Returns:
+            Optional[Tuple[float, float]]: The adjusted slack window if valid, or None if invalid.
+
+        The function operates as follows:
+        1. Extracts the start and end times from the slack tuple.
+        2. Validates that both times are floats.
+        3. Calculates the current working day's start and end times based on the total minutes per day and working minutes per day.
+        4. Checks if the start time falls within the valid working window.
+        5. Adjusts the end time if it exceeds the valid working window.
+        6. Checks if the adjusted end time falls within the valid working window.
+        7. Returns the adjusted slack window if valid, otherwise returns None.
+        """
+
+        start_time, end_time = slack
+
+        # Check if the times are valid floats
+        if not isinstance(start_time, float) or not isinstance(end_time, float):
+            return None
+
+        # Determine the window in which the start_time falls
+        window_start = (start_time // self.total_minutes_per_day) * self.total_minutes_per_day
+        window_end = window_start + self.working_minutes_per_day
+
+        # Check if the start_time is within the valid window
+        if start_time < window_start or start_time >= window_end:
+            return None
+
+        # Adjust the end_time if it exceeds the valid window
+        if end_time > window_end:
+            end_time = window_end
+
+        # Check if the end_time falls within the valid window
+        if end_time <= window_start or end_time > window_end:
+            return None
+
+        return start_time, end_time
+
     def slack_logic(
+        self,
         m: int,
         avail_m: Dict[int, int],
         slack_m: Dict[int, List],
@@ -727,19 +840,19 @@ class GeneticAlgorithmScheduler:
         # Define previous task finish
         previous_task_finish = previous_task_start + previous_task_dur
 
-        if m in [""]:
-            start = avail_m[m] + changeover_duration
-
         # If the previous task is completed later than the new machine comes available
         if previous_task_finish > avail_m[m]:
             # Start time is the completion of the previous task of the job in question
-            start = previous_task_finish + changeover_duration
+            start = self.adjust_start_time(previous_task_finish + changeover_duration)
 
             # Difference between the moment the machine becomes available and the new tasks starts is slack
             # e.g.: machine comes available at 100, new task can only start at 150, slack = (100, 150)
             # We subtract changeover_duration, because even though the task actually starts later,
             # the changeover_duration cannot be used for a different task
-            slack_m[m].append((avail_m[m], start - changeover_duration))
+            slack_window_upd = self.slack_window_check((avail_m[m], start - changeover_duration))
+
+            if slack_window_upd:
+                slack_m[m].append(slack_window_upd)
 
         else:
             # Loop over slack in this machine
@@ -760,7 +873,7 @@ class GeneticAlgorithmScheduler:
                     # as a new slack window
                     # e.g.: original slack = (100, 150), task planned now takes (110, 130), new slack = (130, 150)
                     # changeover_duration must be added because it delays the task
-                    slack_m[m].append(
+                    slack_window_upd = self.slack_window_check(
                         (
                             (
                                 max(unused_time[0], previous_task_finish)
@@ -771,6 +884,9 @@ class GeneticAlgorithmScheduler:
                         )
                     )
 
+                    if slack_window_upd:
+                        slack_m[m].append(slack_window_upd)
+
                     # Append another slack window if previous start was not at the beginning of the slack window,
                     # in this case there is still some time between when the machine comes available and when the
                     # task starts
@@ -778,7 +894,12 @@ class GeneticAlgorithmScheduler:
                     # We subtract changeover_duration, because even though the task actually starts later,
                     # the changeover_duration cannot be used for a different task
                     if start == previous_task_finish:
-                        slack_m[m].append((unused_time[0], start - changeover_duration))
+                        slack_window_upd = self.slack_window_check(
+                            (unused_time[0], start - changeover_duration)
+                        )
+
+                        if slack_window_upd:
+                            slack_m[m].append(slack_window_upd)
 
                     slack_time_used = True
                     # break the loop if a suitable start time has been found in the slack
@@ -786,7 +907,7 @@ class GeneticAlgorithmScheduler:
 
             # If slack time is not used, start when the machine becomes available
             if not slack_time_used:
-                start = avail_m[m] + changeover_duration
+                start = self.adjust_start_time(avail_m[m] + changeover_duration)
 
         if start is None:
             logger.warning("No real start time was defined!")
@@ -1100,7 +1221,7 @@ class GeneticAlgorithmScheduler:
                     )
                     # Update changeover mechanic availability
                     if product_m[m] != 0 and self.part_id[job_idx] != product_m[m]:
-                        changeover_finish_time = start
+                        changeover_finish_time = self.adjust_changeover_finish_time(start)
 
                 else:
                     # Initialize changeover time to 0
@@ -1203,7 +1324,7 @@ class GeneticAlgorithmScheduler:
 
         self.P = P_0
 
-    def mutate(self):
+    def mutate(self) -> None:
         """
         Perform mutation on the current population of schedules to create a new set of schedules.
 
@@ -1346,7 +1467,9 @@ class GeneticAlgorithmScheduler:
         self.n = scheduling_options["n"]
         self.n_e = scheduling_options["n_e"]
         self.n_c = scheduling_options["n_c"]
-        self.minutes_per_day = scheduling_options["minutes_per_day"]
+        self.start_date = scheduling_options["start_date"]
+        self.working_minutes_per_day = scheduling_options["working_minutes_per_day"]
+        self.total_minutes_per_day = scheduling_options["total_minutes_per_day"]
         self.change_over_time_op1 = scheduling_options["change_over_time_op1"]
         self.change_over_time_op2 = scheduling_options["change_over_time_op2"]
         self.change_over_machines_op2 = scheduling_options["change_over_machines_op2"]
@@ -1354,11 +1477,12 @@ class GeneticAlgorithmScheduler:
         self.compatibility_dict_op2 = compatibility_dict_op2
         self.max_iterations = scheduling_options["max_iterations"]
         self.urgent_multiplier = scheduling_options["urgent_multiplier"]
+        self.task_time_buffer = scheduling_options["task_time_buffer"]
         self.urgent_orders = [job_idx - 1 for job_idx in scheduling_options["urgent_orders"]]
         self.day_range = np.arange(
-            self.minutes_per_day,
-            len(self.J) // 5 * self.minutes_per_day,
-            self.minutes_per_day,
+            self.working_minutes_per_day,
+            len(self.J) // 5 * self.working_minutes_per_day,
+            self.working_minutes_per_day,
         )
 
         self.init_population()
@@ -1464,11 +1588,11 @@ def create_start_end_time(
     # Initialize empty 'Start_time_date' column
     croom_reformatted_orders["Start_time_date"] = None
 
-    def working_hours_shift(row):
+    def working_hours_shift_else(row):
         """
         Maps 480 working minutes per day (8 hours * 60 minutes) to real job starting times between 09:00-17:00 each day
         """
-        days = [d * scheduling_options["minutes_per_day"] for d in range(1, 25)]
+        days = [d * scheduling_options["working_minutes_per_day"] for d in range(1, 25)]
 
         for k, day in enumerate(days):
             if row["Start_time"] < day:
@@ -1476,9 +1600,19 @@ def create_start_end_time(
                     base_date
                     + pd.to_timedelta(row["Start_time"], unit="m")
                     + pd.Timedelta(days=k)
-                    - pd.Timedelta(minutes=scheduling_options["minutes_per_day"] * k)
+                    - pd.Timedelta(minutes=scheduling_options["working_minutes_per_day"] * k)
                 )
                 break
+        return row
+
+    def working_hours_shift(row):
+        """
+        Maps minutes since the start of scheduling to a real job starting datetime,
+        assuming there are 1440 minutes in a day.
+        """
+
+        row["Start_time_date"] = base_date + pd.to_timedelta(row["Start_time"], unit="m")
+
         return row
 
     # Apply function
