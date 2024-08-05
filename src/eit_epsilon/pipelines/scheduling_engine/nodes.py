@@ -517,13 +517,11 @@ class JobShop(Job, Shop):
         operations = croom_processed_orders["operation"].unique()
 
         # Helper function to determine the size category based on type
-        def get_size_category(size: str, type: str) -> Union[str, None]:
-            if type == "CR":
-                size_categories = size_categories_cr
-            elif type == "PS":
+        def get_size_category(size: str, type: str, cementing: str) -> Union[str, None]:
+            if type == "PS" and cementing == "CLS":
                 size_categories = size_categories_ps
             else:
-                return None
+                size_categories = size_categories_cr
 
             for category, sizes in size_categories.items():
                 if size in sizes:
@@ -544,7 +542,7 @@ class JobShop(Job, Shop):
         for part_id in part_ids:
             # Split the part ID into its components
             orientation, type, size, cementing, op = part_id.split("-")
-            size_category = get_size_category(size, type)
+            size_category = get_size_category(size, type, cementing)
 
             # Initialize a list to hold compatible parts for the current part ID
             compatible_parts = []
@@ -562,7 +560,7 @@ class JobShop(Job, Shop):
                     other_cementing,
                     other_op,
                 ) = other_part_id.split("-")
-                other_size_category = get_size_category(other_size, other_type)
+                other_size_category = get_size_category(other_size, other_type, other_cementing)
 
                 # Compatibility rules for OP1
                 if op == "OP1" and other_op == "OP1":
@@ -795,9 +793,6 @@ class GeneticAlgorithmScheduler:
 
         # Define previous task finish
         previous_task_finish = previous_task_start + previous_task_dur
-
-        if m in [""]:
-            start = avail_m[m] + changeover_duration
 
         # If the previous task is completed later than the new machine comes available
         if previous_task_finish > avail_m[m]:
