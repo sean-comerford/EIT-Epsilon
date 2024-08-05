@@ -26,11 +26,18 @@ task_to_machines: {
   99: [1, 2, 3]  # HAAS (only cemented)
 }
 
-# Define OP2 size categories
-size_categories_op2: {
+# Define OP2 size categories for CR
+size_categories_op2_cr: {
     "small": {"1", "2", "3N"},
     "medium": {"3", "4N", "4", "5N", "5", "6N"},
     "large": {"6", "7", "8", "9", "10"}
+}
+
+# Define OP2 size categories for PS
+size_categories_op2_ps: {
+    "small": {"1", "2"},
+    "medium": {"3N", "3", "4N", "4", "5N", "5"},
+    "large": {"6N", "6", "7", "8", "9", "10"}
 }
 
 column_mapping_reformat: {
@@ -74,7 +81,7 @@ machine_dict: {
 scheduling_options:
   start_date: "2024-03-18T09:00"  # Starting date used to calculate difference with due date
   change_over_time_op1: 180  # Minutes required to do a changeover on the HAAS machines (Only OP 1)
-  change_over_time_op2: 20  # Minutes required to do a changeover on the HAAS machines (Only OP 1)
+  change_over_time_op2: 20  # Minutes required to do a changeover on the Drag machines (Only OP 2)
   change_over_machines_op2: [20, 22, 23]  # Machines that require a changeover for OP2 (key in machine dict above)
   n: 1200  # Number of random schedules to generate
   n_e: 0.1  # Proportion of best schedules to automatically pass on to the next generation (e.g.: 10%)

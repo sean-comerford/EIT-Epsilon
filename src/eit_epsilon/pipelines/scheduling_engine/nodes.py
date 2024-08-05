@@ -486,16 +486,45 @@ class JobShop(Job, Shop):
         return in_scope_data
 
     @staticmethod
-    def build_changeover_compatibility(croom_processed_orders, size_categories):
-        # Define attributes
+    def build_changeover_compatibility(
+        croom_processed_orders: pd.DataFrame,
+        size_categories_cr: Dict[str, List[str]],
+        size_categories_ps: Dict[str, List[str]],
+    ) -> Dict[str, List[str]]:
+        """
+        Build a compatibility dictionary for changeovers between different operations (OP1 and OP2).
+
+        The compatibility rules are:
+        - For OP1: Parts are compatible if they have the exact same size and cementing status.
+        - For OP2: Parts are compatible if they belong to the same type (CR or PS) and size category.
+                   For PS type, they must also have the same cementing status.
+
+        Args:
+            croom_processed_orders (pd.DataFrame): DataFrame containing the processed orders with columns
+                                                   'Size', 'Orientation', 'Type', 'Cementless', and 'operation'.
+            size_categories_cr (Dict[str, List[str]]): Size categories for CR type.
+            size_categories_ps (Dict[str, List[str]]): Size categories for PS type.
+
+        Returns:
+            Dict[str, List[str]]: A dictionary where each key is a part ID and the value is a list of compatible part IDs.
+        """
+
+        # Extract unique values for attributes from the DataFrame
         sizes = croom_processed_orders["Size"].unique()
         orientations = croom_processed_orders["Orientation"].unique()
         types = croom_processed_orders["Type"].unique()
         cementing_methods = croom_processed_orders["Cementless"].unique()
         operations = croom_processed_orders["operation"].unique()
 
-        # Helper function to determine the size category
-        def get_size_category(size):
+        # Helper function to determine the size category based on type
+        def get_size_category(size: str, type: str) -> Union[str, None]:
+            if type == "CR":
+                size_categories = size_categories_cr
+            elif type == "PS":
+                size_categories = size_categories_ps
+            else:
+                return None
+
             for category, sizes in size_categories.items():
                 if size in sizes:
                     return category
@@ -509,19 +538,23 @@ class JobShop(Job, Shop):
             )
         ]
 
-        # Create combined compatibility dictionary
+        # Create the combined compatibility dictionary
         combined_compatibility_dict = {}
 
         for part_id in part_ids:
+            # Split the part ID into its components
             orientation, type, size, cementing, op = part_id.split("-")
-            size_category = get_size_category(size)
+            size_category = get_size_category(size, type)
 
+            # Initialize a list to hold compatible parts for the current part ID
             compatible_parts = []
 
             for other_part_id in part_ids:
+                # Skip if comparing the part ID with itself
                 if other_part_id == part_id:
                     continue
 
+                # Split the other part ID into its components
                 (
                     other_orientation,
                     other_type,
@@ -529,19 +562,20 @@ class JobShop(Job, Shop):
                     other_cementing,
                     other_op,
                 ) = other_part_id.split("-")
-                other_size_category = get_size_category(other_size)
+                other_size_category = get_size_category(other_size, other_type)
 
-                # OP1 compatibility rules
+                # Compatibility rules for OP1
                 if op == "OP1" and other_op == "OP1":
                     if size == other_size and cementing == other_cementing:
                         compatible_parts.append(other_part_id)
 
-                # OP2 compatibility rules
+                # Compatibility rules for OP2
                 elif op == "OP2" and other_op == "OP2":
                     if type == other_type and size_category == other_size_category:
                         if type == "CR" or (type == "PS" and cementing == other_cementing):
                             compatible_parts.append(other_part_id)
 
+            # Assign the list of compatible parts to the current part ID in the dictionary
             combined_compatibility_dict[part_id] = compatible_parts
 
         return combined_compatibility_dict
@@ -968,7 +1002,11 @@ class GeneticAlgorithmScheduler:
 
                         # If a changeover happened, we update the time someone comes available to do another
                         # changeover
-                        if product_m[m] != 0 and self.part_id[job_idx] != product_m[m]:
+                        if (
+                            product_m.get(m) != 0
+                            or product_m.get(m) != self.part_id[job_idx]
+                            or product_m.get(m) not in self.compatibility_dict[self.part_id[job_idx]]
+                        ):
                             changeover_finish_time = start
 
                     else:
