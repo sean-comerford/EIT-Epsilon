@@ -529,7 +529,7 @@ class JobShop(Job, Shop):
         due = self.get_due_date(
             croom_processed_orders,
             date=scheduling_options["start_date"],
-            working_minutes=1440,  # scheduling_options["minutes_per_day"],
+            working_minutes=scheduling_options["total_minutes_per_day"],
         )
         part_id = self.get_part_id(croom_processed_orders)
 
