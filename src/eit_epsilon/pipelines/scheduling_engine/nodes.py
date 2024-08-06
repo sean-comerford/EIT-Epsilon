@@ -1108,7 +1108,7 @@ class GeneticAlgorithmScheduler:
                             for key in compat_task_0
                             if product_m[key] == 0
                             or product_m[key] == self.part_id[job_idx]
-                            or product_m[key] in self.compatibility_dict_op1[self.part_id[job_idx]]
+                            or product_m[key] in self.compatibility_dict[self.part_id[job_idx]]
                         ]
 
                         # If no preferred machines can be found, pick one that comes available earliest
@@ -1129,11 +1129,10 @@ class GeneticAlgorithmScheduler:
                         # Start time is the time that the machine comes available if no changeover is required
                         # else, the changeover time is added, and an optional waiting time if we need to wait
                         # for another changeover to finish first (only one changeover can happen concurrently)
-
                         if (
                             product_m[m] == 0
                             or product_m[m] == self.part_id[job_idx]
-                            or product_m[m] in self.compatibility_dict_op1[self.part_id[job_idx]]
+                            or product_m[m] in self.compatibility_dict[self.part_id[job_idx]]
                         ):
                             start = avail_m[m]
                         else:
@@ -1144,7 +1143,7 @@ class GeneticAlgorithmScheduler:
                                     avail_m[m] + max((changeover_finish_time[-1] - avail_m[m]), 0)
                                 )
                                 + self.change_over_time_op1
-
+                            )
                             # Update time that a mechanic becomes available for a new changeover
                             changeover_finish_time.append(start)
 
@@ -1310,7 +1309,7 @@ class GeneticAlgorithmScheduler:
                     if (
                         product_m[m] == 0
                         or product_m[m] == self.part_id[job_idx]
-                        or product_m[m] in self.compatibility_dict_op1[self.part_id[job_idx]]
+                        or product_m[m] in self.compatibility_dict[self.part_id[job_idx]]
                     ):
                         start = avail_m[m]
                     else:
@@ -1325,7 +1324,6 @@ class GeneticAlgorithmScheduler:
 
                         # Update time that a mechanic becomes available for a new changeover
                         changeover_finish_time.append(start)
-
 
                 else:
                     # Initialize changeover time to 0
