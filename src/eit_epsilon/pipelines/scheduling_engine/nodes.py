@@ -11,6 +11,7 @@ import logging
 from pandas.api.types import is_string_dtype
 import plotly
 from typing import List, Dict, Tuple, Union, Optional, Any
+import itertools
 from collections import defaultdict
 
 # Instantiate logger
@@ -484,6 +485,99 @@ class JobShop(Job, Shop):
 
         return in_scope_data
 
+    @staticmethod
+    def build_changeover_compatibility(
+        croom_processed_orders: pd.DataFrame,
+        size_categories_cr: Dict[str, List[str]],
+        size_categories_ps: Dict[str, List[str]],
+    ) -> Dict[str, List[str]]:
+        """
+        Build a compatibility dictionary for changeovers between different operations (OP1 and OP2).
+
+        The compatibility rules are:
+        - For OP1: Parts are compatible if they have the exact same size and cementing status.
+        - For OP2: Parts are compatible if they belong to the same type (CR or PS) and size category.
+                   For PS type, they must also have the same cementing status.
+
+        Args:
+            croom_processed_orders (pd.DataFrame): DataFrame containing the processed orders with columns
+                                                   'Size', 'Orientation', 'Type', 'Cementless', and 'operation'.
+            size_categories_cr (Dict[str, List[str]]): Size categories for CR type.
+            size_categories_ps (Dict[str, List[str]]): Size categories for PS type.
+
+        Returns:
+            Dict[str, List[str]]: A dictionary where each key is a part ID and the value is a list of compatible part IDs.
+        """
+
+        # Extract unique values for attributes from the DataFrame
+        sizes = croom_processed_orders["Size"].unique()
+        orientations = croom_processed_orders["Orientation"].unique()
+        types = croom_processed_orders["Type"].unique()
+        cementing_methods = croom_processed_orders["Cementless"].unique()
+        operations = croom_processed_orders["operation"].unique()
+
+        # Helper function to determine the size category based on type
+        def get_size_category(size: str, type: str, cementing: str) -> Union[str, None]:
+            if type == "PS" and cementing == "CLS":
+                size_categories = size_categories_ps
+            else:
+                size_categories = size_categories_cr
+
+            for category, sizes in size_categories.items():
+                if size in sizes:
+                    return category
+            return None
+
+        # Generate all possible part IDs
+        part_ids = [
+            f"{orientation}-{type}-{size}-{cementing}-{op}"
+            for orientation, type, size, cementing, op in itertools.product(
+                orientations, types, sizes, cementing_methods, operations
+            )
+        ]
+
+        # Create the combined compatibility dictionary
+        combined_compatibility_dict = {}
+
+        for part_id in part_ids:
+            # Split the part ID into its components
+            orientation, type, size, cementing, op = part_id.split("-")
+            size_category = get_size_category(size, type, cementing)
+
+            # Initialize a list to hold compatible parts for the current part ID
+            compatible_parts = []
+
+            for other_part_id in part_ids:
+                # Skip if comparing the part ID with itself
+                if other_part_id == part_id:
+                    continue
+
+                # Split the other part ID into its components
+                (
+                    other_orientation,
+                    other_type,
+                    other_size,
+                    other_cementing,
+                    other_op,
+                ) = other_part_id.split("-")
+                other_size_category = get_size_category(other_size, other_type, other_cementing)
+
+                # Compatibility rules for OP1
+                if op == "OP1" and other_op == "OP1":
+                    if size == other_size and cementing == other_cementing:
+                        compatible_parts.append(other_part_id)
+
+                # Compatibility rules for OP2
+                elif op == "OP2" and other_op == "OP2":
+                    if type == other_type and size_category == other_size_category:
+                        if type == "CR" or (type == "PS" and cementing == other_cementing):
+                            compatible_parts.append(other_part_id)
+
+            # Assign the list of compatible parts to the current part ID in the dictionary
+            combined_compatibility_dict[part_id] = compatible_parts
+
+        return combined_compatibility_dict
+
     def build_ga_representation(
         self,
         croom_processed_orders: pd.DataFrame,
@@ -599,8 +693,7 @@ class GeneticAlgorithmScheduler:
         self.change_over_time_op1 = None
         self.change_over_time_op2 = None
         self.change_over_machines_op2 = None
-        self.compatibility_dict_op1 = None
-        self.compatibility_dict_op2 = None
+        self.compatibility_dict = None
         self.urgent_orders = None
         self.urgent_multiplier = None
         self.max_iterations = None
@@ -1036,6 +1129,7 @@ class GeneticAlgorithmScheduler:
                         # Start time is the time that the machine comes available if no changeover is required
                         # else, the changeover time is added, and an optional waiting time if we need to wait
                         # for another changeover to finish first (only one changeover can happen concurrently)
+
                         if (
                             product_m[m] == 0
                             or product_m[m] == self.part_id[job_idx]
@@ -1050,7 +1144,6 @@ class GeneticAlgorithmScheduler:
                                     avail_m[m] + max((changeover_finish_time[-1] - avail_m[m]), 0)
                                 )
                                 + self.change_over_time_op1
-                            )
 
                             # Update time that a mechanic becomes available for a new changeover
                             changeover_finish_time.append(start)
@@ -1068,9 +1161,9 @@ class GeneticAlgorithmScheduler:
                             changeover_duration = (
                                 0
                                 if (
-                                    product_m[m] == 0
-                                    or product_m[m] == self.part_id[job_idx]
-                                    or product_m[m] in self.compatibility_dict_op2[self.part_id[job_idx]]
+                                    product_m.get(m) == 0
+                                    or product_m.get(m) == self.part_id[job_idx]
+                                    or product_m.get(m) in self.compatibility_dict[self.part_id[job_idx]]
                                 )
                                 else self.change_over_time_op2
                             )
@@ -1233,6 +1326,7 @@ class GeneticAlgorithmScheduler:
                         # Update time that a mechanic becomes available for a new changeover
                         changeover_finish_time.append(start)
 
+
                 else:
                     # Initialize changeover time to 0
                     changeover_duration = 0
@@ -1242,9 +1336,9 @@ class GeneticAlgorithmScheduler:
                         changeover_duration = (
                             0
                             if (
-                                product_m[m] == 0
-                                or product_m[m] == self.part_id[job_idx]
-                                or product_m[m] in self.compatibility_dict_op2[self.part_id[job_idx]]
+                                product_m.get(m) == 0
+                                or product_m.get(m) == self.part_id[job_idx]
+                                or product_m.get(m) in self.compatibility_dict[self.part_id[job_idx]]
                             )
                             else self.change_over_time_op2
                         )
@@ -1401,15 +1495,12 @@ class GeneticAlgorithmScheduler:
 
                             # Check compatibility in both dictionaries safely
                             # This is required to make sure no extra changeover will be needed due to mutation
-                            compat_op1 = custom_part_id_1 in self.compatibility_dict_op1.get(
-                                custom_part_id_2, []
-                            )
-                            compat_op2 = custom_part_id_1 in self.compatibility_dict_op2.get(
+                            compat_op = custom_part_id_1 in self.compatibility_dict.get(
                                 custom_part_id_2, []
                             )
 
                             # If the part ID between the jobs is the same, or they are compatible append to job pairs
-                            if (custom_part_id_1 == custom_part_id_2) or compat_op1 or compat_op2:
+                            if (custom_part_id_1 == custom_part_id_2) or compat_op:
                                 job_pairs.append((job1, job2))
 
             # If no pairs found, continue to the next schedule
@@ -1451,19 +1542,14 @@ class GeneticAlgorithmScheduler:
         # Add all schedules from P_0 to the population
         self.P = P_0 + new_schedules
 
-    def run(
-        self,
-        input_repr_dict: Dict[str, any],
-        scheduling_options: dict,
-        compatibility_dict_op1: dict,
-        compatibility_dict_op2: dict,
-    ):
+    def run(self, input_repr_dict: Dict[str, any], scheduling_options: dict, compatibility_dict: dict):
         """
         Runs the genetic algorithm by initializing the population, evaluating it, and selecting the best schedule.
 
         Args:
             input_repr_dict (Dict[str, any]): A dictionary containing the necessary input variables for the GA.
             scheduling_options (dict): Dictionary containing hyperparameters for running the algorithm.
+            compatibility_dict (dict): Dictionary containing the compatibility information for changeovers.
 
         Returns:
             Tuple[List[Tuple[int, int, int, int, float]], List[int]]: The best schedule with the highest score and the list of best scores per generation.
@@ -1483,8 +1569,7 @@ class GeneticAlgorithmScheduler:
         self.change_over_time_op1 = scheduling_options["change_over_time_op1"]
         self.change_over_time_op2 = scheduling_options["change_over_time_op2"]
         self.change_over_machines_op2 = scheduling_options["change_over_machines_op2"]
-        self.compatibility_dict_op1 = compatibility_dict_op1
-        self.compatibility_dict_op2 = compatibility_dict_op2
+        self.compatibility_dict = compatibility_dict
         self.max_iterations = scheduling_options["max_iterations"]
         self.urgent_multiplier = scheduling_options["urgent_multiplier"]
         self.task_time_buffer = scheduling_options["task_time_buffer"]

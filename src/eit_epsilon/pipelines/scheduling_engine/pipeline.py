@@ -45,12 +45,21 @@ def create_pipeline(**kwargs) -> Pipeline:
                 name="build_ga_representation",
             ),
             node(
+                func=jobshop.build_changeover_compatibility,
+                inputs=[
+                    "croom_processed_orders",
+                    "params:size_categories_op2_cr",
+                    "params:size_categories_op2_ps",
+                ],
+                outputs="compatibility_dict",
+                name="build_changeover_compatibility",
+            ),
+            node(
                 func=genetic_algorithm.run,
                 inputs=[
                     "input_repr_dict",
                     "params:scheduling_options",
-                    "compatibility_dict_op1",
-                    "compatibility_dict_op2",
+                    "compatibility_dict",
                 ],
                 outputs=["best_schedule", "best_scores"],
                 name="mock_genetic_algorithm",
