@@ -53,6 +53,10 @@ input_repr_dict:
   type: pickle.PickleDataset
   filepath: data/05_model_input/input_repr_dict.pkl
 
+compatibility_dict:
+  type: pickle.PickleDataset
+  filepath: data/05_model_input/compatibility_dict.pkl
+
 machine_qty_dict:
   type: pickle.PickleDataset
   filepath: data/01_raw/machine_qty_dict.pkl
