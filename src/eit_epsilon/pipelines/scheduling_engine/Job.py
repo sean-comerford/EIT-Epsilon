@@ -143,20 +143,20 @@ class Job:
             data = data[~data["Part Description"].str.contains("OP 2")]
         
         return dict(zip(data['Job ID'], 
-                        zip(data['Part ID'], Shop.get_due_date(data))
+                        zip(data['Custom Part ID'], Shop.get_due_date(data))
                         ))
 
-    @staticmethod
-    def get_part_id(data: pd.DataFrame) -> List[str]:
-        part_id = data["Custom Part ID"]
+    # @staticmethod
+    # def get_part_id(data: pd.DataFrame) -> List[str]:
+    #     part_id = data["Custom Part ID"]
 
-        # Convert the series to a list
-        part_id = part_id.tolist()
+    #     # Convert the series to a list
+    #     part_id = part_id.tolist()
 
-        # Show snippet of Part IDs
-        logger.info(f"Snippet of Part IDs: {part_id[:5]}")
+    #     # Show snippet of Part IDs
+    #     logger.info(f"Snippet of Part IDs: {part_id[:5]}")
 
-        return part_id
+    #     return part_id
 
     @staticmethod
     def create_partID_to_task_seq(data: pd.DataFrame) -> Dict[str, List[int]]:
@@ -169,10 +169,10 @@ class Job:
             Dict[str, List[int]]: _description_
         """
         
-        d = data[['Part ID', 'Part Description', 'Cementless']].drop_duplicates()
+        d = data[['Custom Part ID', 'Part Description', 'Cementless']].drop_duplicates()
         d = d.reset_index()
         
-        dPartsOnly = data[['Part ID']].drop_duplicates()
+        dPartsOnly = data[['Custom Part ID']].drop_duplicates()
         
         if len(d) != len(dPartsOnly):
             print('Combination of part/description/cementless is not unique')
@@ -182,9 +182,9 @@ class Job:
         result = {}                       
         for _, row in d.iterrows():
             if 'OP 2' in row['Part Description']:
-                result[row['Part ID']] = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19] if row['Cementless'] == "CLS" else [10, 11, 12, 13, 14, 16, 17, 18, 19]
+                result[row['Custom Part ID']] = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19] if row['Cementless'] == "CLS" else [10, 11, 12, 13, 14, 16, 17, 18, 19]
             else:
                 # Operation 1
-                result[row['Part ID']] = [1, 2, 3, 4, 5, 6, 7] if row['Cementless'] == "CLS" else [1, 2, 3, 6, 7]
+                result[row['Custom Part ID']] = [1, 2, 3, 4, 5, 6, 7] if row['Cementless'] == "CLS" else [1, 2, 3, 6, 7]
         
         return result   

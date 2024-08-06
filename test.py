@@ -53,16 +53,18 @@ task_to_machines= {
 }
 
 scheduling_options={
-
   'start_date': "2024-03-18T09:00",  # Starting date used to calculate difference with due date
+  'change_over_time_op1': 180,  # Minutes required to do a changeover on the HAAS machines (Only OP 1)
+  'change_over_time_op2': 20,  # Minutes required to do a changeover on the HAAS machines (Only OP 1)
+  'change_over_machines_op2': [20, 22, 23],  # Machines that require a changeover for OP2 (key in machine dict above)
   'change_over_time': 180,  # Minutes required to do a changeover on the HAAS machines
-  'n': 1200,  # Number of random schedules to generate
+  'n': 1,  # Number of random schedules to generate
   'n_e': 0.1,  # Proportion of best schedules to automatically pass on to the next generation (e.g.: 10%)
   'n_c': 0.3,  # Proportion of children to generate in the offspring function
   'minutes_per_day': 480,  # Number of working minutes per day (8 hours * 60 minutes)
   'max_iterations': 10,  # Maximum number of iterations/generations to run the algorithm
   'urgent_multiplier': 3,  # Multiplier for (completion_time - due_date) for urgent_orders
-  'urgent_orders': [], # List of job indices of urgent orders; starting from 1
+  'urgent_orders': [4420704, 4421316, 4421310], # List of job IDs (urgency in reverse order)
   'column_mapping': {
     'Job ID': 'Order',
     'Created Date': 'Order_date',
@@ -110,9 +112,12 @@ gas1 = GeneticAlgorithmScheduler()
 gas2 = GeneticAlgorithmScheduler2()
 
 comp = JobShop.build_changeover_compatibility(croom_processed_orders, size_categories_op2)
+comp2 = JobShop2.build_changeover_compatibility(croom_processed_orders, size_categories_op2)
 
-for k, v in comp.items():
-  print(f"{k}  {v}")
+gas2.run(gaRep2, scheduling_options, comp)
+
+# for k, v in comp.items():
+#   print(f"{k}  {v}")
 
 
 ################# New #####################

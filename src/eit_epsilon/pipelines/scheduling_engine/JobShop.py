@@ -1,6 +1,7 @@
 import pandas as pd
 import logging
 from typing import List, Dict, Tuple, Union
+import itertools
 
 from .Job import Job
 from .Shop import Shop
@@ -58,7 +59,66 @@ class JobShop(Job, Shop):
 
         return in_scope_data
     
-    
+    @staticmethod
+    def build_changeover_compatibility(croom_processed_orders, size_categories):
+        # Define attributes
+        sizes = croom_processed_orders["Size"].unique()
+        orientations = croom_processed_orders["Orientation"].unique()
+        types = croom_processed_orders["Type"].unique()
+        cementing_methods = croom_processed_orders["Cementless"].unique()
+        operations = croom_processed_orders["operation"].unique()
+
+        # Helper function to determine the size category
+        def get_size_category(size):
+            for category, sizes in size_categories.items():
+                if size in sizes:
+                    return category
+            return None
+
+        # Generate all possible part IDs
+        part_ids = [
+            f"{orientation}-{type}-{size}-{cementing}-{op}"
+            for orientation, type, size, cementing, op in itertools.product(
+                orientations, types, sizes, cementing_methods, operations
+            )
+        ]
+
+        # Create combined compatibility dictionary
+        combined_compatibility_dict = {}
+
+        for part_id in part_ids:
+            orientation, type, size, cementing, op = part_id.split("-")
+            size_category = get_size_category(size)
+
+            compatible_parts = []
+
+            for other_part_id in part_ids:
+                if other_part_id == part_id:
+                    continue
+
+                (
+                    other_orientation,
+                    other_type,
+                    other_size,
+                    other_cementing,
+                    other_op,
+                ) = other_part_id.split("-")
+                other_size_category = get_size_category(other_size)
+
+                # OP1 compatibility rules
+                if op == "OP1" and other_op == "OP1":
+                    if size == other_size and cementing == other_cementing:
+                        compatible_parts.append(other_part_id)
+
+                # OP2 compatibility rules
+                elif op == "OP2" and other_op == "OP2":
+                    if type == other_type and size_category == other_size_category:
+                        if type == "CR" or (type == "PS" and cementing == other_cementing):
+                            compatible_parts.append(other_part_id)
+
+            combined_compatibility_dict[part_id] = compatible_parts
+
+        return combined_compatibility_dict
     
     def build_ga_representation(
         self,
@@ -112,5 +172,4 @@ class JobShop(Job, Shop):
         }
         
         return input_repr_dict
-        
         
