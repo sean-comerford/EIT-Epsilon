@@ -106,7 +106,7 @@ gaRep2 = jShop2.build_ga_representation(croom_processed_orders, cr_cycle_times, 
 verifyJobsMatch(gaRep1['J'], gaRep2['J'])
 verifyTasksMatch(gaRep1['J'], gaRep2['J'], gaRep2['part_to_tasks'])
 verifyMachinesMatch(gaRep1['M'], gaRep2['M'])
-verifyDurationsMatch(gaRep1['dur'], gaRep2['dur'])
+verifyDurationsMatch(gaRep1['dur'], gaRep2['J'], gaRep2['dur'])
 
 gas1 = GeneticAlgorithmScheduler()
 gas2 = GeneticAlgorithmScheduler2()
@@ -114,7 +114,17 @@ gas2 = GeneticAlgorithmScheduler2()
 comp = JobShop.build_changeover_compatibility(croom_processed_orders, size_categories_op2)
 comp2 = JobShop2.build_changeover_compatibility(croom_processed_orders, size_categories_op2)
 
-gas2.run(gaRep2, scheduling_options, comp)
+pop1 = gas1.run(gaRep1, scheduling_options, comp)
+pop2 = gas2.run(gaRep2, scheduling_options, comp)
+
+
+for i in range(10):
+  jobIdx = pop1[0][i][0]
+  print(croom_processed_orders['Job ID'].iloc[jobIdx])
+  print(pop1[0][i])
+  print(pop2[0][i])
+   
+
 
 # for k, v in comp.items():
 #   print(f"{k}  {v}")

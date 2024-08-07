@@ -160,8 +160,8 @@ class JobShop(Job, Shop):
         
         M = self.create_machines(task_to_machines)
         
-        dur = self.get_duration_matrix(J, part_ID_to_task_seq, croom_processed_orders, cr_cycle_times, ps_cycle_times, op2_cycle_times)
-        
+        dur = self.get_duration_matrix(J, part_ID_to_task_seq, croom_processed_orders, cr_cycle_times, ps_cycle_times, op2_cycle_times)        
+       
         input_repr_dict = {
             "J": J,
             "part_to_tasks": part_ID_to_task_seq,

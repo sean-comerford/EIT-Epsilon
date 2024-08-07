@@ -141,7 +141,7 @@ class Shop:
                     #duration = round(op2_times.loc[task, "Actual "] * row["Order Qty"], 1)
                     
                 # Store the duration in the dictionary with key (job_id, task)
-                dur[(job_id, task)] = duration
+                dur[(part_id, task)] = duration
 
         return dur
 

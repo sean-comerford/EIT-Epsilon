@@ -16,23 +16,21 @@ def verifyTasksMatch(j1, j2 , part_to_tasks):
         l = len(part_to_tasks[partID])
         tasks2[l] = tasks2.get(l, 0) + 1
         
-    print("Task lengths " + "match" if tasks1 == tasks2 else "do not match")
+    print("Task lengths " + ("match" if tasks1 == tasks2 else "do not match"))
     
 def verifyMachinesMatch(machList1, machList2):
-    print("Machine lists " + "match" if machList1 == machList2 else "do not match")
+    print("Machine lists " + ("match" if machList1 == machList2 else "do not match"))
     
-def verifyDurationsMatch(durList, durDict):
-    c1 = Counter([str(d) for d in durList])
+def verifyDurationsMatch(durList, jobs2, durDict):
+    c1 = Counter([str(d) for d in durList])   
+
+    durList2 = []    
+    for jobID, (partID, _) in jobs2.items():
+        l = [d for (pId, _), d in durDict.items() if pId == partID]
+        durList2.append(l)    
     
-    l = []
-    uniquepartIDs = set([partID for (partID, _) in durDict.keys()])
-    for partID1 in uniquepartIDs:
-        # Get all the durations for the present part
-        l1 = [dur for (partID2, task), dur in durDict.items() if partID1 == partID2]
-        l.append(str(l1)) # Use the string represention of the list as the key in the Counter dictionary
-    c2 = Counter(l)        
-    
-    print("Durations " + "match" if c1 == c2 else "do not match")
+    c2 = Counter([str(d) for d in durList2])    
+    print("Durations " + ("match" if c1 == c2 else "do not match"))
     
     
 

@@ -883,7 +883,8 @@ class GeneticAlgorithmScheduler:
             J_temp = list(range(len(self.J)))
 
             # Generate a random float [0, 1]
-            random_roll = random.random()
+            #random_roll = random.random()
+            random_roll = 0.5
 
             # Based on the random number we either randomly shuffle or apply some sorting logic
             if random_roll < 0.4:
