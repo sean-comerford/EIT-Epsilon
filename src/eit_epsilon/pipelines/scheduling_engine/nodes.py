@@ -692,6 +692,7 @@ class GeneticAlgorithmScheduler:
         self.total_minutes_per_day = None
         self.change_over_time_op1 = None
         self.change_over_time_op2 = None
+        self.change_over_machines_op1 = None
         self.change_over_machines_op2 = None
         self.compatibility_dict = None
         self.urgent_orders = None
@@ -699,7 +700,7 @@ class GeneticAlgorithmScheduler:
         self.max_iterations = None
         self.task_time_buffer = None
 
-    def adjust_start_time(self, start: float) -> float:
+    def adjust_start_time(self, start: float, task: int = None) -> float:
         """
         Adjusts the start time to ensure it falls within working hours. If the start time is outside the
         working hours, it is pushed to the start of the next working day. Additionally, if the start time
@@ -707,6 +708,7 @@ class GeneticAlgorithmScheduler:
 
         Args:
             start (float): The initial start time in minutes from the reference start date.
+            task (int): The task number as in parameters task_to_machines dictionary.
 
         Returns:
             float: The adjusted start time in minutes from the reference start date.
@@ -723,14 +725,20 @@ class GeneticAlgorithmScheduler:
             start = current_day_start + self.total_minutes_per_day
             actual_start_datetime: datetime = starting_date + timedelta(minutes=start)
 
-            # Adjust for weekends
-            while actual_start_datetime.weekday() >= 5:  # 5 is Saturday, 6 is Sunday
-                start += self.total_minutes_per_day
+            # Adjust for weekends, allowing task type 1 to be scheduled on Saturday but not Sunday
+            while True:
+                weekday = actual_start_datetime.weekday()
+                if weekday == 6:  # Sunday
+                    start += self.total_minutes_per_day
+                elif weekday == 5 and task != 1:  # Saturday and not task type 1 (HAAS machines)
+                    start += self.total_minutes_per_day * 2
+                else:
+                    break
                 actual_start_datetime = starting_date + timedelta(minutes=start)
 
         return start
 
-    def find_avail_m(self, start: int, job_idx: int, task_idx: int) -> int:
+    def find_avail_m(self, start: int, job_idx: int, task_idx: int, after_hours_starts: int = 0) -> int:
         """
         Finds the next available time for a machine to start a task, considering the working day duration.
         Add 'task_time_buffer' between each task on a machine as switching time.
@@ -739,6 +747,7 @@ class GeneticAlgorithmScheduler:
             start (int): The starting time in the schedule in minutes.
             job_idx (int): The index of the job in the job list.
             task_idx (int): The task number within the job.
+            after_hours_starts (int): The number of hours after which jobs can run overnight.
 
         Returns:
             int: The next available time for the machine to start the task.
@@ -748,12 +757,24 @@ class GeneticAlgorithmScheduler:
         # Calculate next available time after the task and buffer
         next_avail_time = start + duration + self.task_time_buffer
 
-        if self.J[job_idx][task_idx] == 1:  # Task 1 corresponds to HAAS machines
-            # Jobs can run overnight and in the weekend for HAAS machines
-            return next_avail_time
+        # Extract task
+        task = self.J[job_idx][task_idx]
+
+        if task == 1:  # Task 1 corresponds to HAAS machines
+            if (
+                after_hours_starts < 3
+            ):  # Message from Bryan: 3 batches (36 parts total) can be preloaded in HAAS
+                return next_avail_time
+            else:
+                if next_avail_time >= self.adjust_start_time(next_avail_time, task):
+                    return next_avail_time
+                else:
+                    return (
+                        self.adjust_start_time(next_avail_time, task) // self.total_minutes_per_day
+                    ) * self.total_minutes_per_day
         else:
             # For other tasks, ensure they are scheduled during working hours
-            next_avail_time = self.adjust_start_time(next_avail_time)
+            next_avail_time = self.adjust_start_time(next_avail_time, task)
 
             # Determine if next_avail_time needs to be adjusted further for working hours
             day_offset = (next_avail_time // self.total_minutes_per_day) * self.total_minutes_per_day
@@ -878,6 +899,36 @@ class GeneticAlgorithmScheduler:
             return None
 
         return start_time, end_time
+
+    def count_after_hours_start(self, P_j: list, m: int, start: int) -> int:
+        """
+        Counts the number of tasks in the schedule `P_j` where the machine `m` is used
+        and the start time is within dynamically calculated threshold limits based on `start`.
+
+        Parameters:
+        P_j (list of tuples): The schedule list where each tuple has the following format:
+                              (job_idx, task_num, m, start, duration, task_idx, part_id)
+        m (int): The machine identifier to filter by.
+        start (int): The start time to determine the threshold range.
+
+        Returns:
+        int: The count of tasks where `m == m` and the start time falls within the calculated threshold range.
+        """
+
+        # Calculate the multiplier to determine the appropriate time block for the start time
+        multiplier = (start // self.total_minutes_per_day) + 1
+
+        # Set the default threshold limits based on the multiplier
+        threshold_lower = (multiplier - 1) * self.total_minutes_per_day + self.working_minutes_per_day
+        threshold_upper = multiplier * self.total_minutes_per_day
+
+        # Filter the tasks to find those matching the criteria
+        late_tasks = filter(
+            lambda task: task[2] == m and threshold_lower < task[3] < threshold_upper, P_j
+        )
+
+        # Convert the filtered tasks to a list and return its length
+        return len(list(late_tasks))
 
     def slack_logic(
         self,
@@ -1197,8 +1248,15 @@ class GeneticAlgorithmScheduler:
                         )
                     )
 
+                    # Initialize after hours starts
+                    after_hours_starts = 0
+
+                    # Count the number of after hours starts of the HAAS machines
+                    if m in self.change_over_machines_op1:
+                        after_hours_starts = self.count_after_hours_start(P_j, m, start)
+
                     if not slack_time_used:
-                        avail_m[m] = self.find_avail_m(start, job_idx, task_idx)
+                        avail_m[m] = self.find_avail_m(start, job_idx, task_idx, after_hours_starts)
 
                     product_m[m] = self.part_id[job_idx]
 
@@ -1354,20 +1412,6 @@ class GeneticAlgorithmScheduler:
                             changeover_duration,
                         )
 
-                # If slack time is used no need to update latest machine availability
-                if not slack_time_used:
-                    avail_m[m] = self.find_avail_m(start, job_idx, task_idx)
-
-                # Record part ID of the latest product to be processed on a machine for changeovers
-                product_m[m] = self.part_id[job_idx]
-
-                # Issue warning if 'start' is still not defined after loop
-                if start is None:
-                    logger.warning(
-                        f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - No start time found for job {job_idx+1}, "
-                        f"task {task_idx+1}, machine {m+1}"
-                    )
-
                 # Add the task to the sorted list of tasks in this proposed schedule
                 P_prime_sorted.append(
                     (
@@ -1380,6 +1424,23 @@ class GeneticAlgorithmScheduler:
                         self.part_id[job_idx],
                     )
                 )
+
+                # Count the number of after hours HAAS starts
+                after_hours_starts = self.count_after_hours_start(P_prime_sorted, m, start)
+
+                # If slack time is used no need to update latest machine availability
+                if not slack_time_used:
+                    avail_m[m] = self.find_avail_m(start, job_idx, task_idx, after_hours_starts)
+
+                # Record part ID of the latest product to be processed on a machine for changeovers
+                product_m[m] = self.part_id[job_idx]
+
+                # Issue warning if 'start' is still not defined after loop
+                if start is None:
+                    logger.warning(
+                        f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - No start time found for job {job_idx+1}, "
+                        f"task {task_idx+1}, machine {m+1}"
+                    )
 
         return P_prime_sorted
 
@@ -1566,6 +1627,7 @@ class GeneticAlgorithmScheduler:
         self.total_minutes_per_day = scheduling_options["total_minutes_per_day"]
         self.change_over_time_op1 = scheduling_options["change_over_time_op1"]
         self.change_over_time_op2 = scheduling_options["change_over_time_op2"]
+        self.change_over_machines_op1 = scheduling_options["change_over_machines_op1"]
         self.change_over_machines_op2 = scheduling_options["change_over_machines_op2"]
         self.compatibility_dict = compatibility_dict
         self.max_iterations = scheduling_options["max_iterations"]
@@ -1714,12 +1776,12 @@ def create_start_end_time(
     croom_reformatted_orders: pd.DataFrame, changeovers: pd.DataFrame, scheduling_options: Dict[str, Any]
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Adjusts the start and end times of tasks in the given DataFrame to fit within working hours (09:00 to 17:00)
+    Adjusts the start and end times of tasks in the given DataFrame to fit within working hours (06:30 to 14:30)
     and ensures that tasks are scheduled sequentially within each job and machine.
 
     The function first converts the 'Start_time' from minutes to a datetime based on a specified start date.
     It then adjusts the start and end times of tasks to fit within working hours, pushing tasks to the next day
-    if they start after 17:00 or before 09:00. The function also checks for consistency in task scheduling within
+    if they start after 14:30 or before 06:30. The function also checks for consistency in task scheduling within
     each job and machine.
 
     Args:
