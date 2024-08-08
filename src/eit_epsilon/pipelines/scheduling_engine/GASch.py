@@ -253,6 +253,8 @@ class GeneticAlgorithmScheduler:
 
         P = []
         percentages = np.arange(10, 101, 10)
+    
+        random.seed(45678)
             
         for i in range(num_inds):
             avail_m = {m: 0 for m in self.M}
@@ -268,8 +270,9 @@ class GeneticAlgorithmScheduler:
             #     print(f"J temp before:  {jobID} {self.J[jobID][0]} {self.J[jobID][1]}")
 
             # Generate a random float [0, 1]
-            #random_roll = random.random()
-            random_roll = 0.5
+            random_roll = random.random()
+            #random_roll = 0.5
+            
             
             # Based on the random number we either randomly shuffle or apply some sorting logic
             if random_roll < 0.4:

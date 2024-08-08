@@ -64,7 +64,7 @@ scheduling_options={
   'minutes_per_day': 480,  # Number of working minutes per day (8 hours * 60 minutes)
   'max_iterations': 10,  # Maximum number of iterations/generations to run the algorithm
   'urgent_multiplier': 3,  # Multiplier for (completion_time - due_date) for urgent_orders
-  'urgent_orders': [4420704, 4421316, 4421310], # List of job IDs (urgency in reverse order)
+  'urgent_orders': [], # List of job IDs (urgency in reverse order)
   'column_mapping': {
     'Job ID': 'Order',
     'Created Date': 'Order_date',
@@ -108,6 +108,7 @@ verifyTasksMatch(gaRep1['J'], gaRep2['J'], gaRep2['part_to_tasks'])
 verifyMachinesMatch(gaRep1['M'], gaRep2['M'])
 verifyDurationsMatch(gaRep1['dur'], gaRep2['J'], gaRep2['dur'])
 
+
 gas1 = GeneticAlgorithmScheduler()
 gas2 = GeneticAlgorithmScheduler2()
 
@@ -118,11 +119,18 @@ pop1 = gas1.run(gaRep1, scheduling_options, comp)
 pop2 = gas2.run(gaRep2, scheduling_options, comp)
 
 
-for i in range(10):
-  jobIdx = pop1[0][i][0]
-  print(croom_processed_orders['Job ID'].iloc[jobIdx])
+#pop1[0][0] = (1, 1, 1, 0, 360.0, 0, 'RIGHT-PS-5N-CTD-OP1')
+
+for i in range(20):
   print(pop1[0][i])
   print(pop2[0][i])
+  print("")
+
+popsMatch = verifyPopulationsMatch(pop1, pop2, croom_processed_orders)
+print("Populations " + ("match" if popsMatch else "do not match"))
+
+#(28, 1, 1, 0, 360.0, 0, 'RIGHT-PS-5N-CTD-OP1')
+
    
 
 

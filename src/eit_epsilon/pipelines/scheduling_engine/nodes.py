@@ -871,6 +871,8 @@ class GeneticAlgorithmScheduler:
 
         P = []
         percentages = np.arange(10, 101, 10)
+        
+        random.seed(45678)
 
         for i in range(num_inds):
             avail_m = {m: 0 for m in self.M}
@@ -883,8 +885,10 @@ class GeneticAlgorithmScheduler:
             J_temp = list(range(len(self.J)))
 
             # Generate a random float [0, 1]
-            #random_roll = random.random()
-            random_roll = 0.5
+
+            random_roll = random.random()
+           # random_roll = 0.5
+            
 
             # Based on the random number we either randomly shuffle or apply some sorting logic
             if random_roll < 0.4:
@@ -897,7 +901,9 @@ class GeneticAlgorithmScheduler:
                 J_temp.sort(key=lambda x: (self.part_id[x], self.due[x]), reverse=True)
             else:
                 # Reorder J_temp according to the urgent order list
+                print(f"Nodes: Urgent orders: {self.urgent_orders}")
                 for job in self.urgent_orders:
+                    print(f"Nodes: removing {job}")
                     J_temp.remove(job)  # Remove the job from its current position
                     J_temp.append(
                         job
