@@ -700,6 +700,20 @@ class GeneticAlgorithmScheduler:
         self.max_iterations = None
         self.task_time_buffer = None
 
+    def push_if_sunday(self, start: float):
+        # Convert start_date to datetime object
+        starting_date: datetime = datetime.fromisoformat(self.start_date)
+
+        # Determine the adjusted start date and time
+        actual_start_datetime: datetime = starting_date + timedelta(minutes=start)
+
+        # Extract the weekday
+        weekday = actual_start_datetime.weekday()
+
+        # Push one full day
+        if weekday == 6:
+            start += self.total_minutes_per_day
+
     def adjust_start_time(self, start: float, task: int = None) -> float:
         """
         Adjusts the start time to ensure it falls within working hours. If the start time is outside the
@@ -719,22 +733,29 @@ class GeneticAlgorithmScheduler:
         # Determine the current day cycle start time in minutes
         current_day_start: float = (start // self.total_minutes_per_day) * self.total_minutes_per_day
 
-        # Check if the start time is within the valid window of the current day cycle
+        # Adjust if start time is outside of working hours
         if start >= current_day_start + self.working_minutes_per_day:
-            # Adjust to the start of the next day cycle
             start = current_day_start + self.total_minutes_per_day
-            actual_start_datetime: datetime = starting_date + timedelta(minutes=start)
 
-            # Adjust for weekends, allowing task type 1 to be scheduled on Saturday but not Sunday
-            while True:
-                weekday = actual_start_datetime.weekday()
-                if weekday == 6:  # Sunday
-                    start += self.total_minutes_per_day
-                elif weekday == 5 and task != 1:  # Saturday and not task type 1 (HAAS machines)
+        # Determine the adjusted start date and time
+        actual_start_datetime: datetime = starting_date + timedelta(minutes=start)
+
+        # Adjust for weekends
+        while True:
+            weekday = actual_start_datetime.weekday()
+
+            if weekday == 6:  # Sunday
+                # Push to Monday morning
+                start += self.total_minutes_per_day
+            elif weekday == 5:  # Saturday
+                if task != 1:  # If not task type 1, push to Monday
                     start += self.total_minutes_per_day * 2
                 else:
-                    break
-                actual_start_datetime = starting_date + timedelta(minutes=start)
+                    break  # Task type 1 can stay on Saturday
+            else:
+                break  # It's a weekday, no adjustment needed
+
+            actual_start_datetime = starting_date + timedelta(minutes=start)
 
         return start
 
@@ -760,11 +781,17 @@ class GeneticAlgorithmScheduler:
         # Extract task
         task = self.J[job_idx][task_idx]
 
+        # Start date
+        starting_date = datetime.fromisoformat(self.start_date)
+
         if task == 1:  # Task 1 corresponds to HAAS machines
             if (
                 after_hours_starts < 3
             ):  # Message from Bryan: 3 batches (36 parts total) can be preloaded in HAAS
-                return next_avail_time
+                if (starting_date + timedelta(minutes=next_avail_time)).weekday() == 6:  # Sunday
+                    return int(self.adjust_start_time(next_avail_time))
+                else:
+                    return next_avail_time
             else:
                 if next_avail_time >= self.adjust_start_time(next_avail_time, task):
                     return next_avail_time
@@ -1828,6 +1855,17 @@ def create_start_end_time(
     changeovers["End_time"] = changeovers["Start_time"] + pd.Timedelta(
         minutes=scheduling_options["change_over_time_op1"]
     )
+
+    # Define the time range for valid changeovers
+    # TODO: Move to parameters?
+    start_time_min = pd.to_datetime("06:30").time()
+    start_time_max = pd.to_datetime("11:30").time()
+
+    # Filter out changeovers outside the valid time range
+    changeovers = changeovers[
+        (changeovers["Start_time"].dt.time >= start_time_min)
+        & (changeovers["Start_time"].dt.time <= start_time_max)
+    ]
 
     # Reorder by earliest start time
     croom_reformatted_orders.sort_values(by="Start_time", inplace=True)
