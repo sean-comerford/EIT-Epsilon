@@ -2,7 +2,7 @@ from typing import List, Dict, Tuple, Union
 import random
 import numpy as np
 import logging
-import datetime
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ class GeneticAlgorithmScheduler:
 
         Returns:
         - int: The selected machine ID.
-        """
+        """      
         compat_with_task = self.task_to_machines[task_id] # A list of machines that are compatible with this task
         if random_roll < prob:
             m = min(compat_with_task, key=lambda x: avail_m.get(x))
@@ -254,7 +254,7 @@ class GeneticAlgorithmScheduler:
         P = []
         percentages = np.arange(10, 101, 10)
     
-        random.seed(45678)
+        #random.seed(191919)
             
         for i in range(num_inds):
             avail_m = {m: 0 for m in self.M}
@@ -308,7 +308,9 @@ class GeneticAlgorithmScheduler:
                     slack_time_used = False
                 
                     # Conditional logic; separate flow for first task of OP1 (HAAS)
-                    if part_id.split("-")[-1] == "OP1" and task_id == 1: 
+                    
+                    
+                    if part_id.split("-")[-1] == "OP1" and (task_id == 1 or task_id == 99):  # TODO: Modify this?
                         # Logic for first task in OP1 (HAAS machines)
                         compat_task_0 = self.task_to_machines[task_id] # A list of machines that are compatible with this task
                         # Preferred machines are those that have not been used yet or processed the same
@@ -427,7 +429,77 @@ class GeneticAlgorithmScheduler:
         else:
             return P
                 
-                
+    def evalPopTest(self, best_scores: list = None, display_scores: bool = True, on_time_bonus: int = 5000):
+        for i, schedule in enumerate(self.P):
+            #if i == 5: return
+            score = round(
+                        sum(
+                            (
+                                # Difference between due date and completion time, multiplied by urgent_multiplier if urgent
+                                (self.J[job_id][1] - (start_time + job_task_dur))
+                                * (self.urgent_multiplier if job_id in self.urgent_orders else 1)
+                                + (
+                                    # Fixed size bonus for completing the job on time
+                                    on_time_bonus
+                                    if (self.J[job_id][1] - (start_time + job_task_dur)) > 0
+                                    else 0
+                                )
+                            )
+                            for (job_id, task_id, machine, start_time, job_task_dur, _, _,) in schedule
+                            # Only consider the completion time of the final task
+                            # if task + 1 == max(self.J[job_idx])
+                            if task_id == self.part_to_tasks[self.J[job_id][0]][-1]
+                        )
+                    )
+            print(f"Schedule {i} score: {score}")
+  
+    def evaluate_population(
+        self, best_scores: list = None, display_scores: bool = True, on_time_bonus: int = 5000
+    ):
+        """
+        Evaluates the population of schedules by calculating a score for each schedule based on the completion times
+        of jobs vs. the required due date.
+        """
+        # Calculate scores for each schedule
+        # Note: self.J[job_id] gives the tuple (Due time, Part ID) for a given job ID
+        self.scores = [
+            round(
+                sum(
+                    (
+                        # Difference between due date and completion time, multiplied by urgent_multiplier if urgent
+                        (self.J[job_id][1] - (start_time + job_task_dur))
+                        * (self.urgent_multiplier if job_id in self.urgent_orders else 1)
+                        + (
+                            # Fixed size bonus for completing the job on time
+                            on_time_bonus
+                            if (self.J[job_id][1] - (start_time + job_task_dur)) > 0
+                            else 0
+                        )
+                    )
+                    for (
+                        job_id,
+                        task_id,
+                        machine,
+                        start_time,
+                        job_task_dur,
+                        _,
+                        _,
+                    ) in schedule
+                    # Only consider the completion time of the final task
+                    if task_id == self.part_to_tasks[self.J[job_id][0]][-1]
+                    #if task + 1 == max(self.J[job_idx])
+                )
+            )
+            # Evaluate each schedule in the population
+            for schedule in self.P
+        ]
+
+        if display_scores:
+            logger.info(
+                f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Best score: {max(self.scores)}, "
+                f"Median score: {np.median(self.scores)}, Worst score: {min(self.scores)}"
+            )
+            best_scores.append(max(self.scores))              
 
             
             
@@ -469,5 +541,8 @@ class GeneticAlgorithmScheduler:
         )
 
         self.init_population()
+        
+        # best_scores = []        
+        # self.evaluate_population(best_scores=best_scores)
         
         return self.P

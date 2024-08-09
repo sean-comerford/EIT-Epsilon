@@ -2,6 +2,8 @@ import pandas as pd
 import logging
 import sys
 
+import random
+
 from typing import List, Dict, Tuple
 
 from src.eit_epsilon.pipelines.scheduling_engine.nodes import JobShop, GeneticAlgorithmScheduler
@@ -58,7 +60,7 @@ scheduling_options={
   'change_over_time_op2': 20,  # Minutes required to do a changeover on the HAAS machines (Only OP 1)
   'change_over_machines_op2': [20, 22, 23],  # Machines that require a changeover for OP2 (key in machine dict above)
   'change_over_time': 180,  # Minutes required to do a changeover on the HAAS machines
-  'n': 1,  # Number of random schedules to generate
+  'n': 25,  # Number of random schedules to generate
   'n_e': 0.1,  # Proportion of best schedules to automatically pass on to the next generation (e.g.: 10%)
   'n_c': 0.3,  # Proportion of children to generate in the offspring function
   'minutes_per_day': 480,  # Number of working minutes per day (8 hours * 60 minutes)
@@ -115,48 +117,25 @@ gas2 = GeneticAlgorithmScheduler2()
 comp = JobShop.build_changeover_compatibility(croom_processed_orders, size_categories_op2)
 comp2 = JobShop2.build_changeover_compatibility(croom_processed_orders, size_categories_op2)
 
+#seedNum = 2
+seedNum = random.randint(0, 1000)
+
+if seedNum is not None: random.seed(seedNum)  
 pop1 = gas1.run(gaRep1, scheduling_options, comp)
+
+if seedNum is not None: random.seed(seedNum)  
 pop2 = gas2.run(gaRep2, scheduling_options, comp)
 
-
-#pop1[0][0] = (1, 1, 1, 0, 360.0, 0, 'RIGHT-PS-5N-CTD-OP1')
-
-for i in range(20):
-  print(pop1[0][i])
-  print(pop2[0][i])
-  print("")
+print(f"Pop lengths: {len(pop1)} {len(pop2)}")
 
 popsMatch = verifyPopulationsMatch(pop1, pop2, croom_processed_orders)
 print("Populations " + ("match" if popsMatch else "do not match"))
 
-#(28, 1, 1, 0, 360.0, 0, 'RIGHT-PS-5N-CTD-OP1')
+gas1.evalPopTest()
+gas2.evalPopTest()
 
-   
+bestScores1 = []
+gas1.evaluate_population(bestScores1)
 
-
-# for k, v in comp.items():
-#   print(f"{k}  {v}")
-
-
-################# New #####################
-
-# JNew = Job2.create_jobs(croom_processed_orders, operation="OP 1")
-# JNew2 = Job2.create_jobs(croom_processed_orders, operation="OP 2")
-# JNew.update(JNew2)
-
-# partToTasks = Job2.create_partID_to_task_seq(croom_processed_orders)
-
-# # print(f"Length 2: {len(jobs2)}")
-# # for jobID, (partID, due) in jobs2.items():
-# #     print(f"{jobID} {partID} {partToTasks[partID]}")
-    
-# #**************************************************************************************
-
-# duration1 = JobShop.get_duration_matrix(JOld, croom_processed_orders, cr_cycle_times, ps_cycle_times, op2_cycle_times)
-# duration2 = Shop2.get_duration_matrix(JNew, partToTasks, croom_processed_orders, cr_cycle_times, ps_cycle_times, op2_cycle_times)
-
-
-# orders = croom_processed_orders  #[croom_processed_orders['operation'] == 'OP2']
-# due1 = JobShop.get_due_date(orders)
-
-# print(f"Length of cpo: {len(orders)}   Length of dur1: {len(duration1)}")
+bestScores2 = []
+gas2.evaluate_population(bestScores2)

@@ -1,4 +1,5 @@
 from collections import Counter
+import random
 
 def verifyJobsMatch(j1, j2):
     print(f"Number of jobs J1: {len(j1)} J2: {len(j2)}" +  " Equal" if len(j1) == len(j2) else " Not equal")
@@ -34,33 +35,45 @@ def verifyDurationsMatch(durList, jobs2, durDict):
     
 def verifyPopulationsMatch(pop1, pop2, croom_processed_orders):
     
-    # Loop over the items in this population
-    # Example item in a population (taskID, machine, start, duration, task index, part ID):
-    # (28, 1, 1, 0, 360.0, 0, 'RIGHT-PS-5N-CTD-OP1')   
-    print(f"Len: {len(pop1[0])}")
-    for i in range(20):
-        print(f"i: {i}", end=" ")
-        print(f"Comparing: {pop1[0][i]} {pop2[0][i]}")
-        
-        # Original pop stores job index as the first item, new structure stores job ID
-        # So we need to obtain the job ID for each element in the original population
-        jobIndex = pop1[0][i][0]
-        jobID1 = croom_processed_orders['Job ID'].iloc[jobIndex]
-        
-        # Verify job IDs match
-        if jobID1 != pop2[0][i][0]:
-            print(f"Items at position {i} do not match: {pop1[0][i]} {pop2[0][i]}")
-            return False
-        
-        # Verify other elements match
-        # i.e. taskID, machine, start, duration, task index, part ID
-        for j in range(1, len(pop1[0][i])):
-            if pop1[0][i][j] != pop2[0][i][j]:
-                print(f"Items at position {i} do not match: {pop1[0][i]} {pop2[0][i]}")
+    printSnippets = 5
+    
+    # Loop over each schedule
+    for s in range(len(pop1)):
+        print(f"Checking schedule {s}")
+        # Loop over the items in this schedule
+        # Example item in a schedule (taskID, machine, start, duration, task index, part ID):
+        # (28, 1, 1, 0, 360.0, 0, 'RIGHT-PS-5N-CTD-OP1')   
+        print(f"Schedule {s} length: {len(pop1[s])}")
+        for i in range(len(pop1[s])):
+            
+            if printSnippets > 0 and random.choice([True, False]):
+                print(f"i: {i}", end=" ")
+                print(f"Comparing: {pop1[s][i]} {pop2[s][i]}")
+                printSnippets -= 1
+            
+            # Original pop stores job index as the first item, new structure stores job ID
+            # So we need to obtain the job ID for each element in the original population
+            jobIndex = pop1[s][i][0]
+            jobID1 = croom_processed_orders['Job ID'].iloc[jobIndex]
+            
+            # Verify job IDs match
+            if jobID1 != pop2[s][i][0]:
+                print(f"Items at position {i} do not match: {pop1[s][i]} {pop2[s][i]}")
                 return False
+            
+            # Verify other elements match
+            # i.e. taskID, machine, start, duration, task index, part ID
+            for j in range(1, len(pop1[s][i])):
+                
+                # TODO: Modify this?
+                if j == 1 and pop1[s][i][j] == 1 and pop2[s][i][j] == 99:
+                    continue                
+                
+                if pop1[s][i][j] != pop2[s][i][j]:
+                    print(f"Items at position {i} do not match: {pop1[s][i]} {pop2[s][i]}. j is {j}")
+                    return False
 
     return True
     
     
 
-        

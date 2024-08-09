@@ -133,6 +133,13 @@ class Shop:
                 if task < 10:  # Operation 1 tasks
                     times = cr_times if row["Type"] == "CR" else ps_times
                     duration = round(times.loc[task, row["Size"]] * row["Order Qty"], 1)
+                    
+                # TODO: Modify this?
+                elif task == 99:
+                    times = cr_times if row["Type"] == "CR" else ps_times
+                    # Use task 1 here, instead of 99
+                    duration = round(times.loc[1, row["Size"]] * row["Order Qty"], 1)                     
+                    
                 else:  # Operation 2 tasks
                     #print(f'Job {job_id}\t Task: {task}\tTime: {op2_times.loc[task, "Actual "]} \tQty: {row["Order Qty"]}')
                     

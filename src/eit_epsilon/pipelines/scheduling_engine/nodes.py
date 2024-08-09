@@ -872,7 +872,7 @@ class GeneticAlgorithmScheduler:
         P = []
         percentages = np.arange(10, 101, 10)
         
-        random.seed(45678)
+        #random.seed(191919)
 
         for i in range(num_inds):
             avail_m = {m: 0 for m in self.M}
@@ -1044,6 +1044,40 @@ class GeneticAlgorithmScheduler:
             self.P = P
         else:
             return P
+        
+    def evalPopTest(self, best_scores: list = None, display_scores: bool = True, on_time_bonus: int = 5000):
+        for i, schedule in enumerate(self.P):
+            #if i == 5: return
+            
+            # for (job_idx, task, machine, start_time, job_task_dur, _, _,) in schedule:
+            #     if job_idx == 0:
+            #         print(job_idx, task, machine, start_time, job_task_dur)
+                    
+            #         if task == max(self.J[job_idx]):
+            #             print(f"Due time: {self.due[job_idx]} Score: {(self.due[job_idx] - (start_time + job_task_dur))}")
+                    
+            
+            score = round(
+                        sum(
+                            (
+                                # Difference between due date and completion time, multiplied by urgent_multiplier if urgent
+                                (self.due[job_idx] - (start_time + job_task_dur))
+                                * (self.urgent_multiplier if job_idx in self.urgent_orders else 1)
+                                + (
+                                    # Fixed size bonus for completing the job on time
+                                    on_time_bonus
+                                    if (self.due[job_idx] - (start_time + job_task_dur)) > 0
+                                    else 0
+                                )
+                            )
+                            for (job_idx, task, machine, start_time, job_task_dur, _, _,) in schedule
+                            # Only consider the completion time of the final task
+                            #if task + 1 == max(self.J[job_idx])
+                            if task == max(self.J[job_idx])
+                        )
+                    )
+            print(f"Schedule {i} score: {score}")
+
 
     def evaluate_population(
         self, best_scores: list = None, display_scores: bool = True, on_time_bonus: int = 5000
@@ -1077,7 +1111,8 @@ class GeneticAlgorithmScheduler:
                         _,
                     ) in schedule
                     # Only consider the completion time of the final task
-                    if task + 1 == max(self.J[job_idx])
+                    #if task + 1 == max(self.J[job_idx]) TODO: Modify?
+                    if task == max(self.J[job_idx])
                 )
             )
             # Evaluate each schedule in the population
@@ -1401,13 +1436,13 @@ class GeneticAlgorithmScheduler:
             self.minutes_per_day,
         )
 
-        self.init_population()
+        self.init_population() 
         
+        # best_scores = []        
+        # self.evaluate_population(best_scores=best_scores)
+        
+                
         return self.P
-        
-        
-        
-        best_scores = []
 
         for iteration in range(self.max_iterations):
             logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Iteration {iteration + 1}")
