@@ -517,21 +517,21 @@ class JobShop(Job, Shop):
         operations = croom_processed_orders["operation"].unique()
 
         # Helper function to determine the size category based on type
-        def get_size_category(size: str, type: str, cementing: str) -> Union[str, None]:
-            if type == "PS" and cementing == "CLS":
+        def get_size_category(size: str, prod_type: str, cementing: str) -> Union[str, None]:
+            if prod_type == "PS" and cementing == "CLS":
                 size_categories = size_categories_ps
             else:
                 size_categories = size_categories_cr
 
-            for category, sizes in size_categories.items():
-                if size in sizes:
+            for category, cat_sizes in size_categories.items():
+                if size in cat_sizes:
                     return category
             return None
 
         # Generate all possible part IDs
         part_ids = [
-            f"{orientation}-{type}-{size}-{cementing}-{op}"
-            for orientation, type, size, cementing, op in itertools.product(
+            f"{orientation}-{prod_type}-{size}-{cementing}-{op}"
+            for orientation, prod_type, size, cementing, op in itertools.product(
                 orientations, types, sizes, cementing_methods, operations
             )
         ]
@@ -541,8 +541,8 @@ class JobShop(Job, Shop):
 
         for part_id in part_ids:
             # Split the part ID into its components
-            orientation, type, size, cementing, op = part_id.split("-")
-            size_category = get_size_category(size, type, cementing)
+            orientation, prod_type, size, cementing, op = part_id.split("-")
+            size_category = get_size_category(size, prod_type, cementing)
 
             # Initialize a list to hold compatible parts for the current part ID
             compatible_parts = []
@@ -699,20 +699,6 @@ class GeneticAlgorithmScheduler:
         self.urgent_multiplier = None
         self.max_iterations = None
         self.task_time_buffer = None
-
-    def push_if_sunday(self, start: float):
-        # Convert start_date to datetime object
-        starting_date: datetime = datetime.fromisoformat(self.start_date)
-
-        # Determine the adjusted start date and time
-        actual_start_datetime: datetime = starting_date + timedelta(minutes=start)
-
-        # Extract the weekday
-        weekday = actual_start_datetime.weekday()
-
-        # Push one full day
-        if weekday == 6:
-            start += self.total_minutes_per_day
 
     def adjust_start_time(self, start: float, task: int = None) -> float:
         """
@@ -1121,7 +1107,7 @@ class GeneticAlgorithmScheduler:
             num_inds = self.n
 
         # Extract the operation from custom part id
-        operation = [id.split("-")[-1] for id in self.part_id]
+        operation = [id_string.split("-")[-1] for id_string in self.part_id]
 
         P = []
         percentages = np.arange(10, 101, 10)
@@ -1335,7 +1321,7 @@ class GeneticAlgorithmScheduler:
                         _,
                     ) in schedule
                     # Only consider the completion time of the final task
-                    if task + 1 == max(self.J[job_idx])
+                    if task == max(self.J[job_idx])
                 )
             )
             # Evaluate each schedule in the population
@@ -1351,7 +1337,7 @@ class GeneticAlgorithmScheduler:
 
     def resolve_conflict(
         self, P_prime: List[Tuple[int, int, int, int, int, int, str]]
-    ) -> (List)[Tuple[int, int, int, int, int, int, str]]:
+    ) -> List[Tuple[int, int, int, int, int, int, str]]:
         """
         This function resolves conflicts in a given schedule. If tasks are planned on the same machine at the same time,
         it finds the first available time for each task to start on the machine.
@@ -1673,7 +1659,7 @@ class GeneticAlgorithmScheduler:
         for iteration in range(self.max_iterations):
             logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Iteration {iteration + 1}")
             self.evaluate_population(best_scores=best_scores)
-            # self.offspring()
+            self.offspring()
             self.mutate()
             if len(self.P) < self.n:
                 self.P += self.init_population(num_inds=self.n - len(self.P), fill_inds=True)
@@ -1857,9 +1843,16 @@ def create_start_end_time(
     )
 
     # Define the time range for valid changeovers
-    # TODO: Move to parameters?
-    start_time_min = pd.to_datetime("06:30").time()
-    start_time_max = pd.to_datetime("11:30").time()
+    # Define start_time_min based on the time part of base_date
+    start_time_min = base_date.time()
+
+    # Convert total_minutes_per_day and change_over_time_op1 to timedelta
+    total_minutes = timedelta(minutes=scheduling_options["total_minutes_per_day"])
+    change_over_time = timedelta(minutes=scheduling_options["change_over_time_op1"])
+
+    # Calculate the end time (start_time_max) by adding total_minutes and subtracting change_over_time
+    end_time = base_date + total_minutes - change_over_time
+    start_time_max = end_time.time()
 
     # Filter out changeovers outside the valid time range
     changeovers = changeovers[
