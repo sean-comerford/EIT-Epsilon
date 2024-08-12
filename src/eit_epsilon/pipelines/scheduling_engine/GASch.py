@@ -3,6 +3,8 @@ import random
 import numpy as np
 import logging
 from datetime import datetime
+import copy 
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
@@ -501,7 +503,285 @@ class GeneticAlgorithmScheduler:
             )
             best_scores.append(max(self.scores))              
 
+    def resolve_conflict(
+        self, P_prime: List[Tuple[int, int, int, int, int, int, str]]
+    ) -> (List)[Tuple[int, int, int, int, int, int, str]]:
+        """
+        This function resolves conflicts in a given schedule. If tasks are planned on the same machine at the same time,
+        it finds the first available time for each task to start on the machine.
+
+        Parameters:
+        P_prime (List[Tuple[int, int, int, int, int, int, str]]): A list of tuples where each tuple represents a task.
+        Each task is represented as (job id, task id, machine, start time, duration, task index, part id).
+
+        Returns:
+        P_prime_sorted (List[Tuple[int, int, int, int, int, int, str]]): A sorted list of tuples where each tuple
+        represents a task. Each task is represented as (job id, task id, machine, start time, duration, task index, part id).
+        """
+        # Initialize an empty list to hold tasks for this proposed schedule
+        P_prime_sorted = []
+        avail_m = {m: 0 for m in self.M}
+        slack_m = {m: [] for m in self.M}
+        product_m = {m: 0 for m in self.M}
+        changeover_finish_time = 0
+
+        # Loop over the jobs in the job list (J)
+        for job_id in list(self.J.keys()):
+        #for job_idx in range(len(self.J)):
             
+            part_id = self.J[job_id][0]
+
+            # We have a list of tuples, where each tuple stands for a task in a proposed schedule
+            # We filter all the tuples for ones belonging to a specific job_idx (first field of the tuple) 
+            # and sort by the task index 
+            # TODO: Double check with with Sean and Jean Luc - we can't sort by task_id as 99 might be the first one
+            job_tasks = sorted([entry for entry in P_prime if entry[0] == job_id], key=lambda x: x[5])
+
+            # Loop over the tasks one by one
+            for task_entry in job_tasks:
+                _, task_id, m, _, _, task_idx, _ = task_entry
+                slack_time_used = False
+
+                if part_id.split("-")[-1] == "OP1" and task_idx == 0: 
+                    # Start whenever the first machine becomes available + optional changeover time
+                    # + optional time we have to wait for changeover mechanic to complete previous changeover
+                    start = (
+                        avail_m[m]
+                        if (
+                            product_m.get(m) == 0
+                            or product_m.get(m) == part_id
+                            or product_m.get(m) in self.compatibility_dict[part_id]
+                        )
+                        else avail_m[m]
+                        + self.change_over_time_op1
+                        + max((changeover_finish_time - avail_m[m]), 0)
+                    )
+                    # Update changeover mechanic availability
+                    if (
+                        product_m.get(m) != 0
+                        and product_m.get(m) != part_id
+                        and product_m.get(m) not in self.compatibility_dict[part_id]
+                    ):
+                        changeover_finish_time = start
+
+                else:
+                    # Initialize changeover time to 0
+                    changeover_time = 0
+
+                    # If m is in changeover machines and the last size was not the same
+                    if m in self.change_over_machines_op2:
+                        changeover_time = (
+                            0
+                            if (
+                                product_m.get(m) == 0
+                                or product_m.get(m) == part_id
+                                or product_m.get(m) in self.compatibility_dict[part_id]
+                            )
+                            else self.change_over_time_op2
+                        )
+                    if task_idx == 0:
+                        start = avail_m[m] + changeover_time
+                    else:
+                        start, slack_time_used = self.slack_logic(
+                            m,
+                            avail_m,
+                            slack_m,
+                            slack_time_used,
+                            P_prime_sorted[-1][3],
+                            P_prime_sorted[-1][4],
+                            self.dur[(part_id, task_id)],
+                            changeover_time,
+                        )
+
+                # If slack time is used no need to update latest machine availability
+                if not slack_time_used:
+                    avail_m[m] = self.find_avail_m(start, part_id, task_id)
+
+                # Record part ID of the latest product to be processed on a machine for changeovers
+                product_m[m] = part_id
+
+                # Issue warning if 'start' is still not defined after loop
+                if start is None:
+                    logger.warning(
+                        f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - No start time found for job ID {job_id}, "
+                        f"task ID {task_id}, machine {m}")
+
+                # Add the task to the sorted list of tasks in this proposed schedule
+                P_prime_sorted.append(
+                    (
+                        job_id,
+                        task_id,
+                        m,
+                        start,
+                        self.dur[(part_id, task_id)],
+                        task_idx,
+                        part_id,
+                    )
+                )
+
+        return P_prime_sorted
+
+
+    def find_best_schedules(self) -> List:
+        """
+        This method evaluates the population, sorts them based on their scores in descending order,
+        and retains the top schedules based on a specified retention count. The retention count is
+        the maximum of 3 or the product of the length of the population and a specified ratio.
+
+        Returns:
+            P_0 (List): The list of top schedules based on their scores.
+        """
+
+        self.evaluate_population(display_scores=False)
+        scored_population = sorted(zip(self.scores, self.P), key=lambda x: x[0], reverse=True)
+        retain_count = max(3, int(len(self.P) * self.n_e))
+        P_0 = [schedule for score, schedule in scored_population[:retain_count]]
+
+        return P_0
+
+    def offspring(self) -> None:
+        """
+        This function generates offspring for the next generation of the population. It identifies the best schedules
+        in the population, after which it randomly selects each job from the first or the second schedule.
+        Conflicts are resolved by another function.
+
+        Returns:
+        None. The function updates the population in-place.
+        """
+        P_0 = self.find_best_schedules()
+
+        iter_count = len(self.P) * (self.n_c + self.n_e)
+        while len(P_0) < iter_count:
+            sch1, sch2 = random.sample(P_0, 2)
+            P_prime = [
+                entry
+                for job_id in list(self.J.keys())
+                for entry in random.choice([sch1, sch2])
+                if entry[0] == job_id
+            ]
+            P_prime = self.resolve_conflict(P_prime)
+            if P_prime not in P_0:
+                P_0.append(P_prime)
+
+        self.P = P_0
+            
+    def mutate(self):
+        """
+        Perform mutation on the current population of schedules to create a new set of schedules.
+
+        This function identifies pairs of jobs within each schedule that have the same number
+        of tasks and the same durations. It then swaps the start times and machines of tasks
+        between the selected pairs of jobs, creating new schedules. If the new schedule does
+        not already exist in the population, it is added to the population.
+
+        Steps:
+        1. Find the best schedules based on evaluation score.
+        2. Make a deep copy of these schedules.
+        3. For each schedule:
+            a. Group tasks by their job index.
+            b. Identify pairs of jobs with the same number of tasks, identical durations and compatible part IDs.
+            c. Randomly select a pair of jobs up to four times.
+            d. Swap the start times and machines of tasks between the selected jobs.
+            e. If the new schedule is unique, add it to the list of new schedules.
+        4. Add all new schedules to the population.
+
+        This method helps in exploring new potential solutions by making modifications to
+        existing ones, promoting diversity in the population.
+
+        Returns:
+            None
+        """
+
+        P_0 = self.find_best_schedules()
+
+        # Make a deep copy of P_0
+        P_1 = copy.deepcopy(P_0)
+
+        # Initialize a list of new schedules
+        new_schedules = []
+
+        for schedule in P_1:
+            # Group tasks by job_id
+            jobs = defaultdict(list)
+            for task in schedule:
+                jobs[task[0]].append(task)
+
+            # Find pairs of jobs with same number of tasks and same durations
+            job_pairs = []
+            job_list = list(jobs.items())
+
+            for i in range(len(job_list)):
+                for j in range(i + 1, len(job_list)):
+                    job1, task_details_1 = job_list[i]
+                    job2, task_details_2 = job_list[j]
+
+                    # Append if the part ID matches for a pair
+                    # Each job consists of multiple tuples for tasks, we will check if the number of tasks is the same
+                    # and then if the duration of all tasks matches
+                    if len(task_details_1) == len(task_details_2):
+                        # The third last field in the task tuple is the duration
+                        all_durations_match = all(
+                            task1[-3] == task2[-3]
+                            for task1, task2 in zip(task_details_1, task_details_2)
+                        )
+
+                        if all_durations_match:
+                            # Extract custom part ID's
+                            # TODO: We can easily look up the part ID from the job ID now
+                            # Should we remove the part ID from the schedule?
+                            custom_part_id_1 = task_details_1[0][-1]
+                            custom_part_id_2 = task_details_2[0][-1]
+
+                            # Check compatibility in both dictionaries safely
+                            # This is required to make sure no extra changeover will be needed due to mutation
+                            compat_op = custom_part_id_1 in self.compatibility_dict.get(
+                                custom_part_id_2, []
+                            )
+
+                            # If the part ID between the jobs is the same, or they are compatible append to job pairs
+                            if (custom_part_id_1 == custom_part_id_2) or compat_op:
+                                job_pairs.append((job1, job2))
+
+            # If no pairs found, continue to the next schedule
+            if not job_pairs:
+                continue
+
+            # Randomly select a pair of jobs (at least once, but up to four times)
+            for _ in range(random.randint(1, 4)):
+                job1, job2 = random.choice(job_pairs)
+
+                # Remove all entries in job_pairs where either job1 or job2 appears
+                # This ensures that we do not mutate the same job multiple times
+                job_pairs = [
+                    (j1, j2) for j1, j2 in job_pairs if j1 not in (job1, job2) and j2 not in (job1, job2)
+                ]
+
+                # Swap the start times of the tasks in the selected jobs
+                tasks1 = jobs[job1]
+                tasks2 = jobs[job2]
+
+                for i in range(len(tasks1)):
+                    task1 = tasks1[i]
+                    task2 = tasks2[i]
+
+                    # Create new tasks with swapped start times and machines
+                    # task_details follow this format:
+                    # (job_id, task_id, machine, start_time, duration, task_index, part_id)
+                    new_task1 = (task1[0], task1[1], task2[2], task2[3], task1[4], task1[5], task1[6])
+                    new_task2 = (task2[0], task2[1], task1[2], task1[3], task2[4], task2[5], task2[6])
+
+                    # Update the schedule
+                    schedule[schedule.index(task1)] = new_task1
+                    schedule[schedule.index(task2)] = new_task2
+
+            # If the new schedule does not exist yet in the population, add it to P_0
+            if schedule not in P_0 and schedule not in new_schedules:
+                new_schedules.append(schedule)
+
+        # Add all schedules from P_0 to the population
+        self.P = P_0 + new_schedules
+       
+       
             
     def run(self, input_repr_dict: Dict[str, any], scheduling_options: dict, compatibility_dict: dict):
         """

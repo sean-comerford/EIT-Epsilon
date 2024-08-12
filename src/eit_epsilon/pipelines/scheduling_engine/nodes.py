@@ -1281,7 +1281,7 @@ class GeneticAlgorithmScheduler:
                 for entry in random.choice([P1, P2])
                 if entry[0] == job_idx
             ]
-            P_prime = self.resolve_conflict(P_prime)
+            P_prime = self.resolve_conflict(P_prime) 
             if P_prime not in P_0:
                 P_0.append(P_prime)
 

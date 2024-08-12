@@ -126,16 +126,51 @@ pop1 = gas1.run(gaRep1, scheduling_options, comp)
 if seedNum is not None: random.seed(seedNum)  
 pop2 = gas2.run(gaRep2, scheduling_options, comp)
 
-print(f"Pop lengths: {len(pop1)} {len(pop2)}")
-
+# Compare initial populations
 popsMatch = verifyPopulationsMatch(pop1, pop2, croom_processed_orders)
-print("Populations " + ("match" if popsMatch else "do not match"))
+print("Populations " + ("match" if popsMatch else "do not match") + "\n")
 
-gas1.evalPopTest()
-gas2.evalPopTest()
+# gas1.evalPopTest()
+# gas2.evalPopTest()
 
-bestScores1 = []
-gas1.evaluate_population(bestScores1)
+# Compare results of evaluating the inital populations
+scores1 = []
+gas1.evaluate_population(scores1)
+scores1 = gas1.scores
 
-bestScores2 = []
-gas2.evaluate_population(bestScores2)
+scores2 = []
+gas2.evaluate_population(scores2)
+scores2 = gas2.scores
+
+print("Population scores " + ("match" if scores1 == scores2 else "do not match") +"\n")
+
+# Compare best schedules
+best_sch1 = gas1.find_best_schedules()
+best_sch2 = gas2.find_best_schedules()
+print("Best schedules " + ("match" if verifyPopulationsMatch(best_sch1, best_sch2, croom_processed_orders) else "do not match") + "\n")
+
+# Compare results of a single call of offspring()
+if seedNum is not None: random.seed(seedNum)  
+gas1.offspring()
+if seedNum is not None: random.seed(seedNum)  
+gas2.offspring()
+
+print("Snippet of populations after offspring: ")
+for i in range(5):
+  print(f"{gas1.P[0][i]} {gas2.P[0][i]}")
+
+popsMatch = verifyPopulationsMatch(gas1.P, gas2.P, croom_processed_orders)
+print("Offspring populations " + ("match" if popsMatch else "do not match") + "\n")
+
+# Compare results of a single call of mutate()
+if seedNum is not None: random.seed(seedNum)  
+gas1.mutate()
+if seedNum is not None: random.seed(seedNum)  
+gas2.mutate()
+
+print("Snippet of populations after mutate: ")
+for i in range(5):
+  print(f"{gas1.P[0][i]} {gas2.P[0][i]}")
+
+popsMatch = verifyPopulationsMatch(gas1.P, gas2.P, croom_processed_orders)
+print("Mutated populations " + ("match" if popsMatch else "do not match"))

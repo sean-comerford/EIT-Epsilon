@@ -39,15 +39,15 @@ def verifyPopulationsMatch(pop1, pop2, croom_processed_orders):
     
     # Loop over each schedule
     for s in range(len(pop1)):
-        print(f"Checking schedule {s}")
+        #print(f"Checking schedule {s}")
         # Loop over the items in this schedule
         # Example item in a schedule (taskID, machine, start, duration, task index, part ID):
         # (28, 1, 1, 0, 360.0, 0, 'RIGHT-PS-5N-CTD-OP1')   
-        print(f"Schedule {s} length: {len(pop1[s])}")
+        #print(f"Schedule {s} length: {len(pop1[s])}")
         for i in range(len(pop1[s])):
             
             if printSnippets > 0 and random.choice([True, False]):
-                print(f"i: {i}", end=" ")
+                print(f"(verifyPopulationsMatch.py) i: {i}", end=" ")
                 print(f"Comparing: {pop1[s][i]} {pop2[s][i]}")
                 printSnippets -= 1
             
@@ -65,7 +65,8 @@ def verifyPopulationsMatch(pop1, pop2, croom_processed_orders):
             # i.e. taskID, machine, start, duration, task index, part ID
             for j in range(1, len(pop1[s][i])):
                 
-                # TODO: Modify this?
+                # With the new data structure task 1 may have been changed to 99 if it is cemented
+                # So we need to make an allowance for that
                 if j == 1 and pop1[s][i][j] == 1 and pop2[s][i][j] == 99:
                     continue                
                 
