@@ -943,6 +943,21 @@ class GeneticAlgorithmScheduler:
         # Convert the filtered tasks to a list and return its length
         return len(list(late_tasks))
 
+    def get_preferred_machines(self, compat_task_0, product_m, job_idx):
+        # Step 1: Identify machines that match part_id exactly
+        preferred_machines = [
+            key
+            for key in compat_task_0
+            if product_m[key] == self.part_id[job_idx]
+            or product_m[key] in self.compatibility_dict[self.part_id[job_idx]]
+        ]
+
+        # Step 2: Assert that there are not more than two compatible machines
+        assert len(preferred_machines) <= 2, f"Too many compatible machines: {preferred_machines}"
+
+        # Return the preferred machines
+        return preferred_machines
+
     def slack_logic(
         self,
         m: int,
@@ -1167,13 +1182,18 @@ class GeneticAlgorithmScheduler:
                         # Preferred machines are those that have not been used yet or processed the same
                         # size previously (in this case no changeover is required)
                         # Note: no changeover needed for the first task on a HAAS machine is an assumption
-                        preferred_machines = [
-                            key
-                            for key in compat_task_0
-                            if product_m[key] == 0
-                            or product_m[key] == self.part_id[job_idx]
-                            or product_m[key] in self.compatibility_dict[self.part_id[job_idx]]
-                        ]
+                        # preferred_machines = [
+                        #     key
+                        #     for key in compat_task_0
+                        #     if product_m[key] == 0
+                        #     or product_m[key] == self.part_id[job_idx]
+                        #     or product_m[key] in self.compatibility_dict[self.part_id[job_idx]]
+                        # ]
+
+                        # New preferred machines logic
+                        preferred_machines = self.get_preferred_machines(
+                            compat_task_0, product_m, job_idx
+                        )
 
                         # If no preferred machines can be found, pick one that comes available earliest
                         # with a higher probability
@@ -1181,12 +1201,20 @@ class GeneticAlgorithmScheduler:
                             m = self.pick_early_machine(
                                 job_idx, task_idx, avail_m, random_roll, prob=0.7
                             )
-                        # If there are preferred machines, pick the preferred machine that comes available
+                        # If there is a single preferred machine, pick the preferred machine with a higher probability
+                        # otherwise pick the non-preferred machine that comes available earliest
+                        elif len(preferred_machines) == 1:
+                            m = (
+                                preferred_machines[0]
+                                if random_roll < 0.7
+                                else min(compat_task_0, key=lambda x: avail_m.get(x))
+                            )
+                        # If there are two preferred machines, pick the preferred machine that comes available
                         # earliest with a higher probability
                         else:
                             m = (
                                 min(preferred_machines, key=lambda x: avail_m.get(x))
-                                if random_roll < 0.7
+                                if random_roll < 0.5
                                 else random.choice(preferred_machines)
                             )
 
@@ -1377,6 +1405,18 @@ class GeneticAlgorithmScheduler:
                     # Start time is the time that the machine comes available if no changeover is required
                     # else, the changeover time is added, and an optional waiting time if we need to wait
                     # for another changeover to finish first (only one changeover can happen concurrently)
+
+                    # Extract compatible HAAS machines for first task
+                    compat_task_0 = self.compat[job_idx][task_idx]
+
+                    # New preferred machines logic
+                    preferred_machines = self.get_preferred_machines(compat_task_0, product_m, job_idx)
+
+                    # Fixture limitation logic
+                    # If there are two preferred machines (with compatible fixtures), `m` must be picked from these
+                    if len(preferred_machines) >= 2 and m not in preferred_machines:
+                        m = random.choice(preferred_machines)
+
                     if (
                         product_m[m] == 0
                         or product_m[m] == self.part_id[job_idx]
@@ -1847,11 +1887,11 @@ def create_start_end_time(
     start_time_min = base_date.time()
 
     # Convert total_minutes_per_day and change_over_time_op1 to timedelta
-    total_minutes = timedelta(minutes=scheduling_options["total_minutes_per_day"])
+    working_minutes = timedelta(minutes=scheduling_options["working_minutes_per_day"])
     change_over_time = timedelta(minutes=scheduling_options["change_over_time_op1"])
 
     # Calculate the end time (start_time_max) by adding total_minutes and subtracting change_over_time
-    end_time = base_date + total_minutes - change_over_time
+    end_time = base_date + working_minutes - change_over_time
     start_time_max = end_time.time()
 
     # Filter out changeovers outside the valid time range
