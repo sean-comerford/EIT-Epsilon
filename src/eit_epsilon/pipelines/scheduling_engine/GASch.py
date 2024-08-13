@@ -254,9 +254,7 @@ class GeneticAlgorithmScheduler:
         # operation = [id.split("-")[-1] for id in partIDs]
 
         P = []
-        percentages = np.arange(10, 101, 10)
-    
-        #random.seed(191919)
+        percentages = np.arange(10, 101, 10)   
             
         for i in range(num_inds):
             avail_m = {m: 0 for m in self.M}
@@ -268,13 +266,10 @@ class GeneticAlgorithmScheduler:
             # Create a temporary copy of the Job IDs
             J_temp = list(self.J.keys())
             
-            # for jobID in J_temp:                
-            #     print(f"J temp before:  {jobID} {self.J[jobID][0]} {self.J[jobID][1]}")
+
 
             # Generate a random float [0, 1]
-            random_roll = random.random()
-            #random_roll = 0.5
-            
+            random_roll = random.random()  
             
             # Based on the random number we either randomly shuffle or apply some sorting logic
             if random_roll < 0.4:
@@ -289,10 +284,8 @@ class GeneticAlgorithmScheduler:
                 # Reorder J_temp according to the urgent order list. Urgent orders should now contain the job IDs (instead of the index)
                 for job in self.urgent_orders:
                     J_temp.remove(job)  # Remove the job from its current position (TODO: Should we print an error if the job isn't in J_temp?)
-                    J_temp.append(job)  # Append the job to the end of the list (this means it will be picked first)
-                    
-            # for jobID in J_temp:                
-            #     print(f"J temp after:  {jobID} {self.J[jobID][0]} {self.J[jobID][1]}")                    
+                    J_temp.append(job)  # Append the job to the end of the list (this means it will be picked first)                 
+               
                     
             # While our list of jobs is not empty
             while J_temp:
@@ -309,10 +302,8 @@ class GeneticAlgorithmScheduler:
                     # if so we do not need to update avail_m
                     slack_time_used = False
                 
-                    # Conditional logic; separate flow for first task of OP1 (HAAS)
-                    
-                    
-                    if part_id.split("-")[-1] == "OP1" and (task_id == 1 or task_id == 99):  # TODO: Modify this?
+                    # Conditional logic; separate flow for first task of OP1 (HAAS)                   
+                    if part_id.split("-")[-1] == "OP1" and (task_id == 1 or task_id == 99):
                         # Logic for first task in OP1 (HAAS machines)
                         compat_task_0 = self.task_to_machines[task_id] # A list of machines that are compatible with this task
                         # Preferred machines are those that have not been used yet or processed the same
@@ -822,7 +813,24 @@ class GeneticAlgorithmScheduler:
 
         self.init_population()
         
-        # best_scores = []        
+        best_scores = []        
         # self.evaluate_population(best_scores=best_scores)
         
-        return self.P
+        #return self.P
+        
+        for iteration in range(self.max_iterations):
+            logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Iteration {iteration + 1}")
+            self.evaluate_population(best_scores=best_scores)
+            self.offspring()
+            self.mutate()
+            if len(self.P) < self.n:
+                self.P += self.init_population(num_inds=self.n - len(self.P), fill_inds=True)
+
+        schedules_and_scores = sorted(zip(self.P, self.scores), key=lambda x: x[1], reverse=True)
+        self.best_schedule = schedules_and_scores[0][0]
+        logger.info(
+            f"Snippet of best schedule (job, task, machine, start_time, duration, task_idx, part_id): "
+            f"{self.best_schedule[:2]}"
+        )
+
+        return self.best_schedule, best_scores

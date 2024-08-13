@@ -186,6 +186,6 @@ class Job:
             else:
                 # Operation 1
                # result[row['Custom Part ID']] = [1, 2, 3, 4, 5, 6, 7] if row['Cementless'] == "CLS" else [1, 2, 3, 6, 7]
-                result[row['Custom Part ID']] = [1, 2, 3, 4, 5, 6, 7] if row['Cementless'] == "CLS" else [99, 2, 3, 6, 7] # TODO: Modify this?
+                result[row['Custom Part ID']] = [1, 2, 3, 4, 5, 6, 7] if row['Cementless'] == "CLS" else [99, 2, 3, 6, 7]
         
         return result   

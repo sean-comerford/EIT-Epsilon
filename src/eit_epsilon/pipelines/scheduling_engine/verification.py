@@ -46,10 +46,10 @@ def verifyPopulationsMatch(pop1, pop2, croom_processed_orders):
         #print(f"Schedule {s} length: {len(pop1[s])}")
         for i in range(len(pop1[s])):
             
-            if printSnippets > 0 and random.choice([True, False]):
-                print(f"(verifyPopulationsMatch.py) i: {i}", end=" ")
-                print(f"Comparing: {pop1[s][i]} {pop2[s][i]}")
-                printSnippets -= 1
+            # if printSnippets > 0 and random.choice([True, False]):
+            #     print(f"(verifyPopulationsMatch.py) i: {i}", end=" ")
+            #     print(f"Comparing: {pop1[s][i]} {pop2[s][i]}")
+            #     printSnippets -= 1
             
             # Original pop stores job index as the first item, new structure stores job ID
             # So we need to obtain the job ID for each element in the original population

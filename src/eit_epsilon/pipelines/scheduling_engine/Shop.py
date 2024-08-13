@@ -134,7 +134,7 @@ class Shop:
                     times = cr_times if row["Type"] == "CR" else ps_times
                     duration = round(times.loc[task, row["Size"]] * row["Order Qty"], 1)
                     
-                # TODO: Modify this?
+                # Tasks of type 99 have the same duration as tasks of type 1
                 elif task == 99:
                     times = cr_times if row["Type"] == "CR" else ps_times
                     # Use task 1 here, instead of 99

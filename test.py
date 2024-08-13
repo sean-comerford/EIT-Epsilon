@@ -8,7 +8,6 @@ from typing import List, Dict, Tuple
 
 from src.eit_epsilon.pipelines.scheduling_engine.nodes import JobShop, GeneticAlgorithmScheduler
 
-
 from src.eit_epsilon.pipelines.scheduling_engine.Job import Job as Job2
 from src.eit_epsilon.pipelines.scheduling_engine.Shop import Shop as Shop2
 from src.eit_epsilon.pipelines.scheduling_engine.JobShop import JobShop as JobShop2
@@ -60,11 +59,11 @@ scheduling_options={
   'change_over_time_op2': 20,  # Minutes required to do a changeover on the HAAS machines (Only OP 1)
   'change_over_machines_op2': [20, 22, 23],  # Machines that require a changeover for OP2 (key in machine dict above)
   'change_over_time': 180,  # Minutes required to do a changeover on the HAAS machines
-  'n': 25,  # Number of random schedules to generate
+  'n': 200,  # Number of random schedules to generate
   'n_e': 0.1,  # Proportion of best schedules to automatically pass on to the next generation (e.g.: 10%)
   'n_c': 0.3,  # Proportion of children to generate in the offspring function
   'minutes_per_day': 480,  # Number of working minutes per day (8 hours * 60 minutes)
-  'max_iterations': 10,  # Maximum number of iterations/generations to run the algorithm
+  'max_iterations': 20,  # Maximum number of iterations/generations to run the algorithm
   'urgent_multiplier': 3,  # Multiplier for (completion_time - due_date) for urgent_orders
   'urgent_orders': [], # List of job IDs (urgency in reverse order)
   'column_mapping': {
@@ -121,10 +120,21 @@ comp2 = JobShop2.build_changeover_compatibility(croom_processed_orders, size_cat
 seedNum = random.randint(0, 1000)
 
 if seedNum is not None: random.seed(seedNum)  
-pop1 = gas1.run(gaRep1, scheduling_options, comp)
+best_sch1, best_scores1 = gas1.run(gaRep1, scheduling_options, comp)
 
 if seedNum is not None: random.seed(seedNum)  
-pop2 = gas2.run(gaRep2, scheduling_options, comp)
+best_sch2, best_scores2 = gas2.run(gaRep2, scheduling_options, comp)
+
+print(best_sch1[:5])
+print(best_sch2[:5])
+
+print("Best schedules " + ("match" if verifyPopulationsMatch([best_sch1], [best_sch2], croom_processed_orders) else "do not match"))
+print("Best scores " + ("match" if best_scores1 == best_scores2 else "do not match"))
+
+raise SystemExit
+
+# For checking individual functions:
+##############################################################
 
 # Compare initial populations
 popsMatch = verifyPopulationsMatch(pop1, pop2, croom_processed_orders)
@@ -174,3 +184,5 @@ for i in range(5):
 
 popsMatch = verifyPopulationsMatch(gas1.P, gas2.P, croom_processed_orders)
 print("Mutated populations " + ("match" if popsMatch else "do not match"))
+
+

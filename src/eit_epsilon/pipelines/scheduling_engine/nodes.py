@@ -901,9 +901,7 @@ class GeneticAlgorithmScheduler:
                 J_temp.sort(key=lambda x: (self.part_id[x], self.due[x]), reverse=True)
             else:
                 # Reorder J_temp according to the urgent order list
-                print(f"Nodes: Urgent orders: {self.urgent_orders}")
                 for job in self.urgent_orders:
-                    print(f"Nodes: removing {job}")
                     J_temp.remove(job)  # Remove the job from its current position
                     J_temp.append(
                         job
@@ -1438,11 +1436,11 @@ class GeneticAlgorithmScheduler:
 
         self.init_population() 
         
-        # best_scores = []        
+        best_scores = []        
         # self.evaluate_population(best_scores=best_scores)
         
                 
-        return self.P
+        #return self.P
 
         for iteration in range(self.max_iterations):
             logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Iteration {iteration + 1}")
