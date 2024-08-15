@@ -46,7 +46,11 @@ def create_pipeline(**kwargs) -> Pipeline:
             ),
             node(
                 func=jobshop.build_changeover_compatibility,
-                inputs=["croom_processed_orders", "params:size_categories_op2"],
+                inputs=[
+                    "croom_processed_orders",
+                    "params:size_categories_op2_cr",
+                    "params:size_categories_op2_ps",
+                ],
                 outputs="compatibility_dict",
                 name="build_changeover_compatibility",
             ),

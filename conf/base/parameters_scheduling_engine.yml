@@ -24,13 +24,19 @@ task_to_machines: {
   99: [1, 2, 3]  # HAAS (only cemented)
 }
 
-# Define OP2 size categories
-size_categories_op2: {
+# Define OP2 size categories for CR
+size_categories_op2_cr: {
     "small": {"1", "2", "3N"},
     "medium": {"3", "4N", "4", "5N", "5", "6N"},
     "large": {"6", "7", "8", "9", "10"}
 }
 
+# Define OP2 size categories for PS
+size_categories_op2_ps: {
+    "small": {"1", "2"},
+    "medium": {"3N", "3", "4N", "4", "5N", "5"},
+    "large": {"6N", "6", "7", "8", "9", "10"}
+}
 column_mapping_reformat: {
   'job': 'Job',
   'starting_time': 'Start_time',
@@ -74,11 +80,11 @@ scheduling_options:
   change_over_time_op1: 180  # Minutes required to do a changeover on the HAAS machines (Only OP 1)
   change_over_time_op2: 20  # Minutes required to do a changeover on the HAAS machines (Only OP 1)
   change_over_machines_op2: [20, 22, 23]  # Machines that require a changeover for OP2 (key in machine dict above)
-  n: 1200  # Number of random schedules to generate
+  n: 20  # Number of random schedules to generate
   n_e: 0.1  # Proportion of best schedules to automatically pass on to the next generation (e.g.: 10%)
   n_c: 0.3  # Proportion of children to generate in the offspring function
   minutes_per_day: 480  # Number of working minutes per day (8 hours * 60 minutes)
-  max_iterations: 20  # Maximum number of iterations/generations to run the algorithm
+  max_iterations: 10  # Maximum number of iterations/generations to run the algorithm
   urgent_multiplier: 3  # Multiplier for (due_date - completion_time) for urgent_orders
   urgent_orders: []  # List of job indices of urgent orders; starting from 1
   column_mapping: {
