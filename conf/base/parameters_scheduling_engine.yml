@@ -78,6 +78,34 @@ machine_dict: {
     25: 'Polishing-2'
 }
 
+cemented_arbors: {
+    '5': '1008644',
+    '6': '1008654',
+    '7': '1008663',
+    '8': '1008668',
+    '9': '1008672',
+    '10': '1008677',
+    '4N': '1008639',
+    '5N': '1008649'
+}
+
+cementless_arbors: {
+    '1': '800.6000.10.00',
+    '2': '800.6001.11.00',
+    '3': '800.6000.12.00',
+    '4': '800.6000.13.00',
+    '5': '800.6000.14.00',
+    '6': '800.6000.15.00',
+    '7': '800.6000.16.00',
+    '8': '800.6000.17.00',
+    '9': '800.6000.18.00',
+    '10': '800.6000.19.00',
+    '3N': '800.6000.20.00',
+    '4N': '800.6001.13.00',
+    '5N': '800.6001.14.00',
+    '6N': '800.6000.23.00'
+}
+
 scheduling_options:
   start_date: "2024-03-18T06:30"  # Starting date used to calculate difference with due date
   change_over_time_op1: 180  # Minutes required to do a changeover on the HAAS machines (Only OP 1)
@@ -85,7 +113,7 @@ scheduling_options:
   change_over_machines_op1: [1, 2, 3, 4, 5, 6] # Machines that require a changeover for OP1 (key in machine dict above)
   change_over_machines_op2: [20, 22, 23]  # Machines that require a changeover for OP2 (key in machine dict above)
   task_time_buffer: 5  # Number of extra minutes to keep between tasks as a buffer (switching time)
-  n: 1200  # Number of random schedules to generate
+  n: 2000  # Number of random schedules to generate
   n_e: 0.1  # Proportion of best schedules to automatically pass on to the next generation (e.g.: 10%)
   n_c: 0.3  # Proportion of children to generate in the offspring function
   working_minutes_per_day: 480  # Number of working minutes per day (8 hours * 60 minutes)

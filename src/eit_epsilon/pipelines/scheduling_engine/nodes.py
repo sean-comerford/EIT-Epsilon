@@ -12,7 +12,7 @@ from pandas.api.types import is_string_dtype
 import plotly
 from typing import List, Dict, Tuple, Union, Optional, Any
 import itertools
-from collections import defaultdict
+from collections import defaultdict, Counter
 
 # Instantiate logger
 logger = logging.getLogger(__name__)
@@ -443,6 +443,9 @@ class JobShop(Job, Shop):
     By using the JobShop class all the functionality of the Job and Shop classes can be accessed.
     """
 
+    def __init__(self):
+        self.input_repr_dict = None
+
     def preprocess_orders(self, croom_open_orders: pd.DataFrame) -> pd.DataFrame:
         """
         Preprocesses the open orders.
@@ -658,7 +661,39 @@ class JobShop(Job, Shop):
                         extra={"markup": True},
                     )
 
+        # Return input repr dict to save it
         return input_repr_dict
+
+    @staticmethod
+    def generate_arbor_mapping(input_repr_dict, cemented_arbors, cementless_arbors):
+        # Initialize the dictionary to store the results
+        arbor_mapping = {}
+
+        # Extract part_ids from class attribute
+        part_ids = input_repr_dict["part_id"]
+
+        # Filter and process part IDs
+        for part_id in part_ids:
+            if part_id.endswith("OP1"):
+                # Extract components
+                orientation, type_id, size, cement_type, operation = part_id.split("-")
+
+                # Normalize size for narrow cases
+                size = size.replace(" (NARROW)", "")
+
+                # Determine the correct arbor number based on cement type and size
+                if cement_type == "CTD":
+                    arbor_number = cemented_arbors.get(size)
+                elif cement_type == "CLS":
+                    arbor_number = cementless_arbors.get(size)
+                else:
+                    arbor_number = None
+
+                # Add to the dictionary
+                if arbor_number:
+                    arbor_mapping[part_id] = arbor_number
+
+        return arbor_mapping
 
 
 class GeneticAlgorithmScheduler:
@@ -695,6 +730,7 @@ class GeneticAlgorithmScheduler:
         self.change_over_machines_op1 = None
         self.change_over_machines_op2 = None
         self.compatibility_dict = None
+        self.arbor_dict = None
         self.urgent_orders = None
         self.urgent_multiplier = None
         self.max_iterations = None
@@ -838,6 +874,55 @@ class GeneticAlgorithmScheduler:
 
             return next_working_day_start
 
+    def count_arbor_frequencies(self):
+        # Step 1: Extract the arbor values for each part_id
+        jobs_per_arbor = [
+            self.arbor_dict.get(part_id) for part_id in self.part_id if part_id.endswith("OP1")
+        ]
+
+        # Step 2: Use Counter to count the frequencies of each arbor value
+        arbor_frequency = Counter(jobs_per_arbor)
+
+        return arbor_frequency
+
+    @staticmethod
+    def assign_arbors_to_machines(arbor_frequency):
+        # Step 1: Initialize the assignment dictionary
+        arbor_to_machines = {arbor: [] for arbor in arbor_frequency}
+
+        # Step 2: Assign arbors to machines based on their type
+        machine_index_cementless = 0
+        machine_index_cemented = 0
+
+        for arbor, frequency in arbor_frequency.items():
+            # Determine if the arbor is cementless or cemented based on its number
+            if arbor.startswith("800"):
+                # Cementless arbors
+                machines = random.choice([[6, 5, 4, 3, 2], [6, 5, 4, 3], [6, 5, 4, 3, 2, 1]])
+                machine_index = machine_index_cementless
+            elif arbor.startswith("100"):
+                # Cemented arbors
+                machines = random.choice([[1, 2, 3], [1, 2]])
+                machine_index = machine_index_cemented
+            else:
+                raise ValueError(f"Unknown arbor type for arbor number {arbor}")
+
+            # Determine the number of machines to assign based on frequency
+            num_machines_to_assign = 2 if frequency > 2 else 1
+
+            # Assign the arbor to the appropriate number of machines
+            for _ in range(num_machines_to_assign):
+                arbor_to_machines[arbor].append(machines[machine_index])
+                machine_index = (machine_index + 1) % len(machines)
+
+            # Update the machine index for the next iteration
+            if arbor.startswith("800"):
+                machine_index_cementless = machine_index
+            else:
+                machine_index_cemented = machine_index
+
+        return arbor_to_machines
+
     def pick_early_machine(
         self,
         job_idx: int,
@@ -861,7 +946,10 @@ class GeneticAlgorithmScheduler:
         Returns:
         - int: The selected machine ID.
         """
+
+        # Extract compatibility with task
         compat_with_task = self.compat[job_idx][task_idx]
+
         if random_roll < prob:
             m = min(compat_with_task, key=lambda x: avail_m.get(x))
         else:
@@ -943,17 +1031,30 @@ class GeneticAlgorithmScheduler:
         # Convert the filtered tasks to a list and return its length
         return len(list(late_tasks))
 
-    def get_preferred_machines(self, compat_task_0, product_m, job_idx):
-        # Step 1: Identify machines that match part_id exactly
+    def get_preferred_machines(self, compat_task_0, product_m, job_idx, fixture_to_machine_assignment):
+        # Find preferred machines
+        # 1.) Machines that processed the exact part_id
+        # 2.) Machines that processed a compatible part_id
         preferred_machines = [
-            key
-            for key in compat_task_0
-            if product_m[key] == self.part_id[job_idx]
-            or product_m[key] in self.compatibility_dict[self.part_id[job_idx]]
+            machine
+            for machine in compat_task_0
+            if product_m[machine] == 0
+            or product_m[machine] == self.part_id[job_idx]
+            or product_m[machine] in self.compatibility_dict[self.part_id[job_idx]]
         ]
 
-        # Step 2: Assert that there are not more than two compatible machines
-        assert len(preferred_machines) <= 2, f"Too many compatible machines: {preferred_machines}"
+        # Extract the appropriate arbor from custom part ID
+        arbor = self.arbor_dict[self.part_id[job_idx]]
+
+        # Extract the valid machines from the fixture_to_machine_assignment
+        valid_machines = fixture_to_machine_assignment[arbor]
+
+        # Filter the preferred machines to only include those that are valid for the current arbor
+        preferred_machines = [machine for machine in preferred_machines if machine in valid_machines]
+
+        # If no preferred machines are found, use the valid machines for the current arbor
+        if not preferred_machines:
+            preferred_machines = valid_machines
 
         # Return the preferred machines
         return preferred_machines
@@ -1124,6 +1225,12 @@ class GeneticAlgorithmScheduler:
         # Extract the operation from custom part id
         operation = [id_string.split("-")[-1] for id_string in self.part_id]
 
+        # Count arbor frequencies
+        arbor_frequencies = self.count_arbor_frequencies()
+
+        if not fill_inds:
+            logger.info(f"Arbor frequencies: {arbor_frequencies}")
+
         P = []
         percentages = np.arange(10, 101, 10)
 
@@ -1139,6 +1246,9 @@ class GeneticAlgorithmScheduler:
 
             # Generate a random float [0, 1]
             random_roll = random.random()
+
+            # Create machine assignment based on fixtures
+            fixture_to_machine_assignment = self.assign_arbors_to_machines(arbor_frequencies)
 
             # Based on the random number we either randomly shuffle or apply some sorting logic
             if random_roll < 0.4:
@@ -1181,42 +1291,22 @@ class GeneticAlgorithmScheduler:
 
                         # Preferred machines are those that have not been used yet or processed the same
                         # size previously (in this case no changeover is required)
-                        # Note: no changeover needed for the first task on a HAAS machine is an assumption
-                        # preferred_machines = [
-                        #     key
-                        #     for key in compat_task_0
-                        #     if product_m[key] == 0
-                        #     or product_m[key] == self.part_id[job_idx]
-                        #     or product_m[key] in self.compatibility_dict[self.part_id[job_idx]]
-                        # ]
-
-                        # New preferred machines logic
                         preferred_machines = self.get_preferred_machines(
-                            compat_task_0, product_m, job_idx
+                            compat_task_0, product_m, job_idx, fixture_to_machine_assignment
                         )
 
-                        # If no preferred machines can be found, pick one that comes available earliest
-                        # with a higher probability
-                        if not preferred_machines:
-                            m = self.pick_early_machine(
-                                job_idx, task_idx, avail_m, random_roll, prob=0.7
-                            )
-                        # If there is a single preferred machine, pick the preferred machine with a higher probability
-                        # otherwise pick the non-preferred machine that comes available earliest
-                        elif len(preferred_machines) == 1:
-                            m = (
-                                preferred_machines[0]
-                                if random_roll < 0.7
-                                else min(compat_task_0, key=lambda x: avail_m.get(x))
-                            )
-                        # If there are two preferred machines, pick the preferred machine that comes available
-                        # earliest with a higher probability
-                        else:
-                            m = (
-                                min(preferred_machines, key=lambda x: avail_m.get(x))
-                                if random_roll < 0.5
-                                else random.choice(preferred_machines)
-                            )
+                        # # If no preferred machines can be found, pick one that comes available earliest
+                        # # with a higher probability
+                        # if not preferred_machines:
+                        #     m = self.pick_early_machine(
+                        #         job_idx, task_idx, avail_m, random_roll, prob=0.7
+                        #     )
+                        # else:
+                        m = (
+                            min(preferred_machines, key=lambda x: avail_m.get(x))
+                            if random_roll < 0.5
+                            else random.choice(preferred_machines)
+                        )
 
                         # Start time is the time that the machine comes available if no changeover is required
                         # else, the changeover time is added, and an optional waiting time if we need to wait
@@ -1227,6 +1317,7 @@ class GeneticAlgorithmScheduler:
                             or product_m[m] in self.compatibility_dict[self.part_id[job_idx]]
                         ):
                             start = avail_m[m]
+
                         else:
                             # If the changeover would not be finished before the end of day,
                             # it is pushed to the next morning
@@ -1388,6 +1479,12 @@ class GeneticAlgorithmScheduler:
         # Extract the operation from custom part id
         operation = [id.split("-")[-1] for id in self.part_id]
 
+        # Count arbor frequencies
+        arbor_frequencies = self.count_arbor_frequencies()
+
+        # Create machine assignment based on fixtures
+        fixture_to_machine_assignment = self.assign_arbors_to_machines(arbor_frequencies)
+
         # Loop over the jobs in the job list (J)
         for job_idx in range(len(self.J)):
             job = self.J[job_idx]
@@ -1410,11 +1507,12 @@ class GeneticAlgorithmScheduler:
                     compat_task_0 = self.compat[job_idx][task_idx]
 
                     # New preferred machines logic
-                    preferred_machines = self.get_preferred_machines(compat_task_0, product_m, job_idx)
+                    preferred_machines = self.get_preferred_machines(
+                        compat_task_0, product_m, job_idx, fixture_to_machine_assignment
+                    )
 
-                    # Fixture limitation logic
-                    # If there are two preferred machines (with compatible fixtures), `m` must be picked from these
-                    if len(preferred_machines) >= 2 and m not in preferred_machines:
+                    # If the selected machine is not in preferred machines yet, select from preferred machines
+                    if m not in preferred_machines:
                         m = random.choice(preferred_machines)
 
                     if (
@@ -1654,7 +1752,13 @@ class GeneticAlgorithmScheduler:
         # Add all schedules from P_0 to the population
         self.P = P_0 + new_schedules
 
-    def run(self, input_repr_dict: Dict[str, any], scheduling_options: dict, compatibility_dict: dict):
+    def run(
+        self,
+        input_repr_dict: Dict[str, any],
+        scheduling_options: dict,
+        compatibility_dict: dict,
+        arbor_dict: dict,
+    ):
         """
         Runs the genetic algorithm by initializing the population, evaluating it, and selecting the best schedule.
 
@@ -1662,6 +1766,7 @@ class GeneticAlgorithmScheduler:
             input_repr_dict (Dict[str, any]): A dictionary containing the necessary input variables for the GA.
             scheduling_options (dict): Dictionary containing hyperparameters for running the algorithm.
             compatibility_dict (dict): Dictionary containing the compatibility information for changeovers.
+            arbor_dict (dict): Dictionary containing the arbor information for changeovers.
 
         Returns:
             Tuple[List[Tuple[int, int, int, int, float]], List[int]]: The best schedule with the highest score and the list of best scores per generation.
@@ -1683,6 +1788,7 @@ class GeneticAlgorithmScheduler:
         self.change_over_machines_op1 = scheduling_options["change_over_machines_op1"]
         self.change_over_machines_op2 = scheduling_options["change_over_machines_op2"]
         self.compatibility_dict = compatibility_dict
+        self.arbor_dict = arbor_dict
         self.max_iterations = scheduling_options["max_iterations"]
         self.urgent_multiplier = scheduling_options["urgent_multiplier"]
         self.task_time_buffer = scheduling_options["task_time_buffer"]
@@ -1699,7 +1805,7 @@ class GeneticAlgorithmScheduler:
         for iteration in range(self.max_iterations):
             logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Iteration {iteration + 1}")
             self.evaluate_population(best_scores=best_scores)
-            self.offspring()
+            # self.offspring()
             self.mutate()
             if len(self.P) < self.n:
                 self.P += self.init_population(num_inds=self.n - len(self.P), fill_inds=True)
