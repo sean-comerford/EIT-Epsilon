@@ -837,14 +837,6 @@ class GeneticAlgorithmScheduler:
         if num_inds is None:
             num_inds = self.n
 
-        # Extract the operation from custom part id
-        # def getOP(id):
-        #     return id.split("-")[-1]
-        # jobIDToOperation = {jobID: getOP(partID) for jobID, (partID, _) in self.J}
-        
-        # partIDs = [partID for _, (partID, _) in self.J]
-        # operation = [id.split("-")[-1] for id in partIDs]
-
         P = []
         percentages = np.arange(10, 101, 10)   
             
@@ -856,9 +848,7 @@ class GeneticAlgorithmScheduler:
             P_j = []            
             
             # Create a temporary copy of the Job IDs
-            J_temp = list(self.J.keys())
-            
-
+            J_temp = list(self.J.keys())         
 
             # Generate a random float [0, 1]
             random_roll = random.random()  
@@ -1012,31 +1002,7 @@ class GeneticAlgorithmScheduler:
         if not fill_inds:
             self.P = P
         else:
-            return P
-                
-    def evalPopTest(self, best_scores: list = None, display_scores: bool = True, on_time_bonus: int = 5000):
-        for i, schedule in enumerate(self.P):
-            #if i == 5: return
-            score = round(
-                        sum(
-                            (
-                                # Difference between due date and completion time, multiplied by urgent_multiplier if urgent
-                                (self.J[job_id][1] - (start_time + job_task_dur))
-                                * (self.urgent_multiplier if job_id in self.urgent_orders else 1)
-                                + (
-                                    # Fixed size bonus for completing the job on time
-                                    on_time_bonus
-                                    if (self.J[job_id][1] - (start_time + job_task_dur)) > 0
-                                    else 0
-                                )
-                            )
-                            for (job_id, task_id, machine, start_time, job_task_dur, _, _,) in schedule
-                            # Only consider the completion time of the final task
-                            # if task + 1 == max(self.J[job_idx])
-                            if task_id == self.part_to_tasks[self.J[job_id][0]][-1]
-                        )
-                    )
-            print(f"Schedule {i} score: {score}")
+            return P               
   
     def evaluate_population(
         self, best_scores: list = None, display_scores: bool = True, on_time_bonus: int = 5000
@@ -1072,7 +1038,6 @@ class GeneticAlgorithmScheduler:
                     ) in schedule
                     # Only consider the completion time of the final task
                     if task_id == self.part_to_tasks[self.J[job_id][0]][-1]
-                    #if task + 1 == max(self.J[job_idx])
                 )
             )
             # Evaluate each schedule in the population
@@ -1405,10 +1370,7 @@ class GeneticAlgorithmScheduler:
 
         self.init_population()
         
-        best_scores = []        
-        # self.evaluate_population(best_scores=best_scores)
-        
-        #return self.P
+        best_scores = []     
         
         for iteration in range(self.max_iterations):
             logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Iteration {iteration + 1}")
@@ -1477,10 +1439,14 @@ def reformat_output(
 
     # Rename columns
     croom_processed_orders = croom_processed_orders.rename(columns=column_mapping_reformat)
-    croom_processed_orders.rename( columns={'Unnamed: 0':'Job'}, inplace=True )
+    
+    # Use the index as the job index
+    croom_processed_orders['Job'] = croom_processed_orders.index
 
     # Apply machine name mapping
     croom_processed_orders["Machine"] = croom_processed_orders["Machine"].map(machine_dict)
+     
+    croom_processed_orders.to_excel("reformattedOrders2.xlsx")
 
     return croom_processed_orders
 
@@ -1503,7 +1469,7 @@ def create_start_end_time(
 
     Returns:
         pd.DataFrame: The adjusted DataFrame with updated start and end times.
-    """
+    """  
 
     # Parse the date string into a datetime object
     base_date = datetime.strptime(scheduling_options["start_date"], "%Y-%m-%dT%H:%M")
