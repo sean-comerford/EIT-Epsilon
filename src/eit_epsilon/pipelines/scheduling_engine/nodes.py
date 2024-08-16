@@ -729,8 +729,10 @@ class GeneticAlgorithmScheduler:
         self.change_over_time_op2 = None
         self.change_over_machines_op1 = None
         self.change_over_machines_op2 = None
+        self.cemented_only_haas_machines = None
         self.compatibility_dict = None
         self.arbor_dict = None
+        self.cemented_arbors = None
         self.urgent_orders = None
         self.urgent_multiplier = None
         self.max_iterations = None
@@ -874,41 +876,89 @@ class GeneticAlgorithmScheduler:
 
             return next_working_day_start
 
-    def count_arbor_frequencies(self):
-        # Step 1: Extract the arbor values for each part_id
+    def count_arbor_frequencies(self) -> Counter:
+        """
+        Counts the frequency of each arbor used for parts that require the 'OP1' operation.
+
+        This method:
+        1. Extracts the arbor values associated with each part ID that ends with 'OP1'.
+        2. Uses the Counter class to count how often each arbor appears in the list.
+
+        Returns:
+            Counter: A Counter object where keys are arbor numbers and values are their corresponding frequencies.
+        """
+
+        # Step 1: Extract the arbor values for each part_id that ends with 'OP1'
+        # We use a list comprehension to filter part_ids that end with 'OP1'
+        # and then use the arbor_dict to get the corresponding arbor value.
         jobs_per_arbor = [
             self.arbor_dict.get(part_id) for part_id in self.part_id if part_id.endswith("OP1")
         ]
 
         # Step 2: Use Counter to count the frequencies of each arbor value
+        # Counter will create a dictionary-like object where the keys are arbor numbers
+        # and the values are the counts of how often they appear in the jobs_per_arbor list.
         arbor_frequency = Counter(jobs_per_arbor)
 
         return arbor_frequency
 
-    @staticmethod
-    def assign_arbors_to_machines(arbor_frequency):
-        # Step 1: Initialize the assignment dictionary
+    def assign_arbors_to_machines(self, arbor_frequency: Counter) -> Dict[str, List[int]]:
+        """
+        Assigns arbors to machines based on their frequency and type (cemented or cementless).
+
+        This method:
+        1. Initializes an empty assignment dictionary where each arbor is associated with a list of machines.
+        2. Iterates over the arbors, checking if they are cemented or cementless.
+        3. Assigns each arbor to a set number of machines based on its frequency.
+        4. Cementless arbors can be assigned to machines [1, 2, 3, 4, 5, 6] while cemented arbors are limited to machines [1, 2, 3].
+        5. The method uses a random choice mechanism to vary the machines to which arbors are assigned.
+
+        Args:
+            arbor_frequency (Counter): A Counter object with arbors as keys and their frequency of use as values.
+
+        Returns:
+            Dict[str, List[int]]: A dictionary where the keys are arbor numbers and the values are lists of machine numbers to which they are assigned.
+        """
+
+        # Initialize the assignment dictionary
         arbor_to_machines = {arbor: [] for arbor in arbor_frequency}
 
-        # Step 2: Assign arbors to machines based on their type
+        # Initialize indices for cementless and cemented machines
         machine_index_cementless = 0
         machine_index_cemented = 0
 
+        # Initialize machine lists
+        machines_cementless = list(reversed(self.change_over_machines_op1))
+        machines_cemented = self.cemented_only_haas_machines
+
+        # Randomly select machines
+        selected_machines_cls = random.choice(
+            [machines_cementless, machines_cementless[:-1], machines_cementless[:-2]]
+        )
+        selected_machines_ctd = random.choice([machines_cemented, machines_cemented[:-1]])
+
+        # Randomly select a frequency
+        selected_frequency = random.choice([2, 3, 4])
+
         for arbor, frequency in arbor_frequency.items():
+            # Create a boolean for the cemented status
+            cemented = arbor in self.cemented_arbors.values()
+
             # Determine if the arbor is cementless or cemented based on its number
-            if arbor.startswith("800"):
+            if not cemented:
                 # Cementless arbors
-                machines = random.choice([[6, 5, 4, 3, 2], [6, 5, 4, 3], [6, 5, 4, 3, 2, 1]])
+                # Randomly select all: [6, 5, 4, 3, 2, 1], first five: [6, 5, 4, 3, 2], or first four: [6, 5, 4, 3]
+                # Selecting less will lead to less overlap with cemented arbors
+                machines = selected_machines_cls
                 machine_index = machine_index_cementless
-            elif arbor.startswith("100"):
-                # Cemented arbors
-                machines = random.choice([[1, 2, 3], [1, 2]])
-                machine_index = machine_index_cemented
             else:
-                raise ValueError(f"Unknown arbor type for arbor number {arbor}")
+                # Cemented arbors
+                # Randomly select from cemented machines: [1, 2, 3] or [1, 2]
+                machines = selected_machines_ctd
+                machine_index = machine_index_cemented
 
             # Determine the number of machines to assign based on frequency
-            num_machines_to_assign = 2 if frequency > 2 else 1
+            num_machines_to_assign = 2 if frequency > selected_frequency else 1
 
             # Assign the arbor to the appropriate number of machines
             for _ in range(num_machines_to_assign):
@@ -916,7 +966,7 @@ class GeneticAlgorithmScheduler:
                 machine_index = (machine_index + 1) % len(machines)
 
             # Update the machine index for the next iteration
-            if arbor.startswith("800"):
+            if not cemented:
                 machine_index_cementless = machine_index
             else:
                 machine_index_cemented = machine_index
@@ -1420,13 +1470,21 @@ class GeneticAlgorithmScheduler:
             round(
                 sum(
                     (
-                        # Difference between due date and completion time, multiplied by urgent_multiplier if urgent
-                        (self.due[job_idx] - (start_time + job_task_dur))
+                        # Difference between due date and completion time, multiplied by urgent_multiplier if urgent.
+                        # If we are evaluating the first task of a job, divide the difference by five
+                        # (We want to treat the final task as most important)
+                        (
+                            (self.due[job_idx] - (start_time + job_task_dur)) / 1
+                            if task == max(self.J[job_idx])
+                            else 5
+                        )
                         * (self.urgent_multiplier if job_idx in self.urgent_orders else 1)
                         + (
-                            # Fixed size bonus for completing the job on time
+                            # Fixed size bonus for completing the job on time (only applies if the final task is
+                            # completed on time)
                             on_time_bonus
                             if (self.due[job_idx] - (start_time + job_task_dur)) > 0
+                            and task == max(self.J[job_idx])
                             else 0
                         )
                     )
@@ -1439,8 +1497,8 @@ class GeneticAlgorithmScheduler:
                         _,
                         _,
                     ) in schedule
-                    # Only consider the completion time of the final task
-                    if task == max(self.J[job_idx])
+                    # Only the first and the final job are used in the evaluation
+                    if task == max(self.J[job_idx]) or task == min(self.J[job_idx])
                 )
             )
             # Evaluate each schedule in the population
@@ -1665,6 +1723,8 @@ class GeneticAlgorithmScheduler:
             None
         """
 
+        # After the offspring function the population has already shrunk significantly,
+        # so we can use the whole population
         P_0 = self.find_best_schedules()
 
         # Make a deep copy of P_0
@@ -1758,6 +1818,7 @@ class GeneticAlgorithmScheduler:
         scheduling_options: dict,
         compatibility_dict: dict,
         arbor_dict: dict,
+        cemented_arbors: dict,
     ):
         """
         Runs the genetic algorithm by initializing the population, evaluating it, and selecting the best schedule.
@@ -1767,6 +1828,7 @@ class GeneticAlgorithmScheduler:
             scheduling_options (dict): Dictionary containing hyperparameters for running the algorithm.
             compatibility_dict (dict): Dictionary containing the compatibility information for changeovers.
             arbor_dict (dict): Dictionary containing the arbor information for changeovers.
+            cemented_arbors (dict): Dictionary containing the cemented arbor information.
 
         Returns:
             Tuple[List[Tuple[int, int, int, int, float]], List[int]]: The best schedule with the highest score and the list of best scores per generation.
@@ -1787,8 +1849,10 @@ class GeneticAlgorithmScheduler:
         self.change_over_time_op2 = scheduling_options["change_over_time_op2"]
         self.change_over_machines_op1 = scheduling_options["change_over_machines_op1"]
         self.change_over_machines_op2 = scheduling_options["change_over_machines_op2"]
+        self.cemented_only_haas_machines = scheduling_options["cemented_only_haas_machines"]
         self.compatibility_dict = compatibility_dict
         self.arbor_dict = arbor_dict
+        self.cemented_arbors = cemented_arbors
         self.max_iterations = scheduling_options["max_iterations"]
         self.urgent_multiplier = scheduling_options["urgent_multiplier"]
         self.task_time_buffer = scheduling_options["task_time_buffer"]
@@ -1805,7 +1869,7 @@ class GeneticAlgorithmScheduler:
         for iteration in range(self.max_iterations):
             logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Iteration {iteration + 1}")
             self.evaluate_population(best_scores=best_scores)
-            # self.offspring()
+            self.offspring()
             self.mutate()
             if len(self.P) < self.n:
                 self.P += self.init_population(num_inds=self.n - len(self.P), fill_inds=True)
