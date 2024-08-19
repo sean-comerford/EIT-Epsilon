@@ -41,6 +41,7 @@ executing==2.0.1
 fastapi==0.111.0
 fastapi-cli==0.0.3
 fastjsonschema==2.19.1
+fastparquet==2024.2.0
 findlibs==0.0.5
 fonttools==4.51.0
 fqdn==1.5.1
@@ -124,6 +125,7 @@ prometheus-client==0.20.0
 prompt-toolkit==3.0.43
 psutil==5.9.8
 pure-eval==0.2.2
+pyarrow==14.0.2
 pycparser==2.22
 pydantic==2.7.1
 pydantic-core==2.18.2

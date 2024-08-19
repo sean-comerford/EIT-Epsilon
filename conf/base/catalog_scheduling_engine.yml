@@ -10,12 +10,10 @@ orders:
 
 croom_open_orders:
   type: pandas.ExcelDataset
-  filepath: data/01_raw/Week 9 open orders.xlsm
-  
-
+  filepath: data/01_raw/Week 11 open orders.xlsm
   load_args:
     engine: openpyxl
-    sheet_name: Data Week 9
+    sheet_name: Data Week 11
 
 
 monza_cycle_times_op1:
@@ -39,6 +37,20 @@ croom_processed_orders:
 croom_reformatted_orders:
   type: pandas.ParquetDataset
   filepath: data/07_model_output/croom_reformatted_orders.pq
+
+changeovers:
+  type: pandas.ParquetDataset
+  filepath: data/07_model_output/changeovers.pq
+
+final_changeovers:
+  type: pandas.ExcelDataset
+  filepath: data/08_reporting/final_changeovers.xlsx
+  save_args:
+    engine: openpyxl
+    sheet_name: Schedule
+  load_args:
+    engine: openpyxl
+    sheet_name: Schedule
 
 cr_cycle_times:
   type: pandas.ParquetDataset
@@ -131,6 +143,7 @@ gantt_chart_json:
       pattern_shape: Job
       title: Production Schedule
       hover_name: Order
+
       hover_data: ['Order_date', 'Due_date', 'task', 'Custom Part ID']
       template: simple_white
       color_discrete_sequence: ['rgb(41, 24, 107)', 'rgb(42, 35, 160)', 'rgb(15, 71, 153)',
@@ -151,6 +164,7 @@ gantt_chart_json:
             'Wash-1', 'Inspection-4', 'Inspection-3', 'Inspection-2',
             'Inspection-1', 'HAAS-6', 'HAAS-5', 'HAAS-4', 'HAAS-3', 'HAAS-2', 'HAAS-1'
           ]
+
       title: Production Schedule for Operation 1 & 2
       autosize: True
       title_font_family: Arial

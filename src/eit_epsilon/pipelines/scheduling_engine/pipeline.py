@@ -5,6 +5,7 @@ from .nodes import (
     create_chart,
     save_chart_to_html,
     reformat_output,
+    identify_changeovers,
     GeneticAlgorithmScheduler,
     create_start_end_time,
 )
@@ -16,7 +17,6 @@ def create_pipeline(**kwargs) -> Pipeline:
     genetic_algorithm = GeneticAlgorithmScheduler()
 
     # Create a pipeline with the jobshop object
-
     pipeline = Pipeline(
         [
             node(
@@ -76,9 +76,18 @@ def create_pipeline(**kwargs) -> Pipeline:
                 name="reformat_output",
             ),
             node(
+                func=identify_changeovers,
+                inputs=[
+                    "croom_reformatted_orders",
+                    "params:scheduling_options",
+                ],
+                outputs="changeovers",
+                name="identify_changeovers",
+            ),
+            node(
                 func=create_start_end_time,
-                inputs=["croom_reformatted_orders", "params:scheduling_options"],
-                outputs="final_schedule",
+                inputs=["croom_reformatted_orders", "changeovers", "params:scheduling_options"],
+                outputs=["final_schedule", "final_changeovers"],
                 name="create_start_end_time",
             ),
             node(
