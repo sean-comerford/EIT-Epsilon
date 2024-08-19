@@ -15,7 +15,6 @@ croom_open_orders:
     engine: openpyxl
     sheet_name: Data Week 11
 
-
 monza_cycle_times_op1:
   type: pandas.ExcelDataset
   filepath: data/01_raw/Monza cycle times for op1 + 2 2021-09-14.xlsx

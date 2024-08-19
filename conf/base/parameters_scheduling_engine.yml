@@ -79,18 +79,18 @@ machine_dict: {
 }
 
 scheduling_options:
-  start_date: "2024-04-04T06:30"  # Starting date used to calculate difference with due date
+  start_date: "2024-04-03T06:30"  # Starting date used to calculate difference with due date
   change_over_time_op1: 180  # Minutes required to do a changeover on the HAAS machines (Only OP 1)
   change_over_time_op2: 20  # Minutes required to do a changeover on the Drag machines (Only OP 2)
   change_over_machines_op1: [1, 2, 3, 4, 5, 6] # Machines that require a changeover for OP1 (key in machine dict above)
   change_over_machines_op2: [20, 22, 23]  # Machines that require a changeover for OP2 (key in machine dict above)
   task_time_buffer: 5  # Number of extra minutes to keep between tasks as a buffer (switching time)
-  n: 1000  # Number of random schedules to generate
+  n: 1200  # Number of random schedules to generate
   n_e: 0.1  # Proportion of best schedules to automatically pass on to the next generation (e.g.: 10%)
   n_c: 0.3  # Proportion of children to generate in the offspring function
   working_minutes_per_day: 480  # Number of working minutes per day (8 hours * 60 minutes)
   total_minutes_per_day: 1440  # Number of minutes in exactly 24 hours
-  max_iterations: 20  # Maximum number of iterations/generations to run the algorithm
+  max_iterations: 10  # Maximum number of iterations/generations to run the algorithm
   urgent_multiplier: 3  # Multiplier for (due_date - completion_time) for urgent_orders
   urgent_orders: []  # List of job indices of urgent orders; starting from 1
   changeover_machines_op1_full_name: ['HAAS-1', 'HAAS-2', 'HAAS-3', 'HAAS-4', 'HAAS-5', 'HAAS-6']
