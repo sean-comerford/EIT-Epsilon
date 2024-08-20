@@ -1703,9 +1703,7 @@ def reformat_output(
     return croom_processed_orders
 
 
-def identify_changeovers(
-    df: pd.DataFrame, scheduling_options: Dict[str, List[str]], threshold: int = 180
-) -> pd.DataFrame:
+def identify_changeovers(df: pd.DataFrame, scheduling_options: Dict[str, List[str]]) -> pd.DataFrame:
     """
     Identify and return a DataFrame of changeovers for specified machines. Changeovers occur when there is more than
     a specified threshold of minutes between the end time of one task and the start time of the next task.
@@ -1713,7 +1711,6 @@ def identify_changeovers(
     Parameters:
     df (pd.DataFrame): DataFrame containing scheduling data with columns ['Machine', 'Start_time', 'End_time'].
     scheduling_options (Dict[str, List[str]]): Dictionary containing machine names with key 'changeover_machines_op1_full_name'.
-    threshold (int): The minimum gap in minutes between tasks to consider as a changeover. Default is 180 minutes.
 
     Returns:
     pd.DataFrame: DataFrame containing changeover periods with columns ['Machine', 'Start_time', 'End_time'].
@@ -1724,6 +1721,7 @@ def identify_changeovers(
 
     # Extract the list of machines from the scheduling options
     machines: List[str] = scheduling_options["changeover_machines_op1_full_name"]
+    threshold = scheduling_options["change_over_time_op1"]
 
     # Loop through each machine in the list
     for machine in machines:
