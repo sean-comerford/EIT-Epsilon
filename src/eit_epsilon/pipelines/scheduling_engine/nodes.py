@@ -1030,8 +1030,10 @@ class GeneticAlgorithmScheduler:
         start_time, end_time = slack
 
         # Check if the times are valid floats
-        if not isinstance(start_time, float) or not isinstance(end_time, float):
-            return None
+        if not isinstance(start_time, (int, float)) or not isinstance(end_time, (int, float)):
+            raise TypeError(
+                f"Expected numeric type for start- and end time, received: {start_time}, {end_time}"
+            )
 
         # Determine the window in which the start_time falls
         window_start = (start_time // self.total_minutes_per_day) * self.total_minutes_per_day
@@ -1081,7 +1083,25 @@ class GeneticAlgorithmScheduler:
         # Convert the filtered tasks to a list and return its length
         return len(list(late_tasks))
 
-    def get_preferred_machines(self, compat_task_0, product_m, job_idx, fixture_to_machine_assignment):
+    def get_preferred_machines(
+        self,
+        compat_task_0: List[int],
+        product_m: Dict[int, int],
+        job_idx: int,
+        fixture_to_machine_assignment: Dict[str, List[int]],
+    ) -> List[int]:
+        """
+        Get the preferred machines for a given task based on the compatibility, product ID, job index, and fixture to machine assignment.
+
+        Args:
+            compat_task_0 (List[int]): A list of machines that can process the task.
+            product_m (Dict[int, int]): A dictionary mapping machines to product IDs.
+            job_idx (int): The index of the job.
+            fixture_to_machine_assignment (Dict[str, List[int]]): A dictionary mapping fixtures to machines.
+
+        Returns:
+            List[int]: A list of preferred machines for the given task.
+        """
         # Find preferred machines
         # 1.) Machines that processed the exact part_id
         # 2.) Machines that processed a compatible part_id
@@ -1827,11 +1847,12 @@ class GeneticAlgorithmScheduler:
             input_repr_dict (Dict[str, any]): A dictionary containing the necessary input variables for the GA.
             scheduling_options (dict): Dictionary containing hyperparameters for running the algorithm.
             compatibility_dict (dict): Dictionary containing the compatibility information for changeovers.
-            arbor_dict (dict): Dictionary containing the arbor information for changeovers.
+            arbor_dict (dict): Dictionary containing the arbor information for changeovers [custom_part_id: arbor_num]
             cemented_arbors (dict): Dictionary containing the cemented arbor information.
 
         Returns:
-            Tuple[List[Tuple[int, int, int, int, float]], List[int]]: The best schedule with the highest score and the list of best scores per generation.
+            Tuple[List[Tuple[int, int, int, int, float]], List[int]]: The best schedule with the highest score and the
+            list of best scores per generation.
         """
         self.J = input_repr_dict["J"]
         self.M = input_repr_dict["M"]
@@ -1869,7 +1890,7 @@ class GeneticAlgorithmScheduler:
         for iteration in range(self.max_iterations):
             logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Iteration {iteration + 1}")
             self.evaluate_population(best_scores=best_scores)
-            self.offspring()
+            # self.offspring()
             self.mutate()
             if len(self.P) < self.n:
                 self.P += self.init_population(num_inds=self.n - len(self.P), fill_inds=True)
