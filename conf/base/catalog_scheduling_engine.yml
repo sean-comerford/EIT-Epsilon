@@ -71,6 +71,10 @@ compatibility_dict:
   type: pickle.PickleDataset
   filepath: data/05_model_input/compatibility_dict.pkl
 
+arbor_dict:
+  type: pickle.PickleDataset
+  filepath: data/05_model_input/arbor_dict.pkl
+
 machine_qty_dict:
   type: pickle.PickleDataset
   filepath: data/01_raw/machine_qty_dict.pkl
@@ -138,8 +142,8 @@ gantt_chart_json:
       x_start: Start_time
       x_end: End_time
       y: Machine
-      color: Job
-      pattern_shape: Job
+      color: Order
+      pattern_shape: Order
       title: Production Schedule
       hover_name: Order
 

@@ -55,14 +55,22 @@ def create_pipeline(**kwargs) -> Pipeline:
                 name="build_changeover_compatibility",
             ),
             node(
+                func=jobshop.generate_arbor_mapping,
+                inputs=["input_repr_dict", "params:cemented_arbors", "params:cementless_arbors"],
+                outputs="arbor_dict",
+                name="generate_arbor_mapping",
+            ),
+            node(
                 func=genetic_algorithm.run,
                 inputs=[
                     "input_repr_dict",
                     "params:scheduling_options",
                     "compatibility_dict",
+                    "arbor_dict",
+                    "params:cemented_arbors",
                 ],
                 outputs=["best_schedule", "best_scores"],
-                name="mock_genetic_algorithm",
+                name="genetic_algorithm",
             ),
             node(
                 func=reformat_output,
