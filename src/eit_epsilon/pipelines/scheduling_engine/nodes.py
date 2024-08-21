@@ -1155,12 +1155,19 @@ class GeneticAlgorithmScheduler:
             for unused_time in slack_m[m]:
                 # If the unused time + duration of task is less than the end of the slack window
                 if (
-                    max(unused_time[0], previous_task_finish) + changeover_duration + current_task_dur
+                    max(unused_time[0], previous_task_finish)
+                    + changeover_duration
+                    + current_task_dur
+                    + self.task_time_buffer
                 ) < unused_time[1]:
                     # New starting time is the largest of the beginning of the slack time or the time when the
                     # previous task of the job is completed
                     # Task can only start once changeover is completed
-                    start = max(unused_time[0], previous_task_finish) + changeover_duration
+                    start = (
+                        max(unused_time[0], previous_task_finish)
+                        + changeover_duration
+                        + self.task_time_buffer
+                    )
 
                     # Remove the slack period if it has been used
                     slack_m[m].remove(unused_time)
@@ -1175,6 +1182,7 @@ class GeneticAlgorithmScheduler:
                                 max(unused_time[0], previous_task_finish)
                                 + changeover_duration
                                 + current_task_dur
+                                + self.task_time_buffer
                             ),
                             unused_time[1],
                         )
@@ -1441,7 +1449,11 @@ class GeneticAlgorithmScheduler:
                         # (We want to treat the final task as most important)
                         (
                             (self.J[job_id][1] - (start_time + job_task_dur)) / 1
-                            if task_id == self.part_to_tasks[self.J[job_id][0]][-1]
+                            if task_id
+                            in [
+                                7,
+                                19,
+                            ]  # Final inspection (last task) is task 7 in OP1 and task 19 in OP2
                             else 5
                         )
                         * (self.urgent_multiplier if job_id in self.urgent_orders else 1)
@@ -1450,7 +1462,11 @@ class GeneticAlgorithmScheduler:
                             # completed on time)
                             on_time_bonus
                             if (self.J[job_id][1] - (start_time + job_task_dur)) > 0
-                            and task_id == self.part_to_tasks[self.J[job_id][0]][-1]
+                            and task_id
+                            in [
+                                7,
+                                19,
+                            ]  # Final inspection (last task) is task 7 in OP1 and task 19 in OP2
                             else 0
                         )
                     )
@@ -1464,8 +1480,9 @@ class GeneticAlgorithmScheduler:
                         _,
                     ) in schedule
                     # Only consider the completion time of the final task
-                    if task_id == self.part_to_tasks[self.J[job_id][0]][-1]
-                    or task_id == self.part_to_tasks[self.J[job_id][0]][0]
+                    if task_id
+                    in [7, 19]  # Final inspection (last task) is task 7 in OP1 and task 19 in OP2
+                    or task_id in [1, 99]  # The HAAS tasks are defined by task_id nums 1 and 99
                 )
             )
             # Evaluate each schedule in the population

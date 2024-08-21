@@ -142,8 +142,8 @@ gantt_chart_json:
       x_start: Start_time
       x_end: End_time
       y: Machine
-      color: Job
-      pattern_shape: Job
+      color: Order
+      pattern_shape: Order
       title: Production Schedule
       hover_name: Order
 
