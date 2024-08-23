@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import math
+import time
 import re
 import copy
 import random
@@ -1011,8 +1012,8 @@ class GeneticAlgorithmScheduler:
         and the start time is within dynamically calculated threshold limits based on `start`.
 
         Parameters:
-        P_j (list of tuples): The schedule list where each tuple has the following format:
-                              (job_idx, task_num, m, start, duration, task_idx, part_id)
+        P_j (deque of tuples): The schedule list where each tuple has the following format:
+                               (job_idx, task_num, m, start, duration, task_idx, part_id)
         m (int): The machine identifier to filter by.
         start (int): The start time to determine the threshold range.
 
@@ -1020,20 +1021,13 @@ class GeneticAlgorithmScheduler:
         int: The count of tasks where `m == m` and the start time falls within the calculated threshold range.
         """
 
-        # Calculate the multiplier to determine the appropriate time block for the start time
+        # Calculate the threshold limits only once
         multiplier = (start // self.total_minutes_per_day) + 1
-
-        # Set the default threshold limits based on the multiplier
         threshold_lower = (multiplier - 1) * self.total_minutes_per_day + self.working_minutes_per_day
         threshold_upper = multiplier * self.total_minutes_per_day
 
-        # Filter the tasks to find those matching the criteria
-        late_tasks = filter(
-            lambda task: task[2] == m and threshold_lower < task[3] < threshold_upper, P_j
-        )
-
-        # Convert the filtered tasks to a list and return its length
-        return len(list(late_tasks))
+        # Use sum with a generator expression to count the filtered tasks without creating a list
+        return sum(1 for task in P_j if task[2] == m and threshold_lower < task[3] < threshold_upper)
 
     def get_preferred_machines(
         self,
@@ -1242,9 +1236,9 @@ class GeneticAlgorithmScheduler:
         5. Returns the generated individual schedule.
         """
         avail_m = {m: 0 for m in self.M}
-        slack_m = {m: [] for m in self.M}
+        slack_m = {m: deque() for m in self.M}
         product_m = {m: 0 for m in self.M}
-        changeover_finish_time = [0]
+        changeover_finish_time = deque([0])
         P_j = deque()
 
         # Create a temporary copy of the Job IDs
@@ -1413,217 +1407,29 @@ class GeneticAlgorithmScheduler:
 
         return P
 
-    def init_population(self, num_inds: int = None, fill_inds: bool = False) -> Union[None, deque]:
+    @staticmethod
+    def negative_exponentiation(value, exponent):
         """
-        Initializes the population of schedules. Each schedule is a list of tasks assigned to machines with start times.
+        Performs a negative exponentiation operation. This is used to penalize jobs that are completed extremely late.
+        If this is not done, the model will consider one extremely late order and one extremely early order equivalent
+        to one slightly late and one slightly early order. We effectively want to penalize extremely long lead times.
 
-        Args:
-            num_inds (int, optional): Number of individuals (schedules) to generate. If None, uses self.n. Defaults to None.
-            fill_inds (bool, optional): Flag indicating whether to fill individuals in the population or return them.
-                                        Defaults to False.
-
-        Returns:
-            Union[None, List[List[Tuple[int, int, int, float, float, int, str]]]]:
-                - If fill_inds is False, updates self.P with the generated population.
-                - If fill_inds is True, returns the generated population.
+        Note: This function is used to handle negative values, as the original model does not support negative values.
 
         The function operates as follows:
-        1. Sets `num_inds` to `self.n` if it is not provided.
-        2. Extracts part sizes and operations from `self.part_id`.
-        3. Initializes the population list `P` and a range of percentages for logging progress.
-        4. For each individual:
-            - Initializes availability and product tracking dictionaries for machines.
-            - Creates a temporary job list and shuffles or sorts it based on a random roll.
-            - Processes each job, assigning tasks to machines based on compatibility, availability, and operation type.
-            - Updates machine availability and product tracking after each task assignment.
-            - Adds the proposed schedule to the population if it is unique.
-            - Logs progress at certain percentages if `fill_inds` is False.
-        5. Sets `self.P` to the generated population or returns it based on `fill_inds`.
+        1. Checks if the value is less than 0. If so, it returns -(absolute value of the value raised to the exponent).
+        2. If the value is greater than or equal to 0, it returns the value itself raised to the exponent.
+        Args:
+            value:
+            exponent:
 
-        Note:
-            - OP1 and OP2 represent different operation types with specific logic for task assignment.
-            - Compatibility and availability are considered for machine assignment, with preference given to certain conditions.
+        Returns:
+
         """
-        # If the number of individuals to create is not strictly defined we create the same amount as the
-        # whole population (this happens in generation 0)
-        if num_inds is None:
-            num_inds = self.n
-
-        # Count arbor frequencies
-        arbor_frequencies = self.count_arbor_frequencies()
-
-        if not fill_inds:
-            logger.info(f"Arbor frequencies: {arbor_frequencies}")
-
-        # Double ended queue has more efficient appending operations than list
-        P = deque()
-        percentages = np.arange(10, 101, 10)
-
-        for i in range(num_inds):
-            avail_m = {m: 0 for m in self.M}
-            slack_m = {m: [] for m in self.M}
-            product_m = {m: 0 for m in self.M}
-            changeover_finish_time = [0]
-            P_j = deque()
-
-            # Create a temporary copy of the Job IDs
-            J_temp = list(self.J.keys())
-
-            # Generate a random float [0, 1]
-            random_roll = random.random()
-
-            # Create machine assignment based on fixtures
-            fixture_to_machine_assignment = self.assign_arbors_to_machines(arbor_frequencies)
-
-            # Based on the random number we either randomly shuffle or apply some sorting logic
-            if random_roll < 0.4:
-                random.shuffle(J_temp)
-            elif random_roll < 0.6:
-                J_temp.sort(key=lambda x: self.J[x][0])  # Sort on the part ID
-            elif random_roll < 0.7:
-                J_temp.sort(key=lambda x: self.J[x][1], reverse=True)  # Sort on the due time
-            elif random_roll < 0.8:
-                J_temp.sort(key=lambda x: (self.J[x][0], self.J[x][1]), reverse=True)
-            else:
-                for job in self.urgent_orders:
-                    J_temp.remove(job)
-                    J_temp.append(job)
-
-            # While our list of jobs is not empty
-            while J_temp:
-                # Take the job id at the end of the list and remove it from the list
-                job_id = J_temp.pop()
-                part_id, _ = self.J[job_id]
-
-                # Loop over the tasks in the job (i.e. get the tasks for the part ID for this job)
-                for task_id in self.part_to_tasks[part_id]:
-                    # Generate random float [0, 1]
-                    random_roll = random.random()
-
-                    # New boolean to track if the task is planned during slack time,
-                    # if so we do not need to update avail_m
-                    slack_time_used = False
-
-                    # Conditional logic; separate flow for first task of OP1 (HAAS)
-                    if task_id in [1, 0]:
-                        # Logic for first task in OP1 (HAAS machines)
-                        # A list of machines that are compatible with this task
-                        compat_task_0 = self.task_to_machines[task_id]
-
-                        # Preferred machines are those that have not been used yet or processed the same
-                        # size previously (in this case no changeover is required)
-                        preferred_machines = self.get_preferred_machines(
-                            compat_task_0, product_m, job_id, fixture_to_machine_assignment
-                        )
-
-                        # Pick the earliest available preferred machine with higher probability
-                        m = (
-                            min(preferred_machines, key=lambda x: avail_m.get(x))
-                            if random_roll < 0.5
-                            else random.choice(preferred_machines)
-                        )
-
-                        # Start time is the time that the machine comes available if no changeover is required
-                        # else, the changeover time is added, and an optional waiting time if we need to wait
-                        # for another changeover to finish first (only one changeover can happen concurrently)
-                        if (
-                            # No changeover required (there was no previous part on the machine,
-                            # or the previous part was the same or compatible)
-                            product_m.get(m) == 0
-                            or product_m.get(m) == part_id
-                            or product_m.get(m) in self.compatibility_dict[part_id]
-                        ):
-                            start = avail_m[m]
-
-                        else:
-                            # If the changeover would not be finished before the end of day,
-                            # it is pushed to the next morning
-                            start = (
-                                self.adjust_changeover_finish_time(
-                                    avail_m[m] + max((changeover_finish_time[-1] - avail_m[m]), 0)
-                                )
-                                + self.change_over_time_op1
-                            )
-                            # Update time that a mechanic becomes available for a new changeover
-                            changeover_finish_time.append(start)
-
-                    else:
-                        # Pick a machine with preference for one available earliest
-                        m = self.pick_early_machine(task_id, avail_m, random_roll)
-
-                        # Initialize changeover time to 0
-                        changeover_duration = 0
-
-                        # Changeover duration is updated if it is not the first task on the machine,
-                        # the previous part ID was not the same, and it is not compatible either
-                        if m in self.change_over_machines_op2:
-                            changeover_duration = (
-                                0
-                                if (
-                                    product_m.get(m) == 0
-                                    or product_m.get(m) == part_id
-                                    or product_m.get(m) in self.compatibility_dict[part_id]
-                                )
-                                else self.change_over_time_op2
-                            )
-
-                        # The changeover duration can be added directly if it is the first task
-                        # If no changeover is required, the changeover duration will be 0, so no change from start time
-                        if task_id in [1, 10, 0]:
-                            start = avail_m[m] + changeover_duration
-                        else:
-                            # Otherwise changeover duration is added in the slack_logic function
-                            start, slack_time_used = self.slack_logic(
-                                m,
-                                avail_m,
-                                slack_m,
-                                slack_time_used,
-                                P_j[-1][3],
-                                P_j[-1][4],
-                                self.dur[(part_id, task_id)],
-                                changeover_duration,
-                            )
-
-                    # Append the task to our proposed schedule
-                    P_j.append(
-                        (
-                            job_id,
-                            task_id,  # Actual task number (as in task_to_machines_dict)
-                            m,
-                            start,
-                            self.dur[(part_id, task_id)],
-                            0,  # Placeholder for backwards compatibility
-                            part_id,
-                        )
-                    )
-
-                    # Initialize after hours starts
-                    after_hours_starts = 0
-
-                    # Count the number of after hours starts of the HAAS machines
-                    if m in self.change_over_machines_op1:
-                        after_hours_starts = self.count_after_hours_start(P_j, m, start)
-
-                    if not slack_time_used:
-                        avail_m[m] = self.find_avail_m(start, job_id, task_id, after_hours_starts)
-
-                    product_m[m] = part_id
-
-            # Add proposed schedule to population (list of proposed schedules) if it is not in there already
-            if P_j not in P:
-                P.append(P_j)
-            else:
-                i -= 1
-
-            if not fill_inds and i * 100 / num_inds in percentages:
-                logger.info(
-                    f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {i * 100 / num_inds}% of schedules have been created."
-                )
-
-        if not fill_inds:
-            self.P = P
-        else:
-            return P
+        if value < 0:
+            return -(abs(value) ** exponent)
+        if value >= 0:
+            return value
 
     def evaluate_population(
         self,
@@ -1644,14 +1450,15 @@ class GeneticAlgorithmScheduler:
                         # Difference between due date and completion time, multiplied by urgent_multiplier if urgent.
                         # If we are evaluating the first task of a job, divide the difference by five
                         # (We want to treat the final task as most important)
-                        (
+                        self.negative_exponentiation(
                             (self.J[job_id][1] - (start_time + job_task_dur)) / 1
                             if task_id
                             in [
                                 7,
                                 19,
                             ]  # Final inspection (last task) is task 7 in OP1 and task 19 in OP2
-                            else 5
+                            else 3,
+                            1.02,
                         )
                         * (self.urgent_multiplier if job_id in self.urgent_orders else 1)
                         + (
@@ -1710,9 +1517,9 @@ class GeneticAlgorithmScheduler:
         # Initialize an empty list to hold tasks for this proposed schedule
         P_prime_sorted = deque()
         avail_m = {m: 0 for m in self.M}
-        slack_m = {m: [] for m in self.M}
+        slack_m = {m: deque() for m in self.M}
         product_m = {m: 0 for m in self.M}
-        changeover_finish_time = [0]
+        changeover_finish_time = deque([0])
 
         # Count arbor frequencies
         arbor_frequencies = self.count_arbor_frequencies()
@@ -1966,8 +1773,8 @@ class GeneticAlgorithmScheduler:
             if not job_pairs:
                 continue
 
-            # Randomly select a pair of jobs (at least once, but up to four times)
-            for _ in range(random.randint(1, 5)):
+            # Randomly select a pair of jobs (at least once, but up to three times)
+            for _ in range(random.randint(1, 4)):
                 job1, job2 = random.choice(job_pairs)
 
                 # Remove all entries in job_pairs where either job1 or job2 appears
@@ -2066,16 +1873,33 @@ class GeneticAlgorithmScheduler:
         # Create double ended queue to append the results to
         best_scores = deque()
 
-        for iteration in range(self.max_iterations):
-            logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Iteration {iteration + 1}")
+        # Initialize iteration and start time
+        iteration = 0
+        start_time = time.time()
+
+        # Extract time budget
+        time_budget = scheduling_options["time_budget"]
+
+        while True:
+            # Check if time_budget has expired
+            elapsed_time = round(time.time() - start_time)
+            if elapsed_time > time_budget:
+                logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Time budget has expired!")
+                break
+
+            logger.info(
+                f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Iteration {iteration + 1} "
+                f"- Elapsed time {elapsed_time}/{time_budget} seconds"
+            )
             self.evaluate_population(best_scores=best_scores)
             # Offspring generally works best for the first few iterations, but doesn't help to find a better
             # solution later in the process
-            if iteration <= scheduling_options["offspring_iterations"]:
+            if iteration % int(scheduling_options["offspring_frequency"]) == 0:
                 self.offspring()
             self.mutate()
             if len(self.P) < self.n:
                 self.P += random.sample(gene_pool, self.n - len(self.P))
+            iteration += 1
 
         schedules_and_scores = sorted(zip(self.P, self.scores), key=lambda x: x[1], reverse=True)
         self.best_schedule = schedules_and_scores[0][0]

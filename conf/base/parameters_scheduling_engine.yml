@@ -118,8 +118,9 @@ scheduling_options:
   n_c: 0.15  # Proportion of children to generate in the offspring function
   working_minutes_per_day: 480  # Number of working minutes per day (8 hours * 60 minutes)
   total_minutes_per_day: 1440  # Number of minutes in exactly 24 hours
-  max_iterations: 100  # Maximum number of iterations/generations to run the algorithm
-  offspring_iterations: 10  # Number of iterations where we run the offspring function
+  max_iterations: 250  # Maximum number of iterations/generations to run the algorithm
+  time_budget: 1800  # Maximum runtime for the algorithm in seconds
+  offspring_frequency: 7  # Enable offspring every X generations (E.g.: a value of 2 means every other generation)
   urgent_multiplier: 3  # Multiplier for (due_date - completion_time) for urgent_orders
   urgent_orders: []  # List of job indices of urgent orders; starting from 1,
   changeover_machines_op1_full_name: ['HAAS-1', 'HAAS-2', 'HAAS-3', 'HAAS-4', 'HAAS-5', 'HAAS-6']
