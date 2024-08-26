@@ -1085,7 +1085,7 @@ class GeneticAlgorithmScheduler:
         self,
         m: int,
         avail_m: Dict[int, int],
-        slack_m: Dict[int, List],
+        slack_m: Dict[Any, deque],
         slack_time_used: bool,
         previous_task_start: float,
         previous_task_dur: float,
@@ -1420,11 +1420,11 @@ class GeneticAlgorithmScheduler:
         1. Checks if the value is less than 0. If so, it returns -(absolute value of the value raised to the exponent).
         2. If the value is greater than or equal to 0, it returns the value itself raised to the exponent.
         Args:
-            value:
-            exponent:
+            value: The number to exponentiate
+            exponent: The order to exponentiate by
 
         Returns:
-
+            value: Exponentiated input number
         """
         if value < 0:
             return -(abs(value) ** exponent)
@@ -1439,7 +1439,25 @@ class GeneticAlgorithmScheduler:
     ):
         """
         Evaluates the population of schedules by calculating a score for each schedule based on the completion times
-        of jobs vs. the required due date.
+        of jobs versus their due dates.
+
+        The function iterates over each schedule in the population, calculates the score for each schedule, and updates
+        the scores list. The score for each schedule is determined by the difference between the due date and the
+        completion time of the final task, with penalties for lateness and bonuses for on-time completion.
+
+        Args:
+            best_scores (deque, optional): A deque to store the best scores of the population. Defaults to None.
+            display_scores (bool, optional): If True, logs the best, median, and worst scores. Defaults to True.
+            on_time_bonus (int, optional): A fixed bonus added to the score for jobs completed on time. Defaults to 10000.
+
+        Returns:
+            None
+
+        Notes:
+            - The function uses the `negative_exponentiation` method to penalize jobs that are completed extremely late.
+            - The final task for OP1 is task 7 and for OP2 is task 19.
+            - The HAAS tasks are defined by task IDs 1 and 0.
+            - The `urgent_multiplier` is applied to urgent jobs to increase their penalty for lateness.
         """
         # Calculate scores for each schedule
         # Note: self.J[job_id] gives the tuple (Due time, Part ID) for a given job ID
@@ -1655,10 +1673,9 @@ class GeneticAlgorithmScheduler:
         Returns:
             P_0 (deque): The list of top schedules based on their scores.
         """
-
         self.evaluate_population(display_scores=False)
         scored_population = sorted(zip(self.scores, self.P), key=lambda x: x[0], reverse=True)
-        retain_count = max(3, int(len(self.P) * self.n_e))
+        retain_count = max(5, int(len(self.P) * self.n_e))
         P_0 = deque()
         for score, schedule in scored_population[:retain_count]:
             P_0.append(schedule)
