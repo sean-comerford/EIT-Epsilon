@@ -1395,8 +1395,7 @@ class GeneticAlgorithmScheduler:
             for i, future in enumerate(futures):
                 P_j = future.result()
 
-                # We risk creating duplicates because once we have a large population P, it becomes very time-consuming
-                # to check for every new schedule if it is a duplicate of any of the existing schedules
+                # We check that the newly created schedule is unique (not in the population yet)
                 if P_j not in P:
                     P.append(P_j)
 
@@ -1466,7 +1465,7 @@ class GeneticAlgorithmScheduler:
                 sum(
                     (
                         # Difference between due date and completion time, multiplied by urgent_multiplier if urgent.
-                        # If we are evaluating the first task of a job, divide the difference by five
+                        # If we are evaluating the first task of a job, divide the difference by two
                         # (We want to treat the final task as most important)
                         self.negative_exponentiation(
                             (self.J[job_id][1] - (start_time + job_task_dur)) / 1
@@ -1475,7 +1474,7 @@ class GeneticAlgorithmScheduler:
                                 7,
                                 19,
                             ]  # Final inspection (last task) is task 7 in OP1 and task 19 in OP2
-                            else 3,
+                            else 2,
                             1.02,
                         )
                         * (self.urgent_multiplier if job_id in self.urgent_orders else 1)
@@ -1876,12 +1875,15 @@ class GeneticAlgorithmScheduler:
             self.working_minutes_per_day,
         )
 
+        # Initialize start time
+        start_time = time.time()
+
         # Count arbor frequencies
         arbor_frequencies = self.count_arbor_frequencies()
 
         # Create gene pool
         gene_pool = self.parallel_init_population(
-            num_inds=self.n * 5, arbor_frequencies=arbor_frequencies
+            num_inds=self.n * 10, arbor_frequencies=arbor_frequencies
         )
 
         # Randomly select self.n lists from gene_pool
@@ -1890,9 +1892,8 @@ class GeneticAlgorithmScheduler:
         # Create double ended queue to append the results to
         best_scores = deque()
 
-        # Initialize iteration and start time
+        # Initialize iteration
         iteration = 0
-        start_time = time.time()
 
         # Extract time budget
         time_budget = scheduling_options["time_budget"]
@@ -1909,10 +1910,7 @@ class GeneticAlgorithmScheduler:
                 f"- Elapsed time {elapsed_time}/{time_budget} seconds"
             )
             self.evaluate_population(best_scores=best_scores)
-            # Offspring generally works best for the first few iterations, but doesn't help to find a better
-            # solution later in the process
-            if iteration % int(scheduling_options["offspring_frequency"]) == 0:
-                self.offspring()
+            # Disable offspring for the time being (this generally leads to a good result faster)
             self.mutate()
             if len(self.P) < self.n:
                 self.P += random.sample(gene_pool, self.n - len(self.P))
