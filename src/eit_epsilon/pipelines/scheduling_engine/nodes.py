@@ -724,7 +724,7 @@ class GeneticAlgorithmScheduler:
                 # Push to Monday morning
                 start += self.total_minutes_per_day
             elif weekday == 5:  # Saturday
-                if task != 1:  # If not task type 1, push to Monday
+                if task not in [1, 0]:  # If not task type 1, push to Monday
                     start += self.total_minutes_per_day * 2
                 else:
                     break  # Task type 1 can stay on Saturday
@@ -765,7 +765,14 @@ class GeneticAlgorithmScheduler:
             if (
                 after_hours_starts < 3
             ):  # Message from Bryan: 3 batches (36 parts total) can be preloaded in HAAS
-                if (starting_date + timedelta(minutes=next_avail_time)).weekday() == 6:  # Sunday
+                actual_start_datetime = starting_date + timedelta(minutes=next_avail_time)
+                weekday = actual_start_datetime.weekday()
+                time_in_day = actual_start_datetime.time()
+
+                # If the start time is Sunday or Saturday after 7PM, push to next working day
+                if weekday == 6 or (
+                    weekday == 5 and time_in_day >= datetime.strptime("19:00", "%H:%M").time()
+                ):
                     return int(self.adjust_start_time(next_avail_time))
                 else:
                     return next_avail_time
@@ -1251,13 +1258,13 @@ class GeneticAlgorithmScheduler:
         fixture_to_machine_assignment = self.assign_arbors_to_machines(arbor_frequencies)
 
         # Based on the random number we either randomly shuffle or apply some sorting logic
-        if random_roll < 0.4:
+        if random_roll < 0.6:
             random.shuffle(J_temp)
-        elif random_roll < 0.6:
-            J_temp.sort(key=lambda x: self.J[x][0])  # Sort on the part ID
         elif random_roll < 0.7:
-            J_temp.sort(key=lambda x: self.J[x][1], reverse=True)  # Sort on the due time
+            J_temp.sort(key=lambda x: self.J[x][0])  # Sort on the part ID
         elif random_roll < 0.8:
+            J_temp.sort(key=lambda x: self.J[x][1], reverse=True)  # Sort on the due time
+        elif random_roll < 0.9:
             J_temp.sort(key=lambda x: (self.J[x][0], self.J[x][1]), reverse=True)
         else:
             for job in self.urgent_orders:
@@ -1318,7 +1325,7 @@ class GeneticAlgorithmScheduler:
                             else self.change_over_time_op2
                         )
                     if task_id in [1, 10, 0]:
-                        start = avail_m[m] + changeover_duration
+                        start = self.adjust_start_time(avail_m[m] + changeover_duration, task_id)
                     else:
                         start, slack_time_used = self.slack_logic(
                             m,
@@ -1396,9 +1403,9 @@ class GeneticAlgorithmScheduler:
                 P_j = future.result()
 
                 # We risk creating duplicates because once we have a large population P, it becomes very time-consuming
-                # to check for every new schedule if it is a duplicate of any of the existing schedules
-                if P_j not in P:
-                    P.append(P_j)
+                # to check for every new schedule if it is/a duplicate of any of the existing schedules
+                # if P_j not in P:
+                P.append(P_j)
 
                 if not fill_inds and i * 100 / num_inds in percentages:
                     logger.info(
@@ -1475,7 +1482,7 @@ class GeneticAlgorithmScheduler:
                                 7,
                                 19,
                             ]  # Final inspection (last task) is task 7 in OP1 and task 19 in OP2
-                            else 3,
+                            else 3,  # TODO: Heavier penalty on HAAS if we are focusing on that first
                             1.02,
                         )
                         * (self.urgent_multiplier if job_id in self.urgent_orders else 1)
@@ -1505,18 +1512,33 @@ class GeneticAlgorithmScheduler:
                     if task_id
                     in [7, 19]  # Final inspection (last task) is task 7 in OP1 and task 19 in OP2
                     or task_id in [1, 0]  # The HAAS tasks are defined by task_id nums 1 and 0
-                )
+                )  # TODO: Also add ceramic drag if we are going to consider that for the testing?
             )
             # Evaluate each schedule in the population
             for schedule in self.P
         ]
 
+        # if display_scores:
+        #     logger.info(
+        #         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Best score: {max(self.scores)}, "
+        #         f"Median score: {np.median(self.scores)}, Worst score: {min(self.scores)}"
+        #     )
+        #     best_scores.append(max(self.scores))
+
         if display_scores:
+            best_score = round(max(self.scores))
+            top_1_percent = round(np.percentile(self.scores, 99))
+            top_5_percent = round(np.percentile(self.scores, 95))
+            top_10_percent = round(np.percentile(self.scores, 90))
+            median_score = round(np.median(self.scores))
+            worst_score = round(min(self.scores))
+
             logger.info(
-                f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Best score: {max(self.scores)}, "
-                f"Median score: {np.median(self.scores)}, Worst score: {min(self.scores)}"
+                f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Best score: {best_score}, "
+                f"Top 1% score: {top_1_percent}, Top 5% score: {top_5_percent}, Top 10% score: {top_10_percent}, "
+                f"Median score: {median_score}, Worst score: {worst_score}"
             )
-            best_scores.append(max(self.scores))
+            best_scores.append(best_score)
 
     def resolve_conflict(self, P_prime: list) -> deque:
         """
@@ -1612,7 +1634,7 @@ class GeneticAlgorithmScheduler:
 
                     # First tasks of OP1 and OP2 do not need to consider slack
                     if task_id in [1, 10, 0]:
-                        start = avail_m[m] + changeover_duration
+                        start = self.adjust_start_time(avail_m[m] + changeover_duration, task_id)
                     else:
                         start, slack_time_used = self.slack_logic(
                             m,
@@ -1876,23 +1898,25 @@ class GeneticAlgorithmScheduler:
             self.working_minutes_per_day,
         )
 
+        # Initialize start time
+        start_time = time.time()
+
         # Count arbor frequencies
         arbor_frequencies = self.count_arbor_frequencies()
 
         # Create gene pool
         gene_pool = self.parallel_init_population(
-            num_inds=self.n * 5, arbor_frequencies=arbor_frequencies
+            num_inds=self.n * 10, arbor_frequencies=arbor_frequencies
         )
 
-        # Randomly select self.n lists from gene_pool
+        # Randomly sample the initial population from the improved gene pool
         self.P = random.sample(gene_pool, self.n)
 
         # Create double ended queue to append the results to
         best_scores = deque()
 
-        # Initialize iteration and start time
+        # Initialize iteration
         iteration = 0
-        start_time = time.time()
 
         # Extract time budget
         time_budget = scheduling_options["time_budget"]
@@ -1909,10 +1933,6 @@ class GeneticAlgorithmScheduler:
                 f"- Elapsed time {elapsed_time}/{time_budget} seconds"
             )
             self.evaluate_population(best_scores=best_scores)
-            # Offspring generally works best for the first few iterations, but doesn't help to find a better
-            # solution later in the process
-            if iteration % int(scheduling_options["offspring_frequency"]) == 0:
-                self.offspring()
             self.mutate()
             if len(self.P) < self.n:
                 self.P += random.sample(gene_pool, self.n - len(self.P))
