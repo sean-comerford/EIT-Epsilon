@@ -68,6 +68,7 @@ class TestOutputSchedule:
                     f"in machine {machine} is earlier than the completion time of the previous task!"
                 )
 
+    # TODO: Shift to preprocessing in nodes.py
     def test_custom_part_id_format(self, final_schedule_df):
         pattern = re.compile(r"^(LEFT|RIGHT)-(PS|CR)-([1-9]|10)N?-(CLS|CTD)-(OP1|OP2)$")
         for index, row in final_schedule_df.iterrows():
@@ -79,6 +80,7 @@ class TestOutputSchedule:
                 custom_part_id
             ), f"Invalid Custom Part ID format for job {row['Job']}: {custom_part_id}."
 
+    # TODO: Also to preprocessing
     def test_part_id_custom_part_id_mapping(self, final_schedule_df):
         """A unique Part ID should always correspond to a unique Custom Part ID."""
         part_id_to_custom_part_id = {}
@@ -108,6 +110,7 @@ class TestOutputSchedule:
                 f"expected {calculated_end_time}, found {actual_end_time}."
             )
 
+    # TODO: To early validation
     def test_batch_size_limit(self, final_schedule_df):
         """The batch size should always be between 0-12."""
         for index, row in final_schedule_df.iterrows():
@@ -118,6 +121,7 @@ class TestOutputSchedule:
                 row["Production Qty"] >= 0
             ), f"Negative Production Qty found for job {row['Job']}: {row['Production Qty']}."
 
+    # TODO: To early validation
     def test_in_scope_orders(self, final_schedule_df):
         """All scheduled products should be in scope; they contain the substrings 'OP 1', 'OP 2', or 'ATT Primary'."""
         valid_substrings = ["OP 1", "OP 2", "ATT Primary"]
@@ -126,6 +130,7 @@ class TestOutputSchedule:
                 substring in row["Product"] for substring in valid_substrings
             ), f"Invalid product value found for job {row['Job']}: {row['Product']}."
 
+    # TODO: To early validation
     def test_no_products_on_hold(self, final_schedule_df):
         """No schedule products should be on hold."""
         for index, row in final_schedule_df.iterrows():
@@ -193,6 +198,7 @@ class TestOutputSchedule:
                     f"{machine_changeovers.iloc[i - 1]['Start_time']} and {machine_changeovers.iloc[i]['Start_time']}."
                 )
 
+    # TODO: Parameterize the test
     def test_max_two_changeovers_per_day(self, final_changeovers_df):
         """Changeovers take 3 hours, and there are only 8 hours in a workday.
         Therefore, there should be at most two changeovers per day."""
