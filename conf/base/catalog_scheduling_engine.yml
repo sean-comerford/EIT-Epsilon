@@ -29,6 +29,13 @@ monza_cycle_times_op2:
     engine: openpyxl
     sheet_name: Monza OP2  Cycle times
 
+croom_task_durations:
+  type: pandas.ExcelDataset
+  filepath: data/01_raw/croom_task_durations.xlsx
+  load_args:
+    engine: openpyxl
+    sheet_name: 0
+
 croom_processed_orders:
   type: pandas.ParquetDataset
   filepath: data/03_primary/croom_processed_orders.pq
@@ -161,11 +168,15 @@ gantt_chart_json:
         type: 'category'
         categoryorder: 'array'
         categoryarray: [
-            'Final Inspect-2', 'Final Inspect-1', 'Final Wash-1', 'Polishing-2', 'Polishing-1',
-            'Nutshell Drag', 'Plastic Drag', 'Wash-2', 'Ceramic Drag',
-            'Manual Prep-3', 'Manual Prep-2', 'Manual Prep-1',
-            'Wash-1', 'Inspection-4', 'Inspection-3', 'Inspection-2',
-            'Inspection-1', 'HAAS-6', 'HAAS-5', 'HAAS-4', 'HAAS-3', 'HAAS-2', 'HAAS-1'
+            'Final Inspect-2', 'Final Inspect-1', 'Polishing-2', 'Polishing-1', 'Nutshell Drag', 'FPI Inspect-1',
+            'Post-Plastic Inspect-4', 'Post-Plastic Inspect-3', 'Post-Plastic Inspect-2', 'Post-Plastic Inspect-1',
+            'Plastic Drag', 'Wash-2', 'Ceramic Drag', 'Final Wash-1',
+            'Optional touch-up Inspect-6', 'Optional touch-up Inspect-5',
+            'Optional touch-up Inspect-4', 'Optional touch-up Inspect-3', 'Optional touch-up Inspect-2',
+            'Optional touch-up Inspect-1', 'Manual Prep & Touch-up-6', 'Manual Prep & Touch-up-5',
+            'Manual Prep & Touch-up-4', 'Manual Prep & Touch-up-3', 'Manual Prep & Touch-up-2',
+            'Manual Prep & Touch-up-1', 'Wash-1', 'Post-HAAS Inspect-2', 'Post-HAAS Inspect-1', 'HAAS-6', 'HAAS-5',
+            'HAAS-4', 'HAAS-3', 'HAAS-2', 'HAAS-1'
           ]
 
       title: Production Schedule for Operation 1 & 2

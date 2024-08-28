@@ -205,21 +205,16 @@ class Job:
         unique_custom_part_ids = data[["Custom Part ID"]].drop_duplicates()
 
         if len(unique_task_types) != len(unique_custom_part_ids):
-            print("Combination of part/description/cementless is not unique")
+            logger.info("Combination of part/description/cementless is not unique")
 
         result = {}
         for _, row in unique_task_types.iterrows():
-            if "OP 2" in row["Part Description"]:
-                result[row["Custom Part ID"]] = (
-                    [10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
-                    if row["Cementless"] == "CLS"
-                    else [10, 11, 12, 13, 14, 16, 17, 18, 19]
-                )
+            if "OP 1" in row["Part Description"]:
+                result[row["Custom Part ID"]] = list(range(1, 8))
+            elif "OP 2" in row["Part Description"]:
+                result[row["Custom Part ID"]] = list(range(10, 21))
             else:
-                # Operation 1
-                result[row["Custom Part ID"]] = (
-                    [1, 2, 3, 4, 5, 6, 7] if row["Cementless"] == "CLS" else [0, 2, 3, 6, 7]
-                )
+                result[row["Custom Part ID"]] = list(range(30, 45))
 
         return result
 
@@ -331,9 +326,7 @@ class Shop:
         J: Dict[int, Tuple[str, int]],
         part_id_to_task_seq: Dict[str, List[int]],
         in_scope_orders: pd.DataFrame,
-        cr_times: pd.DataFrame,
-        ps_times: pd.DataFrame,
-        op2_times: pd.DataFrame,
+        croom_task_durations: pd.DataFrame,
     ) -> Dict[Tuple[str, int], float]:
         """
         Gets the duration matrix for the jobs.
@@ -349,13 +342,17 @@ class Shop:
             J (List[List[int]]): The list of jobs.
             part_id_to_task_seq (Dict[str, List[int]]): The dictionary mapping part IDs to their tasks.
             in_scope_orders (pd.DataFrame): The in-scope orders.
-            cr_times (pd.DataFrame): The CR cycle times.
-            ps_times (pd.DataFrame): The PS cycle times.
-            op2_times (pd.DataFrame): The Operation 2 cycle times - no distinction between CR and PS.
+            croom_task_durations (pd.DataFrame): The task durations.
 
         Returns:
             Dict[Tuple[str, int], float]: The duration matrix.
         """
+
+        # Set the task number as the index
+        croom_task_durations.set_index("Task", inplace=True)
+
+        # Remove whitespace from column names
+        croom_task_durations.columns = croom_task_durations.columns.str.strip()
 
         dur = {}
         for job_id, (part_id, due_time) in J.items():
@@ -363,27 +360,19 @@ class Shop:
             rows = in_scope_orders.loc[in_scope_orders["Job ID"] == job_id]
 
             if len(rows) > 1:
-                print(f"Error: Multiple rows found for JobID {job_id}. Using the first row.")
+                logger.warning(f"Multiple rows found for JobID {job_id}. Using the first row.")
 
+            # Extract the first row if needed
             row = rows.iloc[0]
 
             for task in part_id_to_task_seq[part_id]:
-                # Tasks of type 0 have the same duration as tasks of type 1
-                if task == 0:
-                    times = cr_times if row["Type"] == "CR" else ps_times
-                    # Use task 1 here, instead of 0
-                    duration = round(times.loc[1, row["Size"]] * row["Order Qty"], 1)
+                # Construct the type_size string
+                type_size = f"{row['Type']}-{row['Size']}"
 
-                elif task < 10:  # TODO: Fix this for new planning format
-                    times = cr_times if row["Type"] == "CR" else ps_times
-                    duration = round(times.loc[task, row["Size"]] * row["Order Qty"], 1)
+                # Determine which DataFrame to use based on the task number
+                duration = croom_task_durations.loc[task, type_size] * 12
 
-                else:  # Operation 2 tasks
-                    # TODO: Should we read the quantity or use a batch size of 12?
-                    # duration = round(op2_times.loc[task, "Actual "] * row["Order Qty"], 1)
-                    duration = round(op2_times.loc[task, "Actual "] * 12, 1)
-
-                # Store the duration in the dictionary with key (job_id, task)
+                # Store the duration in the dictionary with key (part_id, task)
                 dur[(part_id, task)] = duration
 
         return dur
@@ -574,9 +563,7 @@ class JobShop(Job, Shop):
     def build_ga_representation(
         self,
         croom_processed_orders: pd.DataFrame,
-        cr_cycle_times: pd.DataFrame,
-        ps_cycle_times: pd.DataFrame,
-        op2_cycle_times: pd.DataFrame,
+        croom_task_durations: pd.DataFrame,
         task_to_machines: Dict[int, List[int]],
         scheduling_options: dict,
     ) -> Dict[str, any]:
@@ -585,9 +572,7 @@ class JobShop(Job, Shop):
 
         Args:
             croom_processed_orders (pd.DataFrame): The processed orders.
-            cr_cycle_times (pd.DataFrame): The CR cycle times.
-            ps_cycle_times (pd.DataFrame): The PS cycle times.
-            op2_cycle_times (pd.DataFrame): The Operation 2 cycle times.
+            croom_task_durations (pd.DataFrame): The task durations.
             task_to_machines (Dict[int, List[int]]): The task to machines dictionary.
             scheduling_options (dict): The scheduling options.
 
@@ -602,12 +587,7 @@ class JobShop(Job, Shop):
         part_id_to_task_seq = self.create_part_id_to_task_seq(croom_processed_orders)
         M = self.create_machines(task_to_machines)
         dur = self.get_duration_matrix(
-            J,
-            part_id_to_task_seq,
-            croom_processed_orders,
-            cr_cycle_times,
-            ps_cycle_times,
-            op2_cycle_times,
+            J, part_id_to_task_seq, croom_processed_orders, croom_task_durations
         )
 
         input_repr_dict = {
@@ -761,7 +741,7 @@ class GeneticAlgorithmScheduler:
         # Start date
         starting_date = datetime.fromisoformat(self.start_date)
 
-        if task_id in [1, 0]:  # Task 1, 0 corresponds to HAAS machines
+        if task_id in [1, 30]:  # Task 1, 30 corresponds to HAAS machines
             if (
                 after_hours_starts < 3
             ):  # Message from Bryan: 3 batches (36 parts total) can be preloaded in HAAS
@@ -1280,7 +1260,7 @@ class GeneticAlgorithmScheduler:
                 slack_time_used = False
 
                 # Conditional logic; separate flow for first task of OP1 (HAAS)
-                if task_id in [1, 0]:
+                if task_id in [1, 30]:
                     compat_task_0 = self.task_to_machines[task_id]
                     preferred_machines = self.get_preferred_machines(
                         compat_task_0, product_m, job_id, fixture_to_machine_assignment
@@ -1317,7 +1297,7 @@ class GeneticAlgorithmScheduler:
                             )
                             else self.change_over_time_op2
                         )
-                    if task_id in [1, 10, 0]:
+                    if task_id in [1, 10, 30]:
                         start = avail_m[m] + changeover_duration
                     else:
                         start, slack_time_used = self.slack_logic(
@@ -1395,9 +1375,8 @@ class GeneticAlgorithmScheduler:
             for i, future in enumerate(futures):
                 P_j = future.result()
 
-                # We check that the newly created schedule is unique (not in the population yet)
-                if P_j not in P:
-                    P.append(P_j)
+                # Add the new schedule to the population
+                P.append(P_j)
 
                 if not fill_inds and i * 100 / num_inds in percentages:
                     logger.info(
@@ -1468,13 +1447,9 @@ class GeneticAlgorithmScheduler:
                         # If we are evaluating the first task of a job, divide the difference by two
                         # (We want to treat the final task as most important)
                         self.negative_exponentiation(
-                            (self.J[job_id][1] - (start_time + job_task_dur)) / 1
-                            if task_id
-                            in [
-                                7,
-                                19,
-                            ]  # Final inspection (last task) is task 7 in OP1 and task 19 in OP2
-                            else 2,
+                            (self.J[job_id][1] - (start_time + job_task_dur)) / 1 if task_id
+                            # Final inspection (last task) is task 7 in OP1, task 20 in OP2, and task 44 for cemented
+                            in [7, 20, 44] else 2,
                             1.02,
                         )
                         * (self.urgent_multiplier if job_id in self.urgent_orders else 1)
@@ -1482,12 +1457,9 @@ class GeneticAlgorithmScheduler:
                             # Fixed size bonus for completing the job on time (only applies if the final task is
                             # completed on time)
                             on_time_bonus
-                            if (self.J[job_id][1] - (start_time + job_task_dur)) > 0
-                            and task_id
-                            in [
-                                7,
-                                19,
-                            ]  # Final inspection (last task) is task 7 in OP1 and task 19 in OP2
+                            if (self.J[job_id][1] - (start_time + job_task_dur)) > 0 and task_id
+                            # Final inspection (last task) is task 7 in OP1, task 20 in OP2, and task 44 for cemented
+                            in [7, 20, 44]
                             else 0
                         )
                     )
@@ -1502,8 +1474,8 @@ class GeneticAlgorithmScheduler:
                     ) in schedule
                     # Only consider the completion time of the final task
                     if task_id
-                    in [7, 19]  # Final inspection (last task) is task 7 in OP1 and task 19 in OP2
-                    or task_id in [1, 0]  # The HAAS tasks are defined by task_id nums 1 and 0
+                    in [7, 20, 44]  # Final inspection (last task) is task 7 in OP1 and task 19 in OP2
+                    or task_id in [1, 30]  # The HAAS tasks are defined by task_id nums 1 and 30
                 )
             )
             # Evaluate each schedule in the population
@@ -1557,7 +1529,7 @@ class GeneticAlgorithmScheduler:
                 _, task_id, m, _, _, task_idx, _ = task_entry
                 slack_time_used = False
 
-                if task_id in [1, 0]:
+                if task_id in [1, 30]:
                     # Start time is the time that the machine comes available if no changeover is required
                     # else, the changeover time is added, and an optional waiting time if we need to wait
                     # for another changeover to finish first (only one changeover can happen concurrently)
@@ -1610,7 +1582,7 @@ class GeneticAlgorithmScheduler:
                         )
 
                     # First tasks of OP1 and OP2 do not need to consider slack
-                    if task_id in [1, 10, 0]:
+                    if task_id in [10]:
                         start = avail_m[m] + changeover_duration
                     else:
                         start, slack_time_used = self.slack_logic(
