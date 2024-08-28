@@ -374,7 +374,7 @@ class Shop:
                     # Use task 1 here, instead of 0
                     duration = round(times.loc[1, row["Size"]] * row["Order Qty"], 1)
 
-                elif task < 10:  # Operation 1 tasks
+                elif task < 10:  # TODO: Fix this for new planning format
                     times = cr_times if row["Type"] == "CR" else ps_times
                     duration = round(times.loc[task, row["Size"]] * row["Order Qty"], 1)
 

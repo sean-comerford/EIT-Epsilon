@@ -1,28 +1,43 @@
 task_to_machines: {
 
-  # HAAS alternative
-  0: [1, 2, 3],  # HAAS (only cemented)
-
-  # Operation 1
+  # Cementless OP1
   1: [1, 2, 3, 4, 5, 6],  # HAAS
-  2: [7, 8, 9, 10],  # Inspection
-  3: [11],  # First Wash
-  4: [12, 13, 14],  # Manual Prep
-  5: [7, 8, 9, 10],  # Inspection (again)
-  6: [15],  # Final Wash
-  7: [16, 17],  # Final inspection
+  2: [7, 8],  # Post-HAAS Inspection
+  3: [9],  # First Wash
+  4: [10, 11, 12, 13, 14, 15],  # Manual Prep & Touch-up
+  5: [16, 17, 18, 19, 20, 21],  # Optional touch-up inspection
+  6: [22],  # Final Wash
+  7: [23, 24],  # Final inspection
 
-  # Operation 2
-  10: [20],  # Ceramic drag
-  11: [21],  # Wash 2
-  12: [22],  # Plastic drag
-  13: [21],  # Wash 2 (again)
-  14: [7, 8, 9, 10],  # Inspection (shared with OP 1)
-  15: [12, 13, 14],  # Manual Prep (shared with OP 1)
-  16: [23],  # Nutshell drag
-  17: [24, 25],  # Polishing
-  18: [15],  # Final wash (shared with OP 1)
-  19: [16, 17],  # Final inspection (shared with OP 1)
+  # Cementless OP2
+  10: [25],  # Ceramic drag
+  11: [26],  # Wash 2
+  12: [27],  # Plastic drag
+  13: [26],  # Wash 2
+  14: [28, 29, 30, 31],  # Post-Plastic Inspection
+  15: [10, 11, 12, 13, 14, 15],  # Manual Prep & Touch-up
+  16: [32],  # FPI-Inspect
+  17: [33],  # Nutshell drag
+  18: [34, 35],  # Polishing
+  19: [22],  # Final Wash
+  20: [23, 24],  # Final inspection
+
+  # Cemented (All)
+  30: [1, 2, 3],  # HAAS (only cemented)
+  31: [7, 8],  # Post-HAAS Inspection
+  32: [9],  # First Wash
+  33: [25],  # Ceramic drag
+  34: [26],  # Wash 2
+  35: [10, 11, 12, 13, 14, 15],  # Plastic prep (Blast included)
+  36: [16, 17, 18, 19, 20, 21],  # Optional touch-up inspection
+  37: [27],  # Plastic drag
+  38: [26],  # Wash 2
+  39: [28, 29, 30, 31],  # Post-Plastic Inspection
+  40: [10, 11, 12, 13, 14, 15],  # Manual Prep & Touch-up
+  41: [16, 17, 18, 19, 20, 21],  # Optional touch-up inspection
+  42: [33],  # Nutshell drag
+  43: [34, 35],  # Polishing
+  44: [23, 24],  # Final inspection
 }
 
 # Define OP2 size categories for CR
@@ -58,23 +73,35 @@ machine_dict: {
     4: 'HAAS-4',
     5: 'HAAS-5',
     6: 'HAAS-6',
-    7: 'Inspection-1',
-    8: 'Inspection-2',
-    9: 'Inspection-3',
-    10: 'Inspection-4',
-    11: 'Wash-1',
-    12: 'Manual Prep-1',
-    13: 'Manual Prep-2',
-    14: 'Manual Prep-3',
-    15: 'Final Wash-1',
-    16: 'Final Inspect-1',
-    17: 'Final Inspect-2',
-    20: 'Ceramic Drag',
-    21: 'Wash-2',
-    22: 'Plastic Drag',
-    23: 'Nutshell Drag',
-    24: 'Polishing-1',
-    25: 'Polishing-2'
+    7: 'Post-HAAS Inspect-1',
+    8: 'Post-HAAS Inspect-2',
+    9: 'Wash-1',
+    10: 'Manual Prep & Touch-up-1',
+    11: 'Manual Prep & Touch-up-2',
+    12: 'Manual Prep & Touch-up-3',
+    13: 'Manual Prep & Touch-up-4',
+    14: 'Manual Prep & Touch-up-5',
+    15: 'Manual Prep & Touch-up-6',
+    16: 'Optional touch-up Inspect-1',
+    17: 'Optional touch-up Inspect-2',
+    18: 'Optional touch-up Inspect-3',
+    19: 'Optional touch-up Inspect-4',
+    20: 'Optional touch-up Inspect-5',
+    21: 'Optional touch-up Inspect-6',
+    22: 'Final Wash-1',
+    23: 'Final Inspect-1',
+    24: 'Final Inspect-2',
+    25: 'Ceramic Drag',
+    26: 'Wash-2',
+    27: 'Plastic Drag',
+    28: 'Post-Plastic Inspect-1',
+    29: 'Post-Plastic Inspect-2',
+    30: 'Post-Plastic Inspect-3',
+    31: 'Post-Plastic Inspect-4',
+    32: 'FPI Inspect-1',
+    33: 'Nutshell Drag',
+    34: 'Polishing-1',
+    35: 'Polishing-2',
 }
 
 cemented_arbors: {
