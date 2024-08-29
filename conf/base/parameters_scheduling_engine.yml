@@ -108,7 +108,8 @@ cementless_arbors: {
 scheduling_options:
   start_date: "2024-04-03T06:30"  # Starting date used to calculate difference with due date
   change_over_time_op1: 180  # Minutes required to do a changeover on the HAAS machines (Only OP 1)
-  change_over_time_op2: 20  # Minutes required to do a changeover on the Drag machines (Only OP 2)
+  change_over_time_op2: 20  # Minutes required to do a changeover on the non-Drag OP 2 machines 
+  change_over_time_op2_drag: 10 # Minutes required to do a changeover on the Drag machines (Only OP 2)
   change_over_machines_op1: [1, 2, 3, 4, 5, 6] # Machines that require a changeover for OP1 (key in machine dict above)
   change_over_machines_op2: [20, 22, 23]  # Machines that require a changeover for OP2 (key in machine dict above)
   cemented_only_haas_machines: [1, 2, 3] # Machines that
