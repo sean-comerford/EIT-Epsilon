@@ -116,7 +116,7 @@ scheduling_options:
   n: 5000  # Number of random schedules to generate
   n_e: 0.05  # Proportion of best schedules to automatically pass on to the next generation (e.g.: 10%)
   n_c: 0.15  # Proportion of children to generate in the offspring function
-  working_minutes_per_day: 460  # Number of working minutes per day (8 hours * 60 minutes)
+  working_minutes_per_day: 480  # Number of working minutes per day (8 hours * 60 minutes)
   total_minutes_per_day: 1440  # Number of minutes in exactly 24 hours
   max_iterations: 250  # Maximum number of iterations/generations to run the algorithm
   time_budget: 600  # Maximum runtime for the algorithm in seconds

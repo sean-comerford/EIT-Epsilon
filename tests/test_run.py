@@ -1,7 +1,5 @@
 import pytest
 import pandas as pd
-import pickle
-import re
 from collections import deque
 from pathlib import Path
 from kedro.config import OmegaConfigLoader
@@ -25,39 +23,47 @@ def project_context(config_loader):
     )
 
 
-@pytest.fixture
-def final_schedule_df():
-    return pd.read_excel("data/08_reporting/final_schedule.xlsx")
-
-
-@pytest.fixture
-def final_changeovers_df():
-    return pd.read_excel("data/08_reporting/final_changeovers.xlsx")
-
-
 class TestOutputSchedule:
     def test_project_path(self, project_context):
         """The project path should be the current working directory."""
         assert project_context.project_path == Path.cwd()
 
-    def test_final_schedule_not_empty(self, final_schedule_df):
-        """The output schedule should not be empty"""
-        assert not final_schedule_df.empty
+    def test_load_parameters_and_data(self, project_context):
+        """Test loading of parameters and data from Kedro context."""
+        # Load parameters
+        parameters = project_context.catalog.load("params:scheduling_options")
 
-    def test_chronological_order(self, final_schedule_df):
+        # Load a specific parameter
+        change_over_time_op1 = parameters["change_over_time_op1"]
+
+        # Load data
+        data = project_context.catalog.load("croom_processed_orders")
+
+        # Assertions to verify the loaded data
+        assert isinstance(change_over_time_op1, int)
+        assert data is not None
+
+    def test_final_schedule_not_empty(self, project_context):
+        """The output schedule should not be empty"""
+        final_schedule = project_context.catalog.load("final_schedule")
+        assert not final_schedule.empty
+
+    def test_chronological_order(self, project_context):
         """Tasks of the same job should be scheduled in chronological order with no overlap."""
-        for job_id in final_schedule_df["Order"].unique():
-            job_schedule = final_schedule_df[final_schedule_df["Order"] == job_id]
+        final_schedule = project_context.catalog.load("final_schedule")
+        for job_id in final_schedule["Order"].unique():
+            job_schedule = final_schedule[final_schedule["Order"] == job_id]
             for i in range(1, len(job_schedule)):
                 assert job_schedule.iloc[i]["Start_time"] >= job_schedule.iloc[i - 1]["End_time"], (
                     f"The start time for job {job_id}, task {job_schedule.iloc[i]['task']} "
                     f"is earlier than the completion time of the previous task!"
                 )
 
-    def test_machine_task_order(self, final_schedule_df):
+    def test_machine_task_order(self, project_context):
         """Tasks on the same machine should not overlap in time."""
-        for machine in final_schedule_df["Machine"].unique():
-            machine_schedule = final_schedule_df[final_schedule_df["Machine"] == machine].sort_values(
+        final_schedule = project_context.catalog.load("final_schedule")
+        for machine in final_schedule["Machine"].unique():
+            machine_schedule = final_schedule[final_schedule["Machine"] == machine].sort_values(
                 "Start_time"
             )
             for i in range(1, len(machine_schedule)):
@@ -68,36 +74,10 @@ class TestOutputSchedule:
                     f"in machine {machine} is earlier than the completion time of the previous task!"
                 )
 
-    # TODO: Shift to preprocessing in nodes.py
-    def test_custom_part_id_format(self, final_schedule_df):
-        pattern = re.compile(r"^(LEFT|RIGHT)-(PS|CR)-([1-9]|10)N?-(CLS|CTD)-(OP1|OP2)$")
-        for index, row in final_schedule_df.iterrows():
-            custom_part_id = row["Custom Part ID"]
-            assert isinstance(
-                custom_part_id, str
-            ), f"Custom Part ID is not a string for job {row['Job']}: {custom_part_id}."
-            assert pattern.match(
-                custom_part_id
-            ), f"Invalid Custom Part ID format for job {row['Job']}: {custom_part_id}."
-
-    # TODO: Also to preprocessing
-    def test_part_id_custom_part_id_mapping(self, final_schedule_df):
-        """A unique Part ID should always correspond to a unique Custom Part ID."""
-        part_id_to_custom_part_id = {}
-        for index, row in final_schedule_df.iterrows():
-            part_id = row["Part ID"]
-            custom_part_id = row["Custom Part ID"]
-            if part_id in part_id_to_custom_part_id:
-                assert part_id_to_custom_part_id[part_id] == custom_part_id, (
-                    f"Mismatch found for Part ID {part_id} for job {row['Job']}: "
-                    f"expected {part_id_to_custom_part_id[part_id]}, found {custom_part_id}."
-                )
-            else:
-                part_id_to_custom_part_id[part_id] = custom_part_id
-
-    def test_end_time_calculation(self, final_schedule_df):
+    def test_end_time_calculation(self, project_context):
         """The end time of a task should be the start time plus the duration."""
-        for index, row in final_schedule_df.iterrows():
+        final_schedule = project_context.catalog.load("final_schedule")
+        for index, row in final_schedule.iterrows():
             assert (
                 row["duration"] >= 0
             ), f"Negative duration found for job {row['Job']}: {row['duration']} minutes."
@@ -110,37 +90,10 @@ class TestOutputSchedule:
                 f"expected {calculated_end_time}, found {actual_end_time}."
             )
 
-    # TODO: To early validation
-    def test_batch_size_limit(self, final_schedule_df):
-        """The batch size should always be between 0-12."""
-        for index, row in final_schedule_df.iterrows():
-            assert (
-                row["Production Qty"] <= 12
-            ), f"Production Qty exceeds limit for job {row['Job']}: {row['Production Qty']}."
-            assert (
-                row["Production Qty"] >= 0
-            ), f"Negative Production Qty found for job {row['Job']}: {row['Production Qty']}."
-
-    # TODO: To early validation
-    def test_in_scope_orders(self, final_schedule_df):
-        """All scheduled products should be in scope; they contain the substrings 'OP 1', 'OP 2', or 'ATT Primary'."""
-        valid_substrings = ["OP 1", "OP 2", "ATT Primary"]
-        for index, row in final_schedule_df.iterrows():
-            assert any(
-                substring in row["Product"] for substring in valid_substrings
-            ), f"Invalid product value found for job {row['Job']}: {row['Product']}."
-
-    # TODO: To early validation
-    def test_no_products_on_hold(self, final_schedule_df):
-        """No schedule products should be on hold."""
-        for index, row in final_schedule_df.iterrows():
-            assert (
-                row["On Hold?"] is False
-            ), f"On Hold? is not False for job {row['Job']}: {row['On Hold?']}."
-
-    def test_no_start_times_on_weekends(self, final_schedule_df):
+    def test_no_start_times_on_weekends(self, project_context):
         """HAAS machines can run on the weekends, but only on Saturdays. Other machines cannot run in weekends."""
-        for index, row in final_schedule_df.iterrows():
+        final_schedule = project_context.catalog.load("final_schedule")
+        for index, row in final_schedule.iterrows():
             start_time = row["Start_time"]
             machine = row["Machine"]
             assert (
@@ -152,30 +105,33 @@ class TestOutputSchedule:
                     f"{start_time}."
                 )
 
-    def test_non_haas_machine_start_time_range(self, final_schedule_df):
+    def test_non_haas_machine_start_time_range(self, project_context):
         """The start time for non-HAAS machines should be between 06:30 and 14:30."""
-        for index, row in final_schedule_df.iterrows():
+        final_schedule = project_context.catalog.load("final_schedule")
+        schedule_options = project_context.catalog.load("params:scheduling_options")
+        start_time = pd.Timestamp(schedule_options["start_date"])
+        end_time = start_time + pd.Timedelta(minutes=schedule_options["working_minutes_per_day"])
+        for index, row in final_schedule.iterrows():
             machine = row["Machine"]
             if "HAAS" not in machine:
-                start_time = row["Start_time"].time()
-                start_time_range_valid = (
-                    pd.Timestamp("06:30").time() <= start_time <= pd.Timestamp("14:30").time()
-                )
+                task_start_time = row["Start_time"].time()
+                start_time_range_valid = start_time.time() <= task_start_time <= end_time.time()
                 assert start_time_range_valid, (
                     f"Start time out of range for non-HAAS machine for job {row['Job']}: "
-                    f"{start_time}."
+                    f"{task_start_time}."
                 )
 
-    def test_start_and_end_machines_present(self, final_schedule_df):
+    def test_start_and_end_machines_present(self, project_context):
         """
-        Test that for every unique order number in the final_schedule_df DataFrame,
+        Test that for every unique order number in the final_schedule DataFrame,
         at least one row has a task 0, 1, or 10 (starting machines: HAAS or Ceramic Drag),
         and at least one row has a task 7 or 19 (Final inspection for OP1 and OP2 respectively).
         """
-        unique_orders = final_schedule_df["Order"].unique()
+        final_schedule = project_context.catalog.load("final_schedule")
+        unique_orders = final_schedule["Order"].unique()
 
         for order in unique_orders:
-            order_rows = final_schedule_df[final_schedule_df["Order"] == order]
+            order_rows = final_schedule[final_schedule["Order"] == order]
 
             has_initial_task = order_rows["task"].isin([0, 1, 10]).any()
             assert has_initial_task, f"Order {order} does not have any task 0, 1, or 10."
@@ -183,12 +139,13 @@ class TestOutputSchedule:
             has_final_task = order_rows["task"].isin([7, 19]).any()
             assert has_final_task, f"Order {order} does not have any task 7 or 19."
 
-    def test_no_simultaneous_changeovers(self, final_changeovers_df):
+    def test_no_simultaneous_changeovers(self, project_context):
         """No two changeovers can happen simultaneously for the HAAS machines"""
-        for machine in final_changeovers_df["Machine"].unique():
-            machine_changeovers = final_changeovers_df[
-                final_changeovers_df["Machine"] == machine
-            ].sort_values("Start_time")
+        final_changeovers = project_context.catalog.load("final_changeovers")
+        for machine in final_changeovers["Machine"].unique():
+            machine_changeovers = final_changeovers[final_changeovers["Machine"] == machine].sort_values(
+                "Start_time"
+            )
             for i in range(1, len(machine_changeovers)):
                 assert (
                     machine_changeovers.iloc[i]["Start_time"]
@@ -198,38 +155,54 @@ class TestOutputSchedule:
                     f"{machine_changeovers.iloc[i - 1]['Start_time']} and {machine_changeovers.iloc[i]['Start_time']}."
                 )
 
-    # TODO: Parameterize the test
-    def test_max_two_changeovers_per_day(self, final_changeovers_df):
+    def test_max_two_changeovers_per_day(self, project_context):
         """Changeovers take 3 hours, and there are only 8 hours in a workday.
         Therefore, there should be at most two changeovers per day."""
+        final_changeovers = project_context.catalog.load("final_changeovers")
         # Ensure Start_time is in datetime format
-        final_changeovers_df["Start_time"] = pd.to_datetime(final_changeovers_df["Start_time"])
+        final_changeovers["Start_time"] = pd.to_datetime(final_changeovers["Start_time"])
 
         # Convert Start_time to date format
-        final_changeovers_df["Start_date"] = final_changeovers_df["Start_time"].dt.date
+        final_changeovers["Start_date"] = final_changeovers["Start_time"].dt.date
 
         # Group by the date part of Start_time and count the number of changeovers
-        changeovers_per_day = final_changeovers_df.groupby("Start_date").size()
+        changeovers_per_day = final_changeovers.groupby("Start_date").size()
+
+        # Load schedule options
+        schedule_options = project_context.catalog.load("params:scheduling_options")
+
+        # Calculate max_count
+        max_count = (
+            schedule_options["working_minutes_per_day"] // schedule_options["change_over_time_op1"]
+        )
 
         # Assert that no more than two changeovers start on the same day
         for date, count in changeovers_per_day.items():
-            assert count <= 2, f"More than two changeovers start on {date}: {count} changeovers."
+            assert count <= max_count, f"More than two changeovers start on {date}: {count} changeovers."
 
-    def test_changeover_start_time_range(self, final_changeovers_df):
-        """The start time of all changeovers should be between 06:30 and 11:30."""
-        for index, row in final_changeovers_df.iterrows():
-            start_time = row["Start_time"].time()
-            start_time_range_valid = (
-                pd.Timestamp("06:30").time() <= start_time <= pd.Timestamp("11:30").time()
-            )
+    def test_changeover_start_time_range(self, project_context):
+        """Checks if all changeovers are completed before the end of the working day. Latest allowed starting time
+        is defined as: start time of the working day + working minutes per day - changeover time for OP1.
+        """
+        final_changeovers = project_context.catalog.load("final_changeovers")
+        schedule_options = project_context.catalog.load("params:scheduling_options")
+        start_time = pd.Timestamp(schedule_options["start_date"])
+        end_time = (
+            start_time
+            + pd.Timedelta(minutes=schedule_options["working_minutes_per_day"])
+            - pd.Timedelta(minutes=schedule_options["change_over_time_op1"])
+        )
+
+        for index, row in final_changeovers.iterrows():
+            changeover_start_time = row["Start_time"].time()
+            start_time_range_valid = start_time.time() <= changeover_start_time <= end_time.time()
             assert (
                 start_time_range_valid
-            ), f"Changeover start time out of range for job {row['Job']}: {start_time}."
+            ), f"Changeover start time out of range for job {row['Job']}: {changeover_start_time}."
 
-    def test_best_scores_improvement(self):
+    def test_best_scores_improvement(self, project_context):
         """The best score per generation should never become worse from one iteration to the next."""
-        with open("data/07_model_output/best_scores.pkl", "rb") as file:
-            best_scores = pickle.load(file)
+        best_scores = project_context.catalog.load("best_scores")
 
         assert isinstance(best_scores, deque), "The best_scores.pkl file does not contain a deque."
 
@@ -237,7 +210,3 @@ class TestOutputSchedule:
         for score in best_scores:
             assert score >= previous_score, f"Score decreased from {previous_score} to {score}."
             previous_score = score
-
-
-# TODO: Minimum 15 minutes between Roslers
-# TODO: Depending on operation and Cementless, check if all tasks have been scheduled.

@@ -125,7 +125,7 @@ class Job:
         Raises:
             LoggerError: If Part ID is not unique for every combination of Type, Size, and Orientation.
         """
-        grouped = data.groupby("Part ID")[["Type", "Size", "Orientation"]].nunique()
+        grouped = data.groupby("Part ID")[["Type", "Size", "Orientation", "Custom Part ID"]].nunique()
 
         if (grouped > 1).any().any():
             logger.error(
@@ -438,7 +438,17 @@ class JobShop(Job, Shop):
 
     def preprocess_orders(self, croom_open_orders: pd.DataFrame) -> pd.DataFrame:
         """
-        Preprocesses the open orders.
+        Preprocesses the open orders by filtering, extracting information, and performing various checks.
+
+        This function performs the following steps:
+        1. Filters the open orders to include only in-scope operations for OP 1 and OP 2.
+        2. Extracts type, size, orientation, and cementing information from the part description.
+        3. Adds an 'operation' column to distinguish between OP 1 and OP 2.
+        4. Combines the data for OP 1 and OP 2.
+        5. Adds the operation to the custom part ID.
+        6. Checks the consistency of part IDs across different operations.
+        7. Resets the index of the combined data.
+        8. Checks for batch size limits, valid product values, and ensures no products are on hold.
 
         Args:
             croom_open_orders (pd.DataFrame): The open orders.
@@ -470,11 +480,44 @@ class JobShop(Job, Shop):
                 f"and length of OP 2 data: {len(in_scope_data_op2)}"
             )
 
+        # Check if the custom part ID is in the correct format
+        pattern = re.compile(r"^(LEFT|RIGHT)-(PS|CR)-([1-9]|10)N?-(CLS|CTD)-(OP1|OP2)$")
+        for index, row in in_scope_data.iterrows():
+            custom_part_id = row["Custom Part ID"]
+            assert isinstance(
+                custom_part_id, str
+            ), f"Custom Part ID is not a string for job {row['Job ID']}: {custom_part_id}."
+            assert pattern.match(
+                custom_part_id
+            ), f"Invalid Custom Part ID format for job {row['Job ID']}: {custom_part_id}."
+
         # Check if all part IDs are consistent across different operations
         self.check_part_id_consistency(in_scope_data)
 
         # Reset index
         in_scope_data.reset_index(inplace=True, drop=True)
+
+        # Check batch size limit
+        for index, row in in_scope_data.iterrows():
+            assert (
+                row["Production Qty"] <= 12
+            ), f"Production Qty exceeds limit for job {row['Job ID']}: {row['Production Qty']}."
+            assert (
+                row["Production Qty"] > 0
+            ), f"Production Qty is nonsensical for job {row['Job ID']}: {row['Production Qty']}."
+
+        # Check in-scope orders
+        valid_substrings = ["OP 1", "OP 2", "ATT Primary"]
+        for index, row in in_scope_data.iterrows():
+            assert any(
+                substring in row["Part Description"] for substring in valid_substrings
+            ), f"Invalid product value found for job {row['Job ID']}: {row['Part Description']}."
+
+        # Check no products on hold
+        for index, row in in_scope_data.iterrows():
+            assert not row[
+                "On Hold?"
+            ], f"On Hold? is not False for job {row['Job ID']}: {row['On Hold?']}."
 
         return in_scope_data
 
