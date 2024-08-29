@@ -379,7 +379,7 @@ class Shop:
                         duration = round(times.loc[task, row["Size"]] * row["Order Qty"], 1)
                         
                     # Add 60 mins to the duration if the task is HAAS and the batch size is odd 
-                    if task in [0, 1] and row["Size"] % 2: duration += 60                     
+                    if task in [0, 1] and row["Order Qty"] % 2: duration += 60                     
                     
 
                 else:  # Operation 2 tasks
@@ -683,6 +683,7 @@ class GeneticAlgorithmScheduler:
         self.total_minutes_per_day = None
         self.change_over_time_op1 = None
         self.change_over_time_op2 = None
+        self.change_over_time_op2_drag = None
         self.change_over_machines_op1 = None
         self.change_over_machines_op2 = None
         self.cemented_only_haas_machines = None
@@ -1871,6 +1872,7 @@ class GeneticAlgorithmScheduler:
         self.total_minutes_per_day = scheduling_options["total_minutes_per_day"]
         self.change_over_time_op1 = scheduling_options["change_over_time_op1"]
         self.change_over_time_op2 = scheduling_options["change_over_time_op2"]
+        self.change_over_time_op2_drag = scheduling_options["change_over_time_op2_drag"]
         self.change_over_machines_op1 = scheduling_options["change_over_machines_op1"]
         self.change_over_machines_op2 = scheduling_options["change_over_machines_op2"]
         self.cemented_only_haas_machines = scheduling_options["cemented_only_haas_machines"]
