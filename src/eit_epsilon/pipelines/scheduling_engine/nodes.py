@@ -1413,7 +1413,7 @@ class GeneticAlgorithmScheduler:
         self,
         best_scores: deque = None,
         display_scores: bool = True,
-        on_time_bonus: int = 10000,
+        on_time_bonus: int = 7500,
     ):
         """
         Evaluates the population of schedules by calculating a score for each schedule based on the completion times
@@ -1444,12 +1444,8 @@ class GeneticAlgorithmScheduler:
                 sum(
                     (
                         # Difference between due date and completion time, multiplied by urgent_multiplier if urgent.
-                        # If we are evaluating the first task of a job, divide the difference by two
-                        # (We want to treat the final task as most important)
                         self.negative_exponentiation(
-                            (self.J[job_id][1] - (start_time + job_task_dur)) / 1 if task_id
-                            # Final inspection (last task) is task 7 in OP1, task 20 in OP2, and task 44 for cemented
-                            in [7, 20, 44] else 2,
+                            (self.J[job_id][1] - (start_time + job_task_dur)),
                             1.02,
                         )
                         * (self.urgent_multiplier if job_id in self.urgent_orders else 1)
@@ -1457,9 +1453,8 @@ class GeneticAlgorithmScheduler:
                             # Fixed size bonus for completing the job on time (only applies if the final task is
                             # completed on time)
                             on_time_bonus
-                            if (self.J[job_id][1] - (start_time + job_task_dur)) > 0 and task_id
-                            # Final inspection (last task) is task 7 in OP1, task 20 in OP2, and task 44 for cemented
-                            in [7, 20, 44]
+                            if (self.J[job_id][1] - (start_time + job_task_dur)) > 0
+                            and task_id in [7, 20, 44]
                             else 0
                         )
                     )
@@ -1473,9 +1468,7 @@ class GeneticAlgorithmScheduler:
                         _,
                     ) in schedule
                     # Only consider the completion time of the final task
-                    if task_id
-                    in [7, 20, 44]  # Final inspection (last task) is task 7 in OP1 and task 19 in OP2
-                    or task_id in [1, 30]  # The HAAS tasks are defined by task_id nums 1 and 30
+                    if task_id in [7, 20, 44] or task_id in [1, 30]
                 )
             )
             # Evaluate each schedule in the population
@@ -1483,10 +1476,19 @@ class GeneticAlgorithmScheduler:
         ]
 
         if display_scores:
+            best_score = round(max(self.scores))
+            top_1_percent = round(np.percentile(self.scores, 99))
+            top_5_percent = round(np.percentile(self.scores, 95))
+            top_10_percent = round(np.percentile(self.scores, 90))
+            median_score = round(np.median(self.scores))
+            worst_score = round(min(self.scores))
+
             logger.info(
-                f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Best score: {max(self.scores)}, "
-                f"Median score: {np.median(self.scores)}, Worst score: {min(self.scores)}"
+                f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Best score: {best_score}, "
+                f"Top 1% score: {top_1_percent}, Top 5% score: {top_5_percent}, Top 10% score: {top_10_percent}, "
+                f"Median score: {median_score}, Worst score: {worst_score}"
             )
+
             best_scores.append(max(self.scores))
 
     def resolve_conflict(self, P_prime: list) -> deque:
