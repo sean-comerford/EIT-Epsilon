@@ -334,7 +334,7 @@ class Shop:
         cr_times: pd.DataFrame,
         ps_times: pd.DataFrame,
         op2_times: pd.DataFrame,
-    ) -> Dict[Tuple[str, int], float]:
+    ) -> Dict[Tuple[int, int], Any]:
         """
         Gets the duration matrix for the jobs.
 
@@ -354,7 +354,7 @@ class Shop:
             op2_times (pd.DataFrame): The Operation 2 cycle times - no distinction between CR and PS.
 
         Returns:
-            Dict[Tuple[str, int], float]: The duration matrix.
+            Dict[Tuple[int, int], Any]: The duration matrix.
         """
 
         dur = {}
@@ -384,7 +384,7 @@ class Shop:
                     duration = round(op2_times.loc[task, "Actual "] * 12, 1)
 
                 # Store the duration in the dictionary with key (job_id, task)
-                dur[(part_id, task)] = duration
+                dur[(job_id, task)] = duration
 
         return dur
 
@@ -754,7 +754,7 @@ class GeneticAlgorithmScheduler:
         part_id, _ = self.J[job_id]
 
         # Duration of the task
-        duration = self.dur[(part_id, task_id)]
+        duration = self.dur[(job_id, task_id)]
         # Calculate next available time after the task and buffer
         next_avail_time = start + duration + self.task_time_buffer
 
@@ -1335,7 +1335,7 @@ class GeneticAlgorithmScheduler:
                             slack_time_used,
                             P_j[-1][3],  # Previous task start
                             P_j[-1][4],  # Previous task duration
-                            self.dur[(part_id, task_id)],
+                            self.dur[(job_id, task_id)],
                             changeover_duration,
                         )
 
@@ -1345,7 +1345,7 @@ class GeneticAlgorithmScheduler:
                         task_id,
                         m,
                         start,
-                        self.dur[(part_id, task_id)],
+                        self.dur[(job_id, task_id)],
                         0,
                         part_id,
                     )
@@ -1632,7 +1632,7 @@ class GeneticAlgorithmScheduler:
                             slack_time_used,
                             P_prime_sorted[-1][3],
                             P_prime_sorted[-1][4],
-                            self.dur[(part_id, task_id)],
+                            self.dur[(job_id, task_id)],
                             changeover_duration,
                         )
 
@@ -1657,7 +1657,7 @@ class GeneticAlgorithmScheduler:
                         task_id,
                         m,
                         start,
-                        self.dur[(part_id, task_id)],
+                        self.dur[(job_id, task_id)],
                         task_idx,
                         part_id,
                     )
