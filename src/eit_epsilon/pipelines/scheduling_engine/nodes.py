@@ -963,10 +963,9 @@ class GeneticAlgorithmScheduler:
         start_time, end_time = slack
 
         # Check if the times are valid floats
-        if not isinstance(start_time, (int, float)) or not isinstance(end_time, (int, float)):
-            raise TypeError(
-                f"Expected numeric type for start- and end time, received: {start_time}, {end_time}"
-            )
+        assert isinstance(start_time, (int, float)) and isinstance(
+            end_time, (int, float)
+        ), f"Expected numeric type for start- and end time, received: {start_time}, {end_time}"
 
         # Determine the window in which the start_time falls
         window_start = (start_time // self.total_minutes_per_day) * self.total_minutes_per_day
@@ -1115,13 +1114,17 @@ class GeneticAlgorithmScheduler:
         # If the previous task is completed later than the new machine comes available
         if previous_task_finish > avail_m[m]:
             # Start time is the completion of the previous task of the job in question
-            start = self.adjust_start_time(previous_task_finish + changeover_duration)
+            start = self.adjust_start_time(
+                previous_task_finish + changeover_duration + self.task_time_buffer
+            )
 
             # Difference between the moment the machine becomes available and the new tasks starts is slack
             # e.g.: machine comes available at 100, new task can only start at 150, slack = (100, 150)
             # We subtract changeover_duration, because even though the task actually starts later,
             # the changeover_duration cannot be used for a different task
-            slack_window_upd = self.slack_window_check((avail_m[m], start - changeover_duration))
+            slack_window_upd = self.slack_window_check(
+                (avail_m[m], start - changeover_duration - self.task_time_buffer)
+            )
 
             if slack_window_upd:
                 slack_m[m].append(slack_window_upd)
@@ -1173,9 +1176,9 @@ class GeneticAlgorithmScheduler:
                     # e.g. original slack = (100, 150), task planned now takes (110, 130), new slack = (100, 110)
                     # We subtract changeover_duration, because even though the task actually starts later,
                     # the changeover_duration cannot be used for a different task
-                    if start == previous_task_finish:
+                    if start == (previous_task_finish + changeover_duration + self.task_time_buffer):
                         slack_window_upd = self.slack_window_check(
-                            (unused_time[0], start - changeover_duration)
+                            (unused_time[0], previous_task_finish)
                         )
 
                         if slack_window_upd:
@@ -1413,7 +1416,7 @@ class GeneticAlgorithmScheduler:
         self,
         best_scores: deque = None,
         display_scores: bool = True,
-        on_time_bonus: int = 7500,
+        on_time_bonus: int = 5000,
     ):
         """
         Evaluates the population of schedules by calculating a score for each schedule based on the completion times
@@ -1448,6 +1451,7 @@ class GeneticAlgorithmScheduler:
                             (self.J[job_id][1] - (start_time + job_task_dur)),
                             1.02,
                         )
+                        * (2 if task_id in [1, 30] else 1)
                         * (self.urgent_multiplier if job_id in self.urgent_orders else 1)
                         + (
                             # Fixed size bonus for completing the job on time (only applies if the final task is
@@ -1470,6 +1474,7 @@ class GeneticAlgorithmScheduler:
                     # Only consider the completion time of the final task
                     if task_id in [7, 20, 44] or task_id in [1, 30]
                 )
+                + 2000000  # Add a constant to avoid negative scores
             )
             # Evaluate each schedule in the population
             for schedule in self.P
