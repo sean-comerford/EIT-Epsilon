@@ -368,23 +368,19 @@ class Shop:
             row = rows.iloc[0]
 
             for task in part_id_to_task_seq[part_id]:
-
-                if task < 10:  # Operation 1 tasks                                       
+                if task < 10:  # Operation 1 tasks
                     times = cr_times if row["Type"] == "CR" else ps_times
-                    
-                    if task == 0:
+
+                    if task in [0, 1]:
                         # Tasks of type 0 have the same duration as tasks of type 1
-                        duration = round(times.loc[1, row["Size"]] * row["Order Qty"], 1)               
+                        duration = round(times.loc[1, row["Size"]] * row["Order Qty"], 1)
+
+                        if row["Order Qty"] % 2:
+                            duration += 60
                     else:
-                        duration = round(times.loc[task, row["Size"]] * row["Order Qty"], 1)
-                        
-                    # Add 60 mins to the duration if the task is HAAS and the batch size is odd 
-                    if task in [0, 1] and row["Order Qty"] % 2: duration += 60                     
-                    
+                        duration = round(times.loc[task, row["Size"]] * 12, 1)
 
                 else:  # Operation 2 tasks
-                    # TODO: Should we read the quantity or use a batch size of 12?
-                    # duration = round(op2_times.loc[task, "Actual "] * row["Order Qty"], 1)
                     duration = round(op2_times.loc[task, "Actual "] * 12, 1)
 
                 # Store the duration in the dictionary with key (job_id, task)
@@ -683,7 +679,6 @@ class GeneticAlgorithmScheduler:
         self.total_minutes_per_day = None
         self.change_over_time_op1 = None
         self.change_over_time_op2 = None
-        self.change_over_time_op2_drag = None
         self.change_over_machines_op1 = None
         self.change_over_machines_op2 = None
         self.cemented_only_haas_machines = None
@@ -1312,7 +1307,7 @@ class GeneticAlgorithmScheduler:
                 else:
                     m = self.pick_early_machine(task_id, avail_m, random_roll)
                     changeover_duration = 0
-                    
+
                     # Determine the changeover duration. self.task_time_buffer will also be added
                     # in all cases, either in slack_logic() or find_avail_m()
                     if m in self.change_over_machines_op2:
@@ -1320,13 +1315,15 @@ class GeneticAlgorithmScheduler:
                             product_m.get(m) == 0
                             or product_m.get(m) == part_id
                             or product_m.get(m) in self.compatibility_dict[part_id]
-                        ): # Previous part was the same or compatible, or there wasn't a previous part
-                            changeover_duration = 0
-                        elif task_id in [10, 12, 16]: # Drag machines                            
-                            changeover_duration = self.change_over_time_op2_drag
-                        else:                            
-                            changeover_duration = self.change_over_time_op2 
-                        
+                        ):  # Previous part was the same or compatible, or there wasn't a previous part
+                            changeover_duration = 15
+                        elif task_id in [10, 12, 16]:  # Drag machines
+                            changeover_duration = self.change_over_time_op2
+                        else:
+                            logger.warning(
+                                f"Only drag machines have changeovers in OP2! Task id: {task_id}"
+                            )
+
                     if task_id in [1, 10, 0]:
                         # First task for OP 1 is 0 or 1, for OP 2 it is 10
                         start = avail_m[m] + changeover_duration
@@ -1336,8 +1333,8 @@ class GeneticAlgorithmScheduler:
                             avail_m,
                             slack_m,
                             slack_time_used,
-                            P_j[-1][3], # Previous task start
-                            P_j[-1][4], # Previous task duration
+                            P_j[-1][3],  # Previous task start
+                            P_j[-1][4],  # Previous task duration
                             self.dur[(part_id, task_id)],
                             changeover_duration,
                         )
@@ -1607,7 +1604,7 @@ class GeneticAlgorithmScheduler:
                 else:
                     # Initialize changeover time to 0
                     changeover_duration = 0
-                    
+
                     # Determine the changeover duration. self.task_time_buffer will also be added
                     # in all cases, either in slack_logic() or find_avail_m()
                     if m in self.change_over_machines_op2:
@@ -1615,12 +1612,14 @@ class GeneticAlgorithmScheduler:
                             product_m.get(m) == 0
                             or product_m.get(m) == part_id
                             or product_m.get(m) in self.compatibility_dict[part_id]
-                        ): # Previous part was the same or compatible, or there wasn't a previous part
-                            changeover_duration = 0
-                        elif task_id in [10, 12, 16]: # Drag machines                            
-                            changeover_duration = self.change_over_time_op2_drag
-                        else:                            
-                            changeover_duration = self.change_over_time_op2 
+                        ):  # Previous part was the same or compatible, or there wasn't a previous part
+                            changeover_duration = 15
+                        elif task_id in [10, 12, 16]:  # Drag machines
+                            changeover_duration = self.change_over_time_op2
+                        else:
+                            logger.warning(
+                                f"Only drag machines have changeovers in OP2! Task id: {task_id}"
+                            )
 
                     # First tasks of OP1 and OP2 do not need to consider slack
                     if task_id in [1, 10, 0]:
@@ -1837,27 +1836,50 @@ class GeneticAlgorithmScheduler:
         # Add all schedules from P_0 to the population
         self.P = P_0 + new_schedules
 
+    def perform_iteration(self, iteration: int, best_scores: Deque, gene_pool: Deque) -> int:
+        """
+        Perform a single iteration of the genetic algorithm.
+
+        This method logs the current iteration, evaluates the population, mutates the population,
+        checks and adjusts the population size, and increments the iteration counter.
+
+        Args:
+            iteration (int): The current iteration number.
+            best_scores (Deque): A deque to store the best scores.
+            gene_pool (Deque): The gene pool from which new individuals can be sampled.
+
+        Returns:
+            int: The incremented iteration number.
+        """
+        logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Iteration {iteration + 1}")
+        self.evaluate_population(best_scores=best_scores)
+        self.mutate()
+        if len(self.P) < self.n:
+            self.P += random.sample(gene_pool, self.n - len(self.P))
+        iteration += 1
+        return iteration
+
     def run(
         self,
-        input_repr_dict: Dict[str, any],
-        scheduling_options: dict,
-        compatibility_dict: dict,
-        arbor_dict: dict,
-        cemented_arbors: dict,
-    ):
+        input_repr_dict: Dict[str, Any],
+        scheduling_options: Dict[str, Any],
+        compatibility_dict: Dict[str, Any],
+        arbor_dict: Dict[str, Any],
+        cemented_arbors: Dict[str, str],
+    ) -> Tuple[Any, deque]:
         """
         Runs the genetic algorithm by initializing the population, evaluating it, and selecting the best schedule.
 
         Args:
-            input_repr_dict (Dict[str, any]): A dictionary containing the necessary input variables for the GA.
-            scheduling_options (dict): Dictionary containing hyperparameters for running the algorithm.
-            compatibility_dict (dict): Dictionary containing the compatibility information for changeovers.
-            arbor_dict (dict): Dictionary containing the arbor information for changeovers [custom_part_id: arbor_num]
-            cemented_arbors (dict): Dictionary containing the cemented arbor information.
+            input_repr_dict (Dict[str, Any]): A dictionary containing the necessary input variables for the GA.
+            scheduling_options (Dict[str, Any]): Dictionary containing hyperparameters for running the algorithm.
+            compatibility_dict (Dict[str, Any]): Dictionary containing the compatibility information for changeovers.
+            arbor_dict (Dict[str, Any]): Dictionary containing the arbor information for changeovers [custom_part_id: arbor_num].
+            cemented_arbors (Dict[str, str]): Dictionary containing the cemented arbor information.
 
         Returns:
-            Tuple[List[Tuple[int, int, int, int, float]], List[int]]: The best schedule with the highest score and the
-            list of best scores per generation.
+            Tuple[Any, deque]: The best schedule with the highest score and the
+            deque of best scores per generation.
         """
         self.J = input_repr_dict["J"]
         self.M = input_repr_dict["M"]
@@ -1872,7 +1894,6 @@ class GeneticAlgorithmScheduler:
         self.total_minutes_per_day = scheduling_options["total_minutes_per_day"]
         self.change_over_time_op1 = scheduling_options["change_over_time_op1"]
         self.change_over_time_op2 = scheduling_options["change_over_time_op2"]
-        self.change_over_time_op2_drag = scheduling_options["change_over_time_op2_drag"]
         self.change_over_machines_op1 = scheduling_options["change_over_machines_op1"]
         self.change_over_machines_op2 = scheduling_options["change_over_machines_op2"]
         self.cemented_only_haas_machines = scheduling_options["cemented_only_haas_machines"]
@@ -1912,23 +1933,23 @@ class GeneticAlgorithmScheduler:
         # Extract time budget
         time_budget = scheduling_options["time_budget"]
 
-        while True:
-            # Check if time_budget has expired
-            elapsed_time = round(time.time() - start_time)
-            if elapsed_time > time_budget:
-                logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Time budget has expired!")
-                break
-
+        # max_iterations is used if time_budget is set to zero
+        if time_budget != 0:
+            while True:
+                # Check if time_budget has expired
+                elapsed_time = round(time.time() - start_time)
+                if elapsed_time > time_budget:
+                    logger.info(
+                        f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Time budget has expired"
+                    )
+                    break
+                iteration = self.perform_iteration(iteration, best_scores, gene_pool)
+        else:
             logger.info(
-                f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Iteration {iteration + 1} "
-                f"- Elapsed time {elapsed_time}/{time_budget} seconds"
+                f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Time budget not set, using max_iterations"
             )
-            self.evaluate_population(best_scores=best_scores)
-            # Disable offspring for the time being (this generally leads to a good result faster)
-            self.mutate()
-            if len(self.P) < self.n:
-                self.P += random.sample(gene_pool, self.n - len(self.P))
-            iteration += 1
+            for _ in range(scheduling_options["max_iterations"]):
+                iteration = self.perform_iteration(iteration, best_scores, gene_pool)
 
         schedules_and_scores = sorted(zip(self.P, self.scores), key=lambda x: x[1], reverse=True)
         self.best_schedule = schedules_and_scores[0][0]
