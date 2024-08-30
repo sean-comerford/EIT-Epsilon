@@ -1306,8 +1306,7 @@ class GeneticAlgorithmScheduler:
                             logger.warning(
                                 f"Only drag machines have changeovers in OP2! Task id: {task_id}"
                             )
-                            else self.change_over_time_op2
-                        )
+
                     if task_id in [1, 10, 30]:
                         start = avail_m[m] + changeover_duration
                     else:
