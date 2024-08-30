@@ -2213,6 +2213,24 @@ def create_start_end_time(
                     f" in machine {machine} is earlier than the completion time of the previous task!"
                 )
 
+    # Check if the time between the end of one task and the start of the next is at least 15 minutes
+    # for machines with 'Drag' in the name
+    for machine in croom_reformatted_orders["Machine"].unique():
+        if "Drag" in machine:
+            machine_schedule = croom_reformatted_orders[
+                croom_reformatted_orders["Machine"] == machine
+            ].sort_values("Start_time")
+            for i in range(1, len(machine_schedule)):
+                previous_end_time = machine_schedule.iloc[i - 1]["End_time"]
+                current_start_time = machine_schedule.iloc[i]["Start_time"]
+                time_diff = current_start_time - previous_end_time
+                if time_diff < timedelta(
+                    minutes=15
+                ):  # TODO: Load from params after merging with test branch
+                    logger.warning(
+                        f"The time between tasks on {machine} is less than 15 minutes: {time_diff}"
+                    )
+
     # Sort again by job and task before plotting
     croom_reformatted_orders = croom_reformatted_orders.sort_values(["Job", "task"])
     changeovers = changeovers.sort_values(["Machine", "Start_time"])
