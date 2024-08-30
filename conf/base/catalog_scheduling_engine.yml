@@ -147,7 +147,7 @@ gantt_chart_json:
       title: Production Schedule
       hover_name: Order
 
-      hover_data: ['Order_date', 'Due_date', 'task', 'Custom Part ID']
+      hover_data: ['Order_date', 'Due_date', 'task', 'Custom Part ID', 'Order Qty']
       template: simple_white
       color_discrete_sequence: ['rgb(41, 24, 107)', 'rgb(42, 35, 160)', 'rgb(15, 71, 153)',
                                 'rgb(18, 95, 142)', 'rgb(38, 116, 137)', 'rgb(53, 136, 136)',
