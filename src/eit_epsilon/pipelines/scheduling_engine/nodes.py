@@ -368,15 +368,19 @@ class Shop:
             row = rows.iloc[0]
 
             for task in part_id_to_task_seq[part_id]:
-                # Tasks of type 0 have the same duration as tasks of type 1
-                if task == 0:
-                    times = cr_times if row["Type"] == "CR" else ps_times
-                    # Use task 1 here, instead of 0
-                    duration = round(times.loc[1, row["Size"]] * row["Order Qty"], 1)
 
-                elif task < 10:  # Operation 1 tasks
+                if task < 10:  # Operation 1 tasks                                       
                     times = cr_times if row["Type"] == "CR" else ps_times
-                    duration = round(times.loc[task, row["Size"]] * row["Order Qty"], 1)
+                    
+                    if task == 0:
+                        # Tasks of type 0 have the same duration as tasks of type 1
+                        duration = round(times.loc[1, row["Size"]] * row["Order Qty"], 1)               
+                    else:
+                        duration = round(times.loc[task, row["Size"]] * row["Order Qty"], 1)
+                        
+                    # Add 60 mins to the duration if the task is HAAS and the batch size is odd 
+                    if task in [0, 1] and row["Order Qty"] % 2: duration += 60                     
+                    
 
                 else:  # Operation 2 tasks
                     # TODO: Should we read the quantity or use a batch size of 12?
@@ -679,6 +683,7 @@ class GeneticAlgorithmScheduler:
         self.total_minutes_per_day = None
         self.change_over_time_op1 = None
         self.change_over_time_op2 = None
+        self.change_over_time_op2_drag = None
         self.change_over_machines_op1 = None
         self.change_over_machines_op2 = None
         self.cemented_only_haas_machines = None
@@ -1307,17 +1312,23 @@ class GeneticAlgorithmScheduler:
                 else:
                     m = self.pick_early_machine(task_id, avail_m, random_roll)
                     changeover_duration = 0
+                    
+                    # Determine the changeover duration. self.task_time_buffer will also be added
+                    # in all cases, either in slack_logic() or find_avail_m()
                     if m in self.change_over_machines_op2:
-                        changeover_duration = (
-                            0
-                            if (
-                                product_m.get(m) == 0
-                                or product_m.get(m) == part_id
-                                or product_m.get(m) in self.compatibility_dict[part_id]
-                            )
-                            else self.change_over_time_op2
-                        )
+                        if (
+                            product_m.get(m) == 0
+                            or product_m.get(m) == part_id
+                            or product_m.get(m) in self.compatibility_dict[part_id]
+                        ): # Previous part was the same or compatible, or there wasn't a previous part
+                            changeover_duration = 0
+                        elif task_id in [10, 12, 16]: # Drag machines                            
+                            changeover_duration = self.change_over_time_op2_drag
+                        else:                            
+                            changeover_duration = self.change_over_time_op2 
+                        
                     if task_id in [1, 10, 0]:
+                        # First task for OP 1 is 0 or 1, for OP 2 it is 10
                         start = avail_m[m] + changeover_duration
                     else:
                         start, slack_time_used = self.slack_logic(
@@ -1325,8 +1336,8 @@ class GeneticAlgorithmScheduler:
                             avail_m,
                             slack_m,
                             slack_time_used,
-                            P_j[-1][3],
-                            P_j[-1][4],
+                            P_j[-1][3], # Previous task start
+                            P_j[-1][4], # Previous task duration
                             self.dur[(part_id, task_id)],
                             changeover_duration,
                         )
@@ -1596,18 +1607,20 @@ class GeneticAlgorithmScheduler:
                 else:
                     # Initialize changeover time to 0
                     changeover_duration = 0
-
-                    # If m is in changeover machines and the last size was not the same
+                    
+                    # Determine the changeover duration. self.task_time_buffer will also be added
+                    # in all cases, either in slack_logic() or find_avail_m()
                     if m in self.change_over_machines_op2:
-                        changeover_duration = (
-                            0
-                            if (
-                                product_m.get(m) == 0
-                                or product_m.get(m) == part_id
-                                or product_m.get(m) in self.compatibility_dict[part_id]
-                            )
-                            else self.change_over_time_op2
-                        )
+                        if (
+                            product_m.get(m) == 0
+                            or product_m.get(m) == part_id
+                            or product_m.get(m) in self.compatibility_dict[part_id]
+                        ): # Previous part was the same or compatible, or there wasn't a previous part
+                            changeover_duration = 0
+                        elif task_id in [10, 12, 16]: # Drag machines                            
+                            changeover_duration = self.change_over_time_op2_drag
+                        else:                            
+                            changeover_duration = self.change_over_time_op2 
 
                     # First tasks of OP1 and OP2 do not need to consider slack
                     if task_id in [1, 10, 0]:
@@ -1859,6 +1872,7 @@ class GeneticAlgorithmScheduler:
         self.total_minutes_per_day = scheduling_options["total_minutes_per_day"]
         self.change_over_time_op1 = scheduling_options["change_over_time_op1"]
         self.change_over_time_op2 = scheduling_options["change_over_time_op2"]
+        self.change_over_time_op2_drag = scheduling_options["change_over_time_op2_drag"]
         self.change_over_machines_op1 = scheduling_options["change_over_machines_op1"]
         self.change_over_machines_op2 = scheduling_options["change_over_machines_op2"]
         self.cemented_only_haas_machines = scheduling_options["cemented_only_haas_machines"]
