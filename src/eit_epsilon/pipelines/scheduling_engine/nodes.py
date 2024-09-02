@@ -125,7 +125,7 @@ class Job:
         Raises:
             LoggerError: If Part ID is not unique for every combination of Type, Size, and Orientation.
         """
-        grouped = data.groupby("Part ID")[["Type", "Size", "Orientation"]].nunique()
+        grouped = data.groupby("Part ID")[["Type", "Size", "Orientation", "Custom Part ID"]].nunique()
 
         if (grouped > 1).any().any():
             logger.error(
@@ -427,7 +427,17 @@ class JobShop(Job, Shop):
 
     def preprocess_orders(self, croom_open_orders: pd.DataFrame) -> pd.DataFrame:
         """
-        Preprocesses the open orders.
+        Preprocesses the open orders by filtering, extracting information, and performing various checks.
+
+        This function performs the following steps:
+        1. Filters the open orders to include only in-scope operations for OP 1 and OP 2.
+        2. Extracts type, size, orientation, and cementing information from the part description.
+        3. Adds an 'operation' column to distinguish between OP 1 and OP 2.
+        4. Combines the data for OP 1 and OP 2.
+        5. Adds the operation to the custom part ID.
+        6. Checks the consistency of part IDs across different operations.
+        7. Resets the index of the combined data.
+        8. Checks for batch size limits, valid product values, and ensures no products are on hold.
 
         Args:
             croom_open_orders (pd.DataFrame): The open orders.
@@ -459,11 +469,44 @@ class JobShop(Job, Shop):
                 f"and length of OP 2 data: {len(in_scope_data_op2)}"
             )
 
+        # Check if the custom part ID is in the correct format
+        pattern = re.compile(r"^(LEFT|RIGHT)-(PS|CR)-([1-9]|10)N?-(CLS|CTD)-(OP1|OP2)$")
+        for index, row in in_scope_data.iterrows():
+            custom_part_id = row["Custom Part ID"]
+            assert isinstance(
+                custom_part_id, str
+            ), f"Custom Part ID is not a string for job {row['Job ID']}: {custom_part_id}."
+            assert pattern.match(
+                custom_part_id
+            ), f"Invalid Custom Part ID format for job {row['Job ID']}: {custom_part_id}."
+
         # Check if all part IDs are consistent across different operations
         self.check_part_id_consistency(in_scope_data)
 
         # Reset index
         in_scope_data.reset_index(inplace=True, drop=True)
+
+        # Check batch size limit
+        for index, row in in_scope_data.iterrows():
+            assert (
+                row["Production Qty"] <= 12
+            ), f"Production Qty exceeds limit for job {row['Job ID']}: {row['Production Qty']}."
+            assert (
+                row["Production Qty"] > 0
+            ), f"Production Qty is nonsensical for job {row['Job ID']}: {row['Production Qty']}."
+
+        # Check in-scope orders
+        valid_substrings = ["OP 1", "OP 2", "ATT Primary"]
+        for index, row in in_scope_data.iterrows():
+            assert any(
+                substring in row["Part Description"] for substring in valid_substrings
+            ), f"Invalid product value found for job {row['Job ID']}: {row['Part Description']}."
+
+        # Check no products on hold
+        for index, row in in_scope_data.iterrows():
+            assert not row[
+                "On Hold?"
+            ], f"On Hold? is not False for job {row['Job ID']}: {row['On Hold?']}."
 
         return in_scope_data
 
@@ -705,7 +748,7 @@ class GeneticAlgorithmScheduler:
                 # Push to Monday morning
                 start += self.total_minutes_per_day
             elif weekday == 5:  # Saturday
-                if task != 1:  # If not task type 1, push to Monday
+                if task not in [1, 0]:  # If not task type 1, push to Monday
                     start += self.total_minutes_per_day * 2
                 else:
                     break  # Task type 1 can stay on Saturday
@@ -746,7 +789,14 @@ class GeneticAlgorithmScheduler:
             if (
                 after_hours_starts < 3
             ):  # Message from Bryan: 3 batches (36 parts total) can be preloaded in HAAS
-                if (starting_date + timedelta(minutes=next_avail_time)).weekday() == 6:  # Sunday
+                actual_start_datetime = starting_date + timedelta(minutes=next_avail_time)
+                weekday = actual_start_datetime.weekday()
+                time_in_day = actual_start_datetime.time()
+
+                # If the start time is Sunday or Saturday after 7PM, push to next working day
+                if weekday == 6 or (
+                    weekday == 5 and time_in_day >= datetime.strptime("19:00", "%H:%M").time()
+                ):
                     return int(self.adjust_start_time(next_avail_time))
                 else:
                     return next_avail_time
@@ -1235,13 +1285,13 @@ class GeneticAlgorithmScheduler:
         fixture_to_machine_assignment = self.assign_arbors_to_machines(arbor_frequencies)
 
         # Based on the random number we either randomly shuffle or apply some sorting logic
-        if random_roll < 0.4:
+        if random_roll < 0.6:
             random.shuffle(J_temp)
-        elif random_roll < 0.6:
-            J_temp.sort(key=lambda x: self.J[x][0])  # Sort on the part ID
         elif random_roll < 0.7:
-            J_temp.sort(key=lambda x: self.J[x][1], reverse=True)  # Sort on the due time
+            J_temp.sort(key=lambda x: self.J[x][0])  # Sort on the part ID
         elif random_roll < 0.8:
+            J_temp.sort(key=lambda x: self.J[x][1], reverse=True)  # Sort on the due time
+        elif random_roll < 0.9:
             J_temp.sort(key=lambda x: (self.J[x][0], self.J[x][1]), reverse=True)
         else:
             for job in self.urgent_orders:
@@ -1304,8 +1354,10 @@ class GeneticAlgorithmScheduler:
                         else:
                             changeover_duration = self.change_over_time_op2
 
+
                     if task_id in [1, 10, 30]:
-                        start = avail_m[m] + changeover_duration
+                        start = self.adjust_start_time(avail_m[m] + changeover_duration, task_id)
+
                     else:
                         start, slack_time_used = self.slack_logic(
                             m,
@@ -1382,7 +1434,8 @@ class GeneticAlgorithmScheduler:
             for i, future in enumerate(futures):
                 P_j = future.result()
 
-                # Add the new schedule to the population
+                # We risk creating duplicates because once we have a large population P, it becomes very time-consuming
+                # to check for every new schedule if it is/a duplicate of any of the existing schedules
                 P.append(P_j)
 
                 if not fill_inds and i * 100 / num_inds in percentages:
@@ -1483,6 +1536,13 @@ class GeneticAlgorithmScheduler:
             for schedule in self.P
         ]
 
+        # if display_scores:
+        #     logger.info(
+        #         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Best score: {max(self.scores)}, "
+        #         f"Median score: {np.median(self.scores)}, Worst score: {min(self.scores)}"
+        #     )
+        #     best_scores.append(max(self.scores))
+
         if display_scores:
             best_score = round(max(self.scores))
             top_1_percent = round(np.percentile(self.scores, 99))
@@ -1496,8 +1556,7 @@ class GeneticAlgorithmScheduler:
                 f"Top 1% score: {top_1_percent}, Top 5% score: {top_5_percent}, Top 10% score: {top_10_percent}, "
                 f"Median score: {median_score}, Worst score: {worst_score}"
             )
-
-            best_scores.append(max(self.scores))
+            best_scores.append(best_score)
 
     def resolve_conflict(self, P_prime: list) -> deque:
         """
@@ -1593,7 +1652,7 @@ class GeneticAlgorithmScheduler:
 
                     # First tasks of OP1 and OP2 do not need to consider slack
                     if task_id in [10]:
-                        start = avail_m[m] + changeover_duration
+                        start = self.adjust_start_time(avail_m[m] + changeover_duration, task_id)
                     else:
                         start, slack_time_used = self.slack_logic(
                             m,
@@ -1892,7 +1951,7 @@ class GeneticAlgorithmScheduler:
             num_inds=self.n * 10, arbor_frequencies=arbor_frequencies
         )
 
-        # Randomly select self.n lists from gene_pool
+        # Randomly sample the initial population from the improved gene pool
         self.P = random.sample(gene_pool, self.n)
 
         # Create double ended queue to append the results to
@@ -1919,8 +1978,10 @@ class GeneticAlgorithmScheduler:
             logger.info(
                 f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Time budget not set, using max_iterations"
             )
+
             for _ in range(scheduling_options["max_iterations"]):
                 iteration = self.perform_iteration(iteration, best_scores, gene_pool)
+
 
         schedules_and_scores = sorted(zip(self.P, self.scores), key=lambda x: x[1], reverse=True)
         self.best_schedule = schedules_and_scores[0][0]
@@ -2153,6 +2214,24 @@ def create_start_end_time(
                     f"The start time for job {machine_schedule.iloc[i]['Job']}, task {machine_schedule.iloc[i]['task']}"
                     f" in machine {machine} is earlier than the completion time of the previous task!"
                 )
+
+    # Check if the time between the end of one task and the start of the next is at least 15 minutes
+    # for machines with 'Drag' in the name
+    for machine in croom_reformatted_orders["Machine"].unique():
+        if "Drag" in machine:
+            machine_schedule = croom_reformatted_orders[
+                croom_reformatted_orders["Machine"] == machine
+            ].sort_values("Start_time")
+            for i in range(1, len(machine_schedule)):
+                previous_end_time = machine_schedule.iloc[i - 1]["End_time"]
+                current_start_time = machine_schedule.iloc[i]["Start_time"]
+                time_diff = current_start_time - previous_end_time
+                if time_diff < timedelta(
+                    minutes=15
+                ):  # TODO: Load from params after merging with test branch
+                    logger.warning(
+                        f"The time between tasks on {machine} is less than 15 minutes: {time_diff}"
+                    )
 
     # Sort again by job and task before plotting
     croom_reformatted_orders = croom_reformatted_orders.sort_values(["Job", "task"])
