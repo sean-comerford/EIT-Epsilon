@@ -51,10 +51,13 @@ class TestOutputSchedule:
     def test_chronological_order(self, project_context):
         """Tasks of the same job should be scheduled in chronological order with no overlap."""
         final_schedule = project_context.catalog.load("final_schedule")
+        scheduling_options = project_context.catalog.load("params:scheduling_options")
         for job_id in final_schedule["Order"].unique():
             job_schedule = final_schedule[final_schedule["Order"] == job_id]
             for i in range(1, len(job_schedule)):
-                assert job_schedule.iloc[i]["Start_time"] >= job_schedule.iloc[i - 1]["End_time"], (
+                assert job_schedule.iloc[i]["Start_time"] >= job_schedule.iloc[i - 1][
+                    "End_time"
+                ] + pd.Timedelta(minutes=scheduling_options["task_time_buffer"]), (
                     f"The start time for job {job_id}, task {job_schedule.iloc[i]['task']} "
                     f"is earlier than the completion time of the previous task!"
                 )
@@ -62,15 +65,16 @@ class TestOutputSchedule:
     def test_machine_task_order(self, project_context):
         """Tasks on the same machine should not overlap in time."""
         final_schedule = project_context.catalog.load("final_schedule")
+        scheduling_options = project_context.catalog.load("params:scheduling_options")
         for machine in final_schedule["Machine"].unique():
             machine_schedule = final_schedule[final_schedule["Machine"] == machine].sort_values(
                 "Start_time"
             )
             for i in range(1, len(machine_schedule)):
-                assert (
-                    machine_schedule.iloc[i]["Start_time"] >= machine_schedule.iloc[i - 1]["End_time"]
-                ), (
-                    f"The start time for job {machine_schedule.iloc[i]['Job']}, task {machine_schedule.iloc[i]['task']} "
+                assert machine_schedule.iloc[i]["Start_time"] >= machine_schedule.iloc[i - 1][
+                    "End_time"
+                ] + pd.Timedelta(minutes=scheduling_options["task_time_buffer"]), (
+                    f"The start time for job {machine_schedule.iloc[i]['Order']}, task {machine_schedule.iloc[i]['task']} "
                     f"in machine {machine} is earlier than the completion time of the previous task!"
                 )
 
