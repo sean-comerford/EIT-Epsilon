@@ -1354,7 +1354,6 @@ class GeneticAlgorithmScheduler:
                         else:
                             changeover_duration = self.change_over_time_op2
 
-
                     if task_id in [1, 10, 30]:
                         start = self.adjust_start_time(avail_m[m] + changeover_duration, task_id)
 
@@ -1981,7 +1980,6 @@ class GeneticAlgorithmScheduler:
 
             for _ in range(scheduling_options["max_iterations"]):
                 iteration = self.perform_iteration(iteration, best_scores, gene_pool)
-
 
         schedules_and_scores = sorted(zip(self.P, self.scores), key=lambda x: x[1], reverse=True)
         self.best_schedule = schedules_and_scores[0][0]
