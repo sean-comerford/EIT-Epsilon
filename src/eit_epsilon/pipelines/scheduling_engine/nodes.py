@@ -327,7 +327,7 @@ class Shop:
         part_id_to_task_seq: Dict[str, List[int]],
         in_scope_orders: pd.DataFrame,
         croom_task_durations: pd.DataFrame,
-    ) -> Dict[Tuple[str, int], float]:
+    ) -> Dict[Tuple[int, int], Any]:
         """
         Gets the duration matrix for the jobs.
 
@@ -373,7 +373,7 @@ class Shop:
                 duration = croom_task_durations.loc[task, type_size] * 12
 
                 # Store the duration in the dictionary with key (part_id, task)
-                dur[(part_id, task)] = duration
+                dur[(job_id, task)] = duration
 
         return dur
 
@@ -657,6 +657,7 @@ class GeneticAlgorithmScheduler:
         self.best_schedule = None
         self.working_minutes_per_day = None
         self.total_minutes_per_day = None
+        self.drag_machine_setup_time = None
         self.change_over_time_op1 = None
         self.change_over_time_op2 = None
         self.change_over_machines_op1 = None
@@ -1299,13 +1300,9 @@ class GeneticAlgorithmScheduler:
                             or product_m.get(m) == part_id
                             or product_m.get(m) in self.compatibility_dict[part_id]
                         ):  # Previous part was the same or compatible, or there wasn't a previous part
-                            changeover_duration = 15
-                        elif task_id in [10, 12, 16]:  # Drag machines
-                            changeover_duration = self.change_over_time_op2
+                            changeover_duration = self.drag_machine_setup_time
                         else:
-                            logger.warning(
-                                f"Only drag machines have changeovers in OP2! Task id: {task_id}"
-                            )
+                            changeover_duration = self.change_over_time_op2
 
                     if task_id in [1, 10, 30]:
                         start = avail_m[m] + changeover_duration
@@ -1481,7 +1478,6 @@ class GeneticAlgorithmScheduler:
                     # Only consider the completion time of the final task
                     if task_id in [7, 20, 44] or task_id in [1, 30]
                 )
-                + 2000000  # Add a constant to avoid negative scores
             )
             # Evaluate each schedule in the population
             for schedule in self.P
@@ -1591,13 +1587,9 @@ class GeneticAlgorithmScheduler:
                             or product_m.get(m) == part_id
                             or product_m.get(m) in self.compatibility_dict[part_id]
                         ):  # Previous part was the same or compatible, or there wasn't a previous part
-                            changeover_duration = 15
-                        elif task_id in [10, 12, 16]:  # Drag machines
-                            changeover_duration = self.change_over_time_op2
+                            changeover_duration = self.drag_machine_setup_time
                         else:
-                            logger.warning(
-                                f"Only drag machines have changeovers in OP2! Task id: {task_id}"
-                            )
+                            changeover_duration = self.change_over_time_op2
 
                     # First tasks of OP1 and OP2 do not need to consider slack
                     if task_id in [10]:
@@ -1870,6 +1862,7 @@ class GeneticAlgorithmScheduler:
         self.start_date = scheduling_options["start_date"]
         self.working_minutes_per_day = scheduling_options["working_minutes_per_day"]
         self.total_minutes_per_day = scheduling_options["total_minutes_per_day"]
+        self.drag_machine_setup_time = scheduling_options["drag_machine_setup_time"]
         self.change_over_time_op1 = scheduling_options["change_over_time_op1"]
         self.change_over_time_op2 = scheduling_options["change_over_time_op2"]
         self.change_over_machines_op1 = scheduling_options["change_over_machines_op1"]
