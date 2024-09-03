@@ -733,6 +733,7 @@ class GeneticAlgorithmScheduler:
         # Determine the current day cycle start time in minutes
         current_day_start: float = (start // self.total_minutes_per_day) * self.total_minutes_per_day
 
+        # TODO: Fix this
         # Adjust if start time is outside of working hours
         if start >= current_day_start + self.working_minutes_per_day:
             start = current_day_start + self.total_minutes_per_day
@@ -816,7 +817,11 @@ class GeneticAlgorithmScheduler:
             time_in_day = next_avail_time % self.total_minutes_per_day
 
             if time_in_day >= self.working_minutes_per_day:
-                next_avail_time = day_offset + self.total_minutes_per_day
+                overflow_time = time_in_day - self.working_minutes_per_day
+                next_avail_time = day_offset + self.total_minutes_per_day + overflow_time
+                logger.info(
+                    f"next_avail_time: {next_avail_time}, day_offset: {day_offset}, self.working_minutes_per_day: {self.working_minutes_per_day}, time_in_day: {time_in_day}, overflow_time: {overflow_time}"
+                )
             elif time_in_day < 0:
                 next_avail_time = day_offset
 
