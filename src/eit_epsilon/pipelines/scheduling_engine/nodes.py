@@ -1232,7 +1232,10 @@ class GeneticAlgorithmScheduler:
                             (unused_time[0], previous_task_finish)
                         )
 
-                        if slack_window_upd:
+                        if (
+                            slack_window_upd
+                            and slack_window_upd[1] - slack_window_upd[0] >= self.task_time_buffer
+                        ):
                             slack_m[m].append(slack_window_upd)
 
                     slack_time_used = True
@@ -1527,20 +1530,13 @@ class GeneticAlgorithmScheduler:
                         _,
                         _,
                     ) in schedule
-                    # Only consider the completion time of the final task
+                    # Only consider the completion time of the final task and HAAS machines
                     if task_id in [7, 20, 44] or task_id in [1, 30]
                 )
             )
             # Evaluate each schedule in the population
             for schedule in self.P
         ]
-
-        # if display_scores:
-        #     logger.info(
-        #         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Best score: {max(self.scores)}, "
-        #         f"Median score: {np.median(self.scores)}, Worst score: {min(self.scores)}"
-        #     )
-        #     best_scores.append(max(self.scores))
 
         if display_scores:
             best_score = round(max(self.scores))
@@ -1550,6 +1546,7 @@ class GeneticAlgorithmScheduler:
             median_score = round(np.median(self.scores))
             worst_score = round(min(self.scores))
 
+            # Diagnostic output: score distribution per generation
             logger.info(
                 f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Best score: {best_score}, "
                 f"Top 1% score: {top_1_percent}, Top 5% score: {top_5_percent}, Top 10% score: {top_10_percent}, "
