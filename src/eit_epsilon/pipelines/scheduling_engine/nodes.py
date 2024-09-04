@@ -715,7 +715,7 @@ class GeneticAlgorithmScheduler:
         self.task_time_buffer = None
 
     def adjust_start_time(
-        self, start: float, task: int = None, duration: int = 150
+        self, start: float, task: int = None, current_task_duration: int = 150
     ) -> Union[int, float]:
         """
         Adjusts the start time to ensure it falls within working hours. If the start time is outside the
@@ -725,7 +725,7 @@ class GeneticAlgorithmScheduler:
         Args:
             start (float): The initial start time in minutes from the reference start date.
             task (int): The task number as in parameters task_to_machines dictionary.
-            duration (int): The duration of the task in minutes.
+            current_task_duration (int): The duration of the task in minutes.
 
         Returns:
             Union[int, float]: The adjusted start time in minutes from the reference start date.
@@ -740,7 +740,7 @@ class GeneticAlgorithmScheduler:
         # TODO: Fix this
         # Adjust if start time is outside of working hours
         # if task in [2, 4, 5, 7, 14, 15, 16, 18, 20, 31, 35, 36, 39, 40, 41, 43, 44]:
-        if start >= current_day_start + self.working_minutes_per_day - duration:
+        if start >= current_day_start + self.working_minutes_per_day - current_task_duration:
             start = current_day_start + self.total_minutes_per_day
         # else:
         #     if start >= current_day_start + self.working_minutes_per_day:
@@ -808,19 +808,26 @@ class GeneticAlgorithmScheduler:
                 if weekday == 6 or (
                     weekday == 5 and time_in_day >= datetime.strptime("19:00", "%H:%M").time()
                 ):
-                    return self.adjust_start_time(next_avail_time, task_id)
+                    return self.adjust_start_time(
+                        next_avail_time, task_id, current_task_duration=duration
+                    )
                 else:
                     return next_avail_time
             else:
-                if next_avail_time >= self.adjust_start_time(next_avail_time, task_id):
+                if next_avail_time >= self.adjust_start_time(
+                    next_avail_time, task_id, current_task_duration=duration
+                ):
                     return next_avail_time
                 else:
                     return (
-                        self.adjust_start_time(next_avail_time, task_id) // self.total_minutes_per_day
+                        self.adjust_start_time(next_avail_time, task_id, current_task_duration=duration)
+                        // self.total_minutes_per_day
                     ) * self.total_minutes_per_day
         else:
             # For other tasks, ensure they are scheduled during working hours
-            next_avail_time = self.adjust_start_time(next_avail_time, task_id)
+            next_avail_time = self.adjust_start_time(
+                next_avail_time, task_id, current_task_duration=duration
+            )
 
             # # Determine if next_avail_time needs to be adjusted further for working hours
             # day_offset = (next_avail_time // self.total_minutes_per_day) * self.total_minutes_per_day
@@ -1006,7 +1013,9 @@ class GeneticAlgorithmScheduler:
 
         return m
 
-    def slack_window_check(self, slack: Tuple[float, float]) -> Optional[Tuple[float, float]]:
+    def slack_window_check(
+        self, slack: Tuple[float, float], current_task_duration: int = 150
+    ) -> Optional[Tuple[float, float]]:
         """
         Check and adjust a given slack time window to ensure it falls within valid working hours.
 
@@ -1035,7 +1044,7 @@ class GeneticAlgorithmScheduler:
 
         # Determine the window in which the start_time falls
         window_start = (start_time // self.total_minutes_per_day) * self.total_minutes_per_day
-        window_end = window_start + self.working_minutes_per_day
+        window_end = window_start + self.working_minutes_per_day - current_task_duration
 
         # Check if the start_time is within the valid window
         if start_time < window_start or start_time >= window_end:
@@ -1181,7 +1190,8 @@ class GeneticAlgorithmScheduler:
         if previous_task_finish > avail_m[m]:
             # Start time is the completion of the previous task of the job in question
             start = self.adjust_start_time(
-                previous_task_finish + changeover_duration + self.task_time_buffer, task=40
+                previous_task_finish + changeover_duration + self.task_time_buffer,
+                current_task_duration=current_task_dur,
             )
 
             # Difference between the moment the machine becomes available and the new tasks starts is slack
@@ -1189,7 +1199,8 @@ class GeneticAlgorithmScheduler:
             # We subtract changeover_duration, because even though the task actually starts later,
             # the changeover_duration cannot be used for a different task
             slack_window_upd = self.slack_window_check(
-                (avail_m[m], start - changeover_duration - self.task_time_buffer)
+                (avail_m[m], start - changeover_duration - self.task_time_buffer),
+                current_task_duration=current_task_dur,
             )
 
             if slack_window_upd:
@@ -1230,7 +1241,8 @@ class GeneticAlgorithmScheduler:
                                 + self.task_time_buffer
                             ),
                             unused_time[1],
-                        )
+                        ),
+                        current_task_duration=current_task_dur,
                     )
 
                     if slack_window_upd:
@@ -1244,7 +1256,8 @@ class GeneticAlgorithmScheduler:
                     # the changeover_duration cannot be used for a different task
                     if start == (previous_task_finish + changeover_duration + self.task_time_buffer):
                         slack_window_upd = self.slack_window_check(
-                            (unused_time[0], previous_task_finish)
+                            (unused_time[0], previous_task_finish),
+                            current_task_duration=current_task_dur,
                         )
 
                         if slack_window_upd:
@@ -1256,7 +1269,9 @@ class GeneticAlgorithmScheduler:
 
             # If slack time is not used, start when the machine becomes available
             if not slack_time_used:
-                start = self.adjust_start_time(avail_m[m] + changeover_duration, task=40)
+                start = self.adjust_start_time(
+                    avail_m[m] + changeover_duration, current_task_duration=current_task_dur
+                )
 
         if start is None:
             logger.warning("No real start time was defined!")
@@ -1370,7 +1385,11 @@ class GeneticAlgorithmScheduler:
                             changeover_duration = self.change_over_time_op2
 
                     if task_id in [1, 10, 30]:
-                        start = self.adjust_start_time(avail_m[m] + changeover_duration, task_id)
+                        start = self.adjust_start_time(
+                            avail_m[m] + changeover_duration,
+                            task_id,
+                            current_task_duration=self.dur[(job_id, task_id)],
+                        )
 
                     else:
                         start, slack_time_used = self.slack_logic(
@@ -1666,7 +1685,11 @@ class GeneticAlgorithmScheduler:
 
                     # First tasks of OP1 and OP2 do not need to consider slack
                     if task_id in [10]:
-                        start = self.adjust_start_time(avail_m[m] + changeover_duration, task_id)
+                        start = self.adjust_start_time(
+                            avail_m[m] + changeover_duration,
+                            task_id,
+                            current_task_duration=self.dur[(job_id, task_id)],
+                        )
                     else:
                         start, slack_time_used = self.slack_logic(
                             m,
