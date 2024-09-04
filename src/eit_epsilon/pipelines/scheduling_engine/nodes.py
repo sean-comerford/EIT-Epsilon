@@ -714,7 +714,9 @@ class GeneticAlgorithmScheduler:
         self.max_iterations = None
         self.task_time_buffer = None
 
-    def adjust_start_time(self, start: float, task: int = None) -> float:
+    def adjust_start_time(
+        self, start: float, task: int = None, duration: int = 150
+    ) -> Union[int, float]:
         """
         Adjusts the start time to ensure it falls within working hours. If the start time is outside the
         working hours, it is pushed to the start of the next working day. Additionally, if the start time
@@ -723,10 +725,12 @@ class GeneticAlgorithmScheduler:
         Args:
             start (float): The initial start time in minutes from the reference start date.
             task (int): The task number as in parameters task_to_machines dictionary.
+            duration (int): The duration of the task in minutes.
 
         Returns:
-            float: The adjusted start time in minutes from the reference start date.
+            Union[int, float]: The adjusted start time in minutes from the reference start date.
         """
+        # TODO: Add task to every function call of adjust_start_time
         # Convert start_date to datetime object
         starting_date: datetime = datetime.fromisoformat(self.start_date)
 
@@ -735,8 +739,12 @@ class GeneticAlgorithmScheduler:
 
         # TODO: Fix this
         # Adjust if start time is outside of working hours
-        if start >= current_day_start + self.working_minutes_per_day:
+        # if task in [2, 4, 5, 7, 14, 15, 16, 18, 20, 31, 35, 36, 39, 40, 41, 43, 44]:
+        if start >= current_day_start + self.working_minutes_per_day - duration:
             start = current_day_start + self.total_minutes_per_day
+        # else:
+        #     if start >= current_day_start + self.working_minutes_per_day:
+        #         start = current_day_start + self.total_minutes_per_day
 
         # Determine the adjusted start date and time
         actual_start_datetime: datetime = starting_date + timedelta(minutes=start)
@@ -760,7 +768,9 @@ class GeneticAlgorithmScheduler:
 
         return start
 
-    def find_avail_m(self, start: int, job_id: int, task_id: int, after_hours_starts: int = 0) -> int:
+    def find_avail_m(
+        self, start: int, job_id: int, task_id: int, after_hours_starts: int = 0
+    ) -> Union[int, float]:
         """
         Finds the next available time for a machine to start a task, considering the working day duration.
         Add 'task_time_buffer' between each task on a machine as switching time.
@@ -772,7 +782,7 @@ class GeneticAlgorithmScheduler:
             after_hours_starts (int): The number of hours after which jobs can run overnight.
 
         Returns:
-            int: The next available time for the machine to start the task.
+            Union[int, float]: The next available time for the machine to start the task.
         """
 
         # Extract part_id
@@ -798,7 +808,7 @@ class GeneticAlgorithmScheduler:
                 if weekday == 6 or (
                     weekday == 5 and time_in_day >= datetime.strptime("19:00", "%H:%M").time()
                 ):
-                    return int(self.adjust_start_time(next_avail_time))
+                    return self.adjust_start_time(next_avail_time, task_id)
                 else:
                     return next_avail_time
             else:
@@ -812,18 +822,18 @@ class GeneticAlgorithmScheduler:
             # For other tasks, ensure they are scheduled during working hours
             next_avail_time = self.adjust_start_time(next_avail_time, task_id)
 
-            # Determine if next_avail_time needs to be adjusted further for working hours
-            day_offset = (next_avail_time // self.total_minutes_per_day) * self.total_minutes_per_day
-            time_in_day = next_avail_time % self.total_minutes_per_day
-
-            if time_in_day >= self.working_minutes_per_day:
-                overflow_time = time_in_day - self.working_minutes_per_day
-                next_avail_time = day_offset + self.total_minutes_per_day + overflow_time
-                logger.info(
-                    f"next_avail_time: {next_avail_time}, day_offset: {day_offset}, self.working_minutes_per_day: {self.working_minutes_per_day}, time_in_day: {time_in_day}, overflow_time: {overflow_time}"
-                )
-            elif time_in_day < 0:
-                next_avail_time = day_offset
+            # # Determine if next_avail_time needs to be adjusted further for working hours
+            # day_offset = (next_avail_time // self.total_minutes_per_day) * self.total_minutes_per_day
+            # time_in_day = next_avail_time % self.total_minutes_per_day
+            #
+            # if time_in_day >= self.working_minutes_per_day:
+            #     overflow_time = time_in_day - self.working_minutes_per_day
+            #     next_avail_time = day_offset + self.total_minutes_per_day
+            #     assert False, f"Overflow time: {overflow_time} minutes for job {job_id}, task {task_id}"
+            #
+            # elif time_in_day < 0:
+            #     next_avail_time = day_offset
+            #     assert False, f"Negative time: {time_in_day} minutes for job {job_id}, task {task_id}"
 
             return next_avail_time
 
@@ -1171,7 +1181,7 @@ class GeneticAlgorithmScheduler:
         if previous_task_finish > avail_m[m]:
             # Start time is the completion of the previous task of the job in question
             start = self.adjust_start_time(
-                previous_task_finish + changeover_duration + self.task_time_buffer
+                previous_task_finish + changeover_duration + self.task_time_buffer, task=40
             )
 
             # Difference between the moment the machine becomes available and the new tasks starts is slack
@@ -1246,7 +1256,7 @@ class GeneticAlgorithmScheduler:
 
             # If slack time is not used, start when the machine becomes available
             if not slack_time_used:
-                start = self.adjust_start_time(avail_m[m] + changeover_duration)
+                start = self.adjust_start_time(avail_m[m] + changeover_duration, task=40)
 
         if start is None:
             logger.warning("No real start time was defined!")
