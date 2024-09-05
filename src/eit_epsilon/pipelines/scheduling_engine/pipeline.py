@@ -26,18 +26,10 @@ def create_pipeline(**kwargs) -> Pipeline:
                 name="preprocess_orders",
             ),
             node(
-                func=jobshop.preprocess_cycle_times,
-                inputs=["monza_cycle_times_op1", "monza_cycle_times_op2"],
-                outputs=["ps_cycle_times", "cr_cycle_times", "op2_cycle_times"],
-                name="preprocess_cycle_times",
-            ),
-            node(
                 func=jobshop.build_ga_representation,
                 inputs=[
                     "croom_processed_orders",
-                    "cr_cycle_times",
-                    "ps_cycle_times",
-                    "op2_cycle_times",
+                    "croom_task_durations",
                     "params:task_to_machines",
                     "params:scheduling_options",
                 ],
