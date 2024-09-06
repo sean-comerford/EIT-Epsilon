@@ -59,6 +59,7 @@ def create_pipeline(**kwargs) -> Pipeline:
                     "params:scheduling_options",
                     "compatibility_dict",
                     "arbor_dict",
+                    "params:ghost_machine_dict",
                     "params:cemented_arbors",
                 ],
                 outputs=["best_schedule", "best_scores"],
