@@ -1124,6 +1124,7 @@ class GeneticAlgorithmScheduler:
         previous_task_start: float,
         previous_task_dur: float,
         current_task_dur: float,
+        job_id,
         changeover_duration: int = 0,
     ):
         """
@@ -1193,13 +1194,11 @@ class GeneticAlgorithmScheduler:
 
                 if slack_window_upd:
                     slack_m[ghost_m].append(slack_window_upd)
-                    # logger.warning("Updated slack window for ghost machine.")
 
         else:
             ghost_m = self.ghost_machine_dict.get(m)
-            if ghost_m:
-                # logger.warning("Ghost m")
-                for unused_time in slack_m[ghost_m]:
+            if m == 31:
+                for unused_time in slack_m[32]:
                     if (unused_time[0] >= previous_task_finish) and (
                         unused_time[0] + current_task_dur
                     ) <= unused_time[1]:
@@ -1209,11 +1208,19 @@ class GeneticAlgorithmScheduler:
                         # logger.warning("Ghost m window found!")
                         start = unused_time[0]
 
+                        # logger.warning(f"slack_m[ghost_m]: {slack_m[32]}")
+                        # logger.warning(f"job_id: {job_id}, m: {m}, unused_time: {unused_time}")
+                        # logger.warning(
+                        #     f"previous_task_finish: {previous_task_finish}, start: {start}, unused_time[1]: {unused_time[1]}\n")
                         # Remove the slack period if it has been used
-                        slack_m[ghost_m].remove(unused_time)
+
+                        slack_m[32].remove(unused_time)
 
                         # Switch the machine that is being used to the ghost machine
-                        m = ghost_m
+                        m = 32
+
+                        # Slack time has been used
+                        slack_time_used = True
 
                         break
 
@@ -1238,6 +1245,16 @@ class GeneticAlgorithmScheduler:
 
                         # Remove the slack period if it has been used
                         slack_m[m].remove(unused_time)
+
+                        # TODO: Check if this works
+                        # if m in self.ghost_machine_dict:
+                        #     ghost_m = self.ghost_machine_dict[m]
+                        #
+                        #     # The 'slack' of the ghost machine is defined as the actual running time of real task
+                        #     slack_window_upd = self.slack_window_check((start, start + current_task_dur))
+                        #
+                        #     if slack_window_upd:
+                        #         slack_m[ghost_m].append(slack_window_upd)
 
                         # We add the remaining time between when the task finishes and the end of the slack window
                         # as a new slack window
@@ -1282,6 +1299,15 @@ class GeneticAlgorithmScheduler:
             # If slack time is not used, start when the machine becomes available
             if not slack_time_used:
                 start = self.adjust_start_time(avail_m[m] + changeover_duration)
+
+                if m in self.ghost_machine_dict:
+                    ghost_m = self.ghost_machine_dict[m]
+
+                    # The 'slack' of the ghost machine is defined as the actual running time of real task
+                    slack_window_upd = self.slack_window_check((start, start + current_task_dur))
+
+                    if slack_window_upd:
+                        slack_m[ghost_m].append(slack_window_upd)
 
         if start is None:
             logger.warning("No real start time was defined!")
@@ -1379,10 +1405,16 @@ class GeneticAlgorithmScheduler:
                             P_j[-1][3] if P_j else 0,
                             P_j[-1][4] if P_j else 0,
                             self.dur[(job_id, task_id)],
+                            job_id,
                             changeover_duration,
                         )
 
                 # Add task to schedule
+                if m == 32:
+                    logger.warning(
+                        f"{(job_id, task_id, m, start, self.dur[(job_id, task_id)], 0, part_id)}\n"
+                    )
+
                 task_tuple = (job_id, task_id, m, start, self.dur[(job_id, task_id)], 0, part_id)
                 P_j.append(task_tuple)
 
@@ -1395,6 +1427,8 @@ class GeneticAlgorithmScheduler:
                     avail_m[m] = self.find_avail_m(start, job_id, task_id, after_hours_starts)
 
                 product_m[m] = part_id
+
+        logger.warning("\n INDIVIDUAL END \n")
 
         return P_j
 
@@ -1661,6 +1695,7 @@ class GeneticAlgorithmScheduler:
                             P_prime_sorted[-1][3],
                             P_prime_sorted[-1][4],
                             self.dur[(job_id, task_id)],
+                            job_id,
                             changeover_duration,
                         )
 
@@ -1881,7 +1916,7 @@ class GeneticAlgorithmScheduler:
         """
         logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Iteration {iteration + 1}")
         self.evaluate_population(best_scores=best_scores)
-        self.mutate()
+        # self.mutate()
         if len(self.P) < self.n:
             self.P += random.sample(gene_pool, self.n - len(self.P))
         iteration += 1
