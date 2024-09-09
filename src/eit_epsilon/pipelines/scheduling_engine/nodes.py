@@ -918,11 +918,11 @@ class GeneticAlgorithmScheduler:
         machine_index_cemented = 0
 
         # Initialize machine lists
-        machines_cementless = list(reversed(self.change_over_machines_op1))
-        machines_cemented = self.cemented_only_haas_machines
+        machines_cementless = self.change_over_machines_op1
+        machines_cemented = list(reversed(self.cemented_only_haas_machines))
 
         # Randomly select machines
-        # For cementless: [6, 5, 4, 3, 2, 1], [6, 5, 4, 3, 2] or [6, 5, 4, 3]
+        # For cementless: [1, 2, 3, 4, 5, 6], [1, 2, 3, 4, 5], [1, 2, 3, 4],
         # The latter options have fewer machines but also less overlap with cemented machines
         selected_machines_cls = random.choice(
             [machines_cementless, machines_cementless[:-1], machines_cementless[:-2]]
@@ -936,13 +936,13 @@ class GeneticAlgorithmScheduler:
             # Determine if the arbor is cementless or cemented based on its number
             if not cemented:
                 # Cementless arbors
-                # Randomly select all: [6, 5, 4, 3, 2, 1], first five: [6, 5, 4, 3, 2], or first four: [6, 5, 4, 3]
+                # Randomly select all: [1, 2, 3, 4, 5, 6], first five: [1, 2, 3, 4, 5], or first four: [1, 2, 3, 4],
                 # Selecting less will lead to less overlap with cemented arbors
                 machines = selected_machines_cls
                 machine_index = machine_index_cementless
             else:
                 # Cemented arbors
-                # Randomly select from cemented machines: [1, 2, 3] or [1, 2]
+                # Randomly select from cemented machines: [6, 5, 4], [6, 5]
                 machines = selected_machines_ctd
                 machine_index = machine_index_cemented
 
@@ -1197,11 +1197,13 @@ class GeneticAlgorithmScheduler:
 
         else:
             ghost_m = self.ghost_machine_dict.get(m)
-            if m == 31:
-                for unused_time in slack_m[32]:
+            if ghost_m:
+                for unused_time in slack_m[ghost_m]:
                     if (unused_time[0] >= previous_task_finish) and (
                         unused_time[0] + current_task_dur
-                    ) <= unused_time[1]:
+                    ) <= unused_time[
+                        1
+                    ] + 2:  # TODO: Check if the two minutes are necessary
                         # New starting time is the largest of the beginning of the slack time or the time when the
                         # previous task of the job is completed
                         # Task can only start once changeover is completed
@@ -1214,10 +1216,10 @@ class GeneticAlgorithmScheduler:
                         #     f"previous_task_finish: {previous_task_finish}, start: {start}, unused_time[1]: {unused_time[1]}\n")
                         # Remove the slack period if it has been used
 
-                        slack_m[32].remove(unused_time)
+                        slack_m[ghost_m].remove(unused_time)
 
                         # Switch the machine that is being used to the ghost machine
-                        m = 32
+                        m = ghost_m
 
                         # Slack time has been used
                         slack_time_used = True
@@ -1247,14 +1249,14 @@ class GeneticAlgorithmScheduler:
                         slack_m[m].remove(unused_time)
 
                         # TODO: Check if this works
-                        # if m in self.ghost_machine_dict:
-                        #     ghost_m = self.ghost_machine_dict[m]
-                        #
-                        #     # The 'slack' of the ghost machine is defined as the actual running time of real task
-                        #     slack_window_upd = self.slack_window_check((start, start + current_task_dur))
-                        #
-                        #     if slack_window_upd:
-                        #         slack_m[ghost_m].append(slack_window_upd)
+                        if m in self.ghost_machine_dict:
+                            ghost_m = self.ghost_machine_dict[m]
+
+                            # The 'slack' of the ghost machine is defined as the actual running time of real task
+                            slack_window_upd = self.slack_window_check((start, start + current_task_dur))
+
+                            if slack_window_upd:
+                                slack_m[ghost_m].append(slack_window_upd)
 
                         # We add the remaining time between when the task finishes and the end of the slack window
                         # as a new slack window
@@ -1377,12 +1379,12 @@ class GeneticAlgorithmScheduler:
                     m = self.pick_early_machine(task_id, avail_m, random_roll)
                     changeover_duration = 0
 
-                    # Updated ghost machine logic
-                    if m in self.ghost_machine_dict:
-                        paired_m = self.ghost_machine_dict[m]
-                        start = max(avail_m[m], avail_m[paired_m])
-                    else:
-                        start = avail_m[m]
+                    # # Updated ghost machine logic
+                    # if m in self.ghost_machine_dict:
+                    #     paired_m = self.ghost_machine_dict[m]
+                    #     start = max(avail_m[m], avail_m[paired_m])
+                    # else:
+                    start = avail_m[m]
 
                     if m in self.change_over_machines_op2:
                         if (
@@ -1394,7 +1396,7 @@ class GeneticAlgorithmScheduler:
                         else:
                             changeover_duration = self.change_over_time_op2
 
-                    if task_id in [1, 10, 30]:
+                    if task_id in [1, 30]:
                         start = self.adjust_start_time(start + changeover_duration, task_id)
                     else:
                         start, slack_time_used, m = self.slack_logic(
@@ -1402,18 +1404,18 @@ class GeneticAlgorithmScheduler:
                             avail_m,
                             slack_m,
                             slack_time_used,
-                            P_j[-1][3] if P_j else 0,
-                            P_j[-1][4] if P_j else 0,
+                            P_j[-1][3] if P_j and task_id not in [10] else 0,
+                            P_j[-1][4] if P_j and task_id not in [10] else 0,
                             self.dur[(job_id, task_id)],
                             job_id,
                             changeover_duration,
                         )
 
                 # Add task to schedule
-                if m == 32:
-                    logger.warning(
-                        f"{(job_id, task_id, m, start, self.dur[(job_id, task_id)], 0, part_id)}\n"
-                    )
+                # if m == 32:
+                #     logger.warning(
+                #         f"{(job_id, task_id, m, start, self.dur[(job_id, task_id)], 0, part_id)}\n"
+                #     )
 
                 task_tuple = (job_id, task_id, m, start, self.dur[(job_id, task_id)], 0, part_id)
                 P_j.append(task_tuple)
@@ -1427,8 +1429,6 @@ class GeneticAlgorithmScheduler:
                     avail_m[m] = self.find_avail_m(start, job_id, task_id, after_hours_starts)
 
                 product_m[m] = part_id
-
-        logger.warning("\n INDIVIDUAL END \n")
 
         return P_j
 
@@ -1916,7 +1916,7 @@ class GeneticAlgorithmScheduler:
         """
         logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Iteration {iteration + 1}")
         self.evaluate_population(best_scores=best_scores)
-        # self.mutate()
+        self.mutate()
         if len(self.P) < self.n:
             self.P += random.sample(gene_pool, self.n - len(self.P))
         iteration += 1
