@@ -1263,7 +1263,10 @@ class GeneticAlgorithmScheduler:
                             current_task_duration=current_task_dur,
                         )
 
-                        if slack_window_upd:
+                        if (
+                            slack_window_upd
+                            and slack_window_upd[1] - slack_window_upd[0] >= self.task_time_buffer
+                        ):
                             slack_m[m].append(slack_window_upd)
 
                     slack_time_used = True
@@ -1565,8 +1568,10 @@ class GeneticAlgorithmScheduler:
                         _,
                         _,
                     ) in schedule
+
                     # Only consider the completion time of the final task
                     if task in [7, 20, 44] or task in [1, 30]
+
                 )
             )
             # Evaluate each schedule in the population
@@ -1581,6 +1586,7 @@ class GeneticAlgorithmScheduler:
             median_score = round(np.median(self.scores))
             worst_score = round(min(self.scores))
 
+            # Diagnostic output: score distribution per generation
             logger.info(
                 f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Best score: {best_score}, "
                 f"Top 1% score: {top_1_percent}, Top 5% score: {top_5_percent}, Top 10% score: {top_10_percent}, "
