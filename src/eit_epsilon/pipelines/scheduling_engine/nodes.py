@@ -1115,8 +1115,8 @@ class GeneticAlgorithmScheduler:
         # Return the preferred machines
         return preferred_machines
 
+    @staticmethod
     def update_ghost_machine_slack(
-        self,
         ghost_machine_dict: Dict[int, int],
         slack_m: Dict[int, deque],
         m: int,
@@ -1141,10 +1141,10 @@ class GeneticAlgorithmScheduler:
         ghost_m = ghost_machine_dict.get(m)
         if ghost_m is not None:
             # The 'slack' of the ghost machine is defined as the actual running time of real task
-            begin_time_slack, end_time_slack = self.slack_window_check((start, start + current_task_dur))
-
             # Part_id must be added to the tuple for the ghost machine logic
-            slack_window_upd = (begin_time_slack, end_time_slack, part_id)
+            # NOTE: slack_window_check not required for ghost machines; it is already ensured that working hours
+            # are respected for the real machine and task
+            slack_window_upd = (start, start + current_task_dur, part_id)
 
             if slack_window_upd:
                 slack_m[ghost_m].append(slack_window_upd)
@@ -1176,22 +1176,25 @@ class GeneticAlgorithmScheduler:
             changeover_duration (int): Changeover duration in whole minutes.
 
         Returns:
-            Tuple[float, bool]: A tuple containing the determined start time for the current task and a boolean indicating
-            whether slack time was used.
+            Tuple[float, bool, m]: A tuple containing the determined start time for the current task, a boolean indicating
+            whether slack time was used, and the machine identifier.
 
         The function operates as follows:
         1. Initializes the `start` variable to `None`.
         2. Checks if the previous task ends after the machine becomes available. If so:
             - Sets `start` to the completion time of the previous task.
             - Adds a slack window representing the time between the machine becoming available and the new task's start time.
+            - Adds ghost machine slack if applicable.
         3. If the previous task does not overlap the machine's availability:
             - Iterates over existing slack windows for the machine.
             - Checks if the task can fit within any slack window:
                 - Sets `start` to the later of the slack window's start or the previous task's end.
                 - Removes the used slack window.
                 - Adds new slack windows for any remaining time before or after the task within the original slack window.
+                - Adds ghost machine slack if applicable.
                 - Sets `slack_time_used` to `True` if a slack window is used.
         4. If no slack time is used, sets `start` to the machine's available time.
+            - Adds ghost machine slack if applicable.
         5. Logs a warning if no valid start time is determined.
         6. Returns the `start` time and the `slack_time_used` flag.
         """
