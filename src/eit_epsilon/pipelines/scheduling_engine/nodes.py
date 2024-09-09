@@ -1115,6 +1115,40 @@ class GeneticAlgorithmScheduler:
         # Return the preferred machines
         return preferred_machines
 
+    def update_ghost_machine_slack(
+        self,
+        ghost_machine_dict: Dict[int, int],
+        slack_m: Dict[int, deque],
+        m: int,
+        start: float,
+        current_task_dur: float,
+        part_id: str,
+    ) -> None:
+        """
+        Updates the slack time for the ghost machine associated with the given machine.
+        Tasks on the ghost machine must run simultaneously with the real machine.
+        Together, this represents running two batches on a single machine.
+        Hence, for ghost machines the slack is defined as the actual running time of the task on the given machine.
+
+        Args:
+            ghost_machine_dict (Dict[int, int]): Dictionary mapping real machines to their ghost machines.
+            slack_m (Dict[int, deque]): Dictionary mapping machines to their slack windows.
+            m (int): The machine identifier.
+            start (float): The start time of the task.
+            current_task_dur (float): The duration of the current task.
+            part_id (str): The part ID of the current task.
+        """
+        ghost_m = ghost_machine_dict.get(m)
+        if ghost_m is not None:
+            # The 'slack' of the ghost machine is defined as the actual running time of real task
+            begin_time_slack, end_time_slack = self.slack_window_check((start, start + current_task_dur))
+
+            # Part_id must be added to the tuple for the ghost machine logic
+            slack_window_upd = (begin_time_slack, end_time_slack, part_id)
+
+            if slack_window_upd:
+                slack_m[ghost_m].append(slack_window_upd)
+
     def slack_logic(
         self,
         m: int,
@@ -1124,7 +1158,7 @@ class GeneticAlgorithmScheduler:
         previous_task_start: float,
         previous_task_dur: float,
         current_task_dur: float,
-        job_id,
+        part_id: str,
         changeover_duration: int = 0,
     ):
         """
@@ -1138,6 +1172,7 @@ class GeneticAlgorithmScheduler:
             previous_task_start (float): The start time of the previous task.
             previous_task_dur (float): The duration of the previous task.
             current_task_dur (float): The duration of the current task.
+            part_id (str): The part ID of the current task.
             changeover_duration (int): Changeover duration in whole minutes.
 
         Returns:
@@ -1185,37 +1220,28 @@ class GeneticAlgorithmScheduler:
             if slack_window_upd:
                 slack_m[m].append(slack_window_upd)
 
-            # TODO: Update for second machine
-            if m in self.ghost_machine_dict:
-                ghost_m = self.ghost_machine_dict[m]
-
-                # The 'slack' of the ghost machine is defined as the actual running time of real task
-                slack_window_upd = self.slack_window_check((start, start + current_task_dur))
-
-                if slack_window_upd:
-                    slack_m[ghost_m].append(slack_window_upd)
+            # If the machine has a ghost machine, we can define the real running time of the original/main machine
+            # as slack on the ghost machine
+            self.update_ghost_machine_slack(
+                self.ghost_machine_dict, slack_m, m, start, current_task_dur, part_id
+            )
 
         else:
             ghost_m = self.ghost_machine_dict.get(m)
+            # If a ghost machine is available, we check the slack of the ghost machine
             if ghost_m:
                 for unused_time in slack_m[ghost_m]:
-                    if (unused_time[0] >= previous_task_finish) and (
-                        unused_time[0] + current_task_dur
-                    ) <= unused_time[
-                        1
-                    ] + 2:  # TODO: Check if the two minutes are necessary
-                        # New starting time is the largest of the beginning of the slack time or the time when the
-                        # previous task of the job is completed
-                        # Task can only start once changeover is completed
-                        # logger.warning("Ghost m window found!")
+                    # Ghost machines require equal start and end times and matching part_id to the paired machine
+                    # The third field in the tuple `unused_time[2]` contains the part_id
+                    if (
+                        (unused_time[0] >= previous_task_finish)
+                        and (unused_time[0] + current_task_dur) <= unused_time[1]
+                        and (unused_time[2] == part_id)
+                    ):
+                        # For a ghost machine start time must be equal to the start of a task on the paired machine
                         start = unused_time[0]
 
-                        # logger.warning(f"slack_m[ghost_m]: {slack_m[32]}")
-                        # logger.warning(f"job_id: {job_id}, m: {m}, unused_time: {unused_time}")
-                        # logger.warning(
-                        #     f"previous_task_finish: {previous_task_finish}, start: {start}, unused_time[1]: {unused_time[1]}\n")
                         # Remove the slack period if it has been used
-
                         slack_m[ghost_m].remove(unused_time)
 
                         # Switch the machine that is being used to the ghost machine
@@ -1248,15 +1274,11 @@ class GeneticAlgorithmScheduler:
                         # Remove the slack period if it has been used
                         slack_m[m].remove(unused_time)
 
-                        # TODO: Check if this works
-                        if m in self.ghost_machine_dict:
-                            ghost_m = self.ghost_machine_dict[m]
-
-                            # The 'slack' of the ghost machine is defined as the actual running time of real task
-                            slack_window_upd = self.slack_window_check((start, start + current_task_dur))
-
-                            if slack_window_upd:
-                                slack_m[ghost_m].append(slack_window_upd)
+                        # If the main machine task is scheduled to run during slack_time, we can again create a slack
+                        # window for the ghost machine during the run-time of the task
+                        self.update_ghost_machine_slack(
+                            self.ghost_machine_dict, slack_m, m, start, current_task_dur, part_id
+                        )
 
                         # We add the remaining time between when the task finishes and the end of the slack window
                         # as a new slack window
@@ -1302,14 +1324,11 @@ class GeneticAlgorithmScheduler:
             if not slack_time_used:
                 start = self.adjust_start_time(avail_m[m] + changeover_duration)
 
-                if m in self.ghost_machine_dict:
-                    ghost_m = self.ghost_machine_dict[m]
-
-                    # The 'slack' of the ghost machine is defined as the actual running time of real task
-                    slack_window_upd = self.slack_window_check((start, start + current_task_dur))
-
-                    if slack_window_upd:
-                        slack_m[ghost_m].append(slack_window_upd)
+                # Again, if the machine has a ghost machine, we can define the real running time of the task
+                # on the original/main machine as slack on the ghost machine
+                self.update_ghost_machine_slack(
+                    self.ghost_machine_dict, slack_m, m, start, current_task_dur, part_id
+                )
 
         if start is None:
             logger.warning("No real start time was defined!")
@@ -1377,13 +1396,11 @@ class GeneticAlgorithmScheduler:
                         changeover_finish_time.append(start)
                 else:
                     m = self.pick_early_machine(task_id, avail_m, random_roll)
+
+                    # Initialize changeover duration as 0 (this will apply in most cases)
                     changeover_duration = 0
 
-                    # # Updated ghost machine logic
-                    # if m in self.ghost_machine_dict:
-                    #     paired_m = self.ghost_machine_dict[m]
-                    #     start = max(avail_m[m], avail_m[paired_m])
-                    # else:
+                    # Initialize start time as machine availability
                     start = avail_m[m]
 
                     if m in self.change_over_machines_op2:
@@ -1396,27 +1413,26 @@ class GeneticAlgorithmScheduler:
                         else:
                             changeover_duration = self.change_over_time_op2
 
-                    if task_id in [1, 30]:
-                        start = self.adjust_start_time(start + changeover_duration, task_id)
-                    else:
-                        start, slack_time_used, m = self.slack_logic(
-                            m,
-                            avail_m,
-                            slack_m,
-                            slack_time_used,
-                            P_j[-1][3] if P_j and task_id not in [10] else 0,
-                            P_j[-1][4] if P_j and task_id not in [10] else 0,
-                            self.dur[(job_id, task_id)],
-                            job_id,
-                            changeover_duration,
-                        )
+                    # if task_id in [1, 30]:  # TODO: Can we remove this without issue?
+                    #     start = self.adjust_start_time(start + changeover_duration, task_id)
+                    # else:
+                    start, slack_time_used, m = self.slack_logic(
+                        m,
+                        avail_m,
+                        slack_m,
+                        slack_time_used,
+                        P_j[-1][3]
+                        if P_j and task_id not in [10]
+                        else 0,  # Task 10 is the first task of OP2,
+                        P_j[-1][4]
+                        if P_j and task_id not in [10]
+                        else 0,  # hence no previous task duration
+                        self.dur[(job_id, task_id)],
+                        part_id,
+                        changeover_duration,
+                    )
 
                 # Add task to schedule
-                # if m == 32:
-                #     logger.warning(
-                #         f"{(job_id, task_id, m, start, self.dur[(job_id, task_id)], 0, part_id)}\n"
-                #     )
-
                 task_tuple = (job_id, task_id, m, start, self.dur[(job_id, task_id)], 0, part_id)
                 P_j.append(task_tuple)
 
@@ -1424,7 +1440,6 @@ class GeneticAlgorithmScheduler:
                 if m in self.change_over_machines_op1:
                     after_hours_starts = self.count_after_hours_start(P_j, m, start)
 
-                # TODO: Check if this is required: and m not in [10, 24, 28, 30, 32, 29]
                 if not slack_time_used:
                     avail_m[m] = self.find_avail_m(start, job_id, task_id, after_hours_starts)
 
@@ -1684,20 +1699,20 @@ class GeneticAlgorithmScheduler:
                             changeover_duration = self.change_over_time_op2
 
                     # First tasks of OP1 and OP2 do not need to consider slack
-                    if task_id in [10]:
-                        start = self.adjust_start_time(avail_m[m] + changeover_duration, task_id)
-                    else:
-                        start, slack_time_used, m = self.slack_logic(
-                            m,
-                            avail_m,
-                            slack_m,
-                            slack_time_used,
-                            P_prime_sorted[-1][3],
-                            P_prime_sorted[-1][4],
-                            self.dur[(job_id, task_id)],
-                            job_id,
-                            changeover_duration,
-                        )
+                    # if task_id in [1, 30]:
+                    #     start = self.adjust_start_time(avail_m[m] + changeover_duration, task_id)
+                    # else:
+                    start, slack_time_used, m = self.slack_logic(
+                        m,
+                        avail_m,
+                        slack_m,
+                        slack_time_used,
+                        P_prime_sorted[-1][3] if P_prime_sorted and task_id not in [10] else 0,
+                        P_prime_sorted[-1][4] if P_prime_sorted and task_id not in [10] else 0,
+                        self.dur[(job_id, task_id)],
+                        part_id,
+                        changeover_duration,
+                    )
 
                 # If slack time is used no need to update latest machine availability
                 if not slack_time_used:
@@ -1850,14 +1865,8 @@ class GeneticAlgorithmScheduler:
                             custom_part_id_1 = task_details_1[0][-1]
                             custom_part_id_2 = task_details_2[0][-1]
 
-                            # Check compatibility in both dictionaries safely
-                            # This is required to make sure no extra changeover will be needed due to mutation
-                            compat_op = custom_part_id_1 in self.compatibility_dict.get(
-                                custom_part_id_2, []
-                            )
-
                             # If the part ID between the jobs is the same, or they are compatible append to job pairs
-                            if (custom_part_id_1 == custom_part_id_2) or compat_op:
+                            if custom_part_id_1 == custom_part_id_2:
                                 job_pairs.append((job1, job2))
 
             # If no pairs found, continue to the next schedule
@@ -1938,6 +1947,7 @@ class GeneticAlgorithmScheduler:
             input_repr_dict (Dict[str, Any]): A dictionary containing the necessary input variables for the GA.
             scheduling_options (Dict[str, Any]): Dictionary containing hyperparameters for running the algorithm.
             compatibility_dict (Dict[str, Any]): Dictionary containing the compatibility information for changeovers.
+            ghost_machine_dict (Dict[int, int]): Dictionary containing mapping from machines to ghost machines
             arbor_dict (Dict[str, Any]): Dictionary containing the arbor information for changeovers [custom_part_id: arbor_num].
             cemented_arbors (Dict[str, str]): Dictionary containing the cemented arbor information.
 

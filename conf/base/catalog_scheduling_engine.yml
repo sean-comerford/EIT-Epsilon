@@ -10,10 +10,10 @@ orders:
 
 croom_open_orders:
   type: pandas.ExcelDataset
-  filepath: data/01_raw/Week 9 open orders.xlsm
+  filepath: data/01_raw/Week 11 open orders.xlsm
   load_args:
     engine: openpyxl
-    sheet_name: Data Week 9
+    sheet_name: Data Week 11
 
 monza_cycle_times_op1:
   type: pandas.ExcelDataset
