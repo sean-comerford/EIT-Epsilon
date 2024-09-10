@@ -1841,14 +1841,8 @@ class GeneticAlgorithmScheduler:
                             custom_part_id_1 = task_details_1[0][-1]
                             custom_part_id_2 = task_details_2[0][-1]
 
-                            # Check compatibility in both dictionaries safely
-                            # This is required to make sure no extra changeover will be needed due to mutation
-                            compat_op = custom_part_id_1 in self.compatibility_dict.get(
-                                custom_part_id_2, []
-                            )
-
                             # If the part ID between the jobs is the same, or they are compatible append to job pairs
-                            if (custom_part_id_1 == custom_part_id_2) or compat_op:
+                            if custom_part_id_1 == custom_part_id_2:
                                 job_pairs.append((job1, job2))
 
             # If no pairs found, continue to the next schedule
