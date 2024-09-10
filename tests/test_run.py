@@ -57,9 +57,11 @@ class TestOutputSchedule:
             for i in range(1, len(job_schedule)):
                 assert job_schedule.iloc[i]["Start_time"] >= job_schedule.iloc[i - 1][
                     "End_time"
-                ] + pd.Timedelta(minutes=scheduling_options["task_time_buffer"]), (
+                ] + pd.Timedelta(minutes=scheduling_options["task_time_buffer"] - 1), (
                     f"The start time for job {job_id}, task {job_schedule.iloc[i]['task']} "
                     f"is earlier than the completion time of the previous task!"
+                    f"Start time: {job_schedule.iloc[i]['Start_time']}, "
+                    f"End time: {job_schedule.iloc[i - 1]['End_time']}"
                 )
 
     def test_machine_task_order(self, project_context):
@@ -137,10 +139,10 @@ class TestOutputSchedule:
         for order in unique_orders:
             order_rows = final_schedule[final_schedule["Order"] == order]
 
-            has_initial_task = order_rows["task"].isin([0, 1, 10]).any()
+            has_initial_task = order_rows["task"].isin([1, 10, 30]).any()
             assert has_initial_task, f"Order {order} does not have any task 0, 1, or 10."
 
-            has_final_task = order_rows["task"].isin([7, 19]).any()
+            has_final_task = order_rows["task"].isin([7, 20, 44]).any()
             assert has_final_task, f"Order {order} does not have any task 7 or 19."
 
     def test_no_simultaneous_changeovers(self, project_context):

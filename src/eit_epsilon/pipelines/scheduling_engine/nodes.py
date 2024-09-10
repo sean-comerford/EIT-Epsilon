@@ -706,6 +706,7 @@ class GeneticAlgorithmScheduler:
         self.change_over_machines_op1 = None
         self.change_over_machines_op2 = None
         self.cemented_only_haas_machines = None
+        self.non_manual_task_machines = None
         self.compatibility_dict = None
         self.arbor_dict = None
         self.cemented_arbors = None
@@ -714,18 +715,24 @@ class GeneticAlgorithmScheduler:
         self.max_iterations = None
         self.task_time_buffer = None
 
-    def adjust_start_time(self, start: float, task: int = None) -> float:
+    def adjust_start_time(
+        self, start: float, task: int = None, current_task_duration: Union[int, float] = 0
+    ) -> Union[int, float]:
         """
         Adjusts the start time to ensure it falls within working hours. If the start time is outside the
         working hours, it is pushed to the start of the next working day. Additionally, if the start time
         falls on a weekend, it is pushed to the following Monday.
 
+        Manual tasks need to be finished before the end of the working day, hence the task number and duration
+        is required.
+
         Args:
             start (float): The initial start time in minutes from the reference start date.
             task (int): The task number as in parameters task_to_machines dictionary.
+            current_task_duration (Union[int, float]): The duration of the task in minutes.
 
         Returns:
-            float: The adjusted start time in minutes from the reference start date.
+            Union[int, float]: The adjusted start time in minutes from the reference start date.
         """
         # Convert start_date to datetime object
         starting_date: datetime = datetime.fromisoformat(self.start_date)
@@ -733,8 +740,12 @@ class GeneticAlgorithmScheduler:
         # Determine the current day cycle start time in minutes
         current_day_start: float = (start // self.total_minutes_per_day) * self.total_minutes_per_day
 
+        # Tasks do not need to finish before the end of the day if they are non-manual
+        if task in self.non_manual_task_machines:
+            current_task_duration = 0
+
         # Adjust if start time is outside of working hours
-        if start >= current_day_start + self.working_minutes_per_day:
+        if start >= current_day_start + self.working_minutes_per_day - current_task_duration:
             start = current_day_start + self.total_minutes_per_day
 
         # Determine the adjusted start date and time
@@ -759,7 +770,9 @@ class GeneticAlgorithmScheduler:
 
         return start
 
-    def find_avail_m(self, start: int, job_id: int, task_id: int, after_hours_starts: int = 0) -> int:
+    def find_avail_m(
+        self, start: int, job_id: int, task: int, after_hours_starts: int = 0
+    ) -> Union[int, float]:
         """
         Finds the next available time for a machine to start a task, considering the working day duration.
         Add 'task_time_buffer' between each task on a machine as switching time.
@@ -767,25 +780,25 @@ class GeneticAlgorithmScheduler:
         Args:
             start (int): The starting time in the schedule in minutes.
             job_id (int): The index of the job in the job list.
-            task_id (int): The task number within the job.
-            after_hours_starts (int): The number of hours after which jobs can run overnight.
+            task (int): The task number within the job.
+            after_hours_starts (int): The number of task starts on a machine after working hours.
 
         Returns:
-            int: The next available time for the machine to start the task.
+            Union[int, float]: The next available time for the machine to start the task.
         """
 
         # Extract part_id
         part_id, _ = self.J[job_id]
 
         # Duration of the task
-        duration = self.dur[(job_id, task_id)]
+        duration = self.dur[(job_id, task)]
         # Calculate next available time after the task and buffer
         next_avail_time = start + duration + self.task_time_buffer
 
         # Start date
         starting_date = datetime.fromisoformat(self.start_date)
 
-        if task_id in [1, 30]:  # Task 1, 30 corresponds to HAAS machines
+        if task in [1, 30]:  # Task 1, 30 corresponds to HAAS machines
             if (
                 after_hours_starts < 3
             ):  # Message from Bryan: 3 batches (36 parts total) can be preloaded in HAAS
@@ -797,28 +810,24 @@ class GeneticAlgorithmScheduler:
                 if weekday == 6 or (
                     weekday == 5 and time_in_day >= datetime.strptime("19:00", "%H:%M").time()
                 ):
-                    return int(self.adjust_start_time(next_avail_time))
+                    return self.adjust_start_time(next_avail_time, task, current_task_duration=duration)
                 else:
                     return next_avail_time
             else:
-                if next_avail_time >= self.adjust_start_time(next_avail_time, task_id):
+                if next_avail_time >= self.adjust_start_time(
+                    next_avail_time, task, current_task_duration=duration
+                ):
                     return next_avail_time
                 else:
                     return (
-                        self.adjust_start_time(next_avail_time, task_id) // self.total_minutes_per_day
+                        self.adjust_start_time(next_avail_time, task, current_task_duration=duration)
+                        // self.total_minutes_per_day
                     ) * self.total_minutes_per_day
         else:
             # For other tasks, ensure they are scheduled during working hours
-            next_avail_time = self.adjust_start_time(next_avail_time, task_id)
-
-            # Determine if next_avail_time needs to be adjusted further for working hours
-            day_offset = (next_avail_time // self.total_minutes_per_day) * self.total_minutes_per_day
-            time_in_day = next_avail_time % self.total_minutes_per_day
-
-            if time_in_day >= self.working_minutes_per_day:
-                next_avail_time = day_offset + self.total_minutes_per_day
-            elif time_in_day < 0:
-                next_avail_time = day_offset
+            next_avail_time = self.adjust_start_time(
+                next_avail_time, task, current_task_duration=duration
+            )
 
             return next_avail_time
 
@@ -914,11 +923,11 @@ class GeneticAlgorithmScheduler:
         machine_index_cemented = 0
 
         # Initialize machine lists
-        machines_cementless = list(reversed(self.change_over_machines_op1))
-        machines_cemented = self.cemented_only_haas_machines
+        machines_cementless = list(self.change_over_machines_op1)
+        machines_cemented = list(reversed(self.cemented_only_haas_machines))
 
         # Randomly select machines
-        # For cementless: [6, 5, 4, 3, 2, 1], [6, 5, 4, 3, 2] or [6, 5, 4, 3]
+        # For cementless: [1, 2, 3, 4, 5, 6], first five: [1, 2, 3, 4, 5], or first four: [1, 2, 3, 4]
         # The latter options have fewer machines but also less overlap with cemented machines
         selected_machines_cls = random.choice(
             [machines_cementless, machines_cementless[:-1], machines_cementless[:-2]]
@@ -932,13 +941,13 @@ class GeneticAlgorithmScheduler:
             # Determine if the arbor is cementless or cemented based on its number
             if not cemented:
                 # Cementless arbors
-                # Randomly select all: [6, 5, 4, 3, 2, 1], first five: [6, 5, 4, 3, 2], or first four: [6, 5, 4, 3]
+                # Randomly select all: [1, 2, 3, 4, 5, 6], first five: [1, 2, 3, 4, 5], or first four: [1, 2, 3, 4]
                 # Selecting less will lead to less overlap with cemented arbors
                 machines = selected_machines_cls
                 machine_index = machine_index_cementless
             else:
                 # Cemented arbors
-                # Randomly select from cemented machines: [1, 2, 3] or [1, 2]
+                # Randomly select from cemented machines: [6, 5, 4] or [6, 5]
                 machines = selected_machines_ctd
                 machine_index = machine_index_cemented
 
@@ -960,7 +969,7 @@ class GeneticAlgorithmScheduler:
 
     def pick_early_machine(
         self,
-        task_id: int,
+        task: int,
         avail_m: Dict[int, int],
         random_roll: float,
         prob: float = 0.75,
@@ -981,7 +990,7 @@ class GeneticAlgorithmScheduler:
         - int: The selected machine ID.
         """
         compat_with_task = self.task_to_machines[
-            task_id
+            task
         ]  # A list of machines that are compatible with this task
 
         if random_roll < prob:
@@ -991,12 +1000,20 @@ class GeneticAlgorithmScheduler:
 
         return m
 
-    def slack_window_check(self, slack: Tuple[float, float]) -> Optional[Tuple[float, float]]:
+    def slack_window_check(
+        self,
+        slack: Tuple[float, float],
+        task: int,
+        current_task_duration: Union[int, float] = 0,
+    ) -> Optional[Tuple[float, float]]:
         """
         Check and adjust a given slack time window to ensure it falls within valid working hours.
+        Manual tasks need to be finished before the end of the day, hence the duration and task number is required.
 
         Args:
             slack (Tuple[float, float]): A tuple containing the start and end times of the slack window.
+            task (int): The task number within the job (as in the task_to_machines dictionary).
+            current_task_duration (Union[int, float]): The duration of the current task in minutes.
 
         Returns:
             Optional[Tuple[float, float]]: The adjusted slack window if valid, or None if invalid.
@@ -1018,9 +1035,13 @@ class GeneticAlgorithmScheduler:
             end_time, (int, float)
         ), f"Expected numeric type for start- and end time, received: {start_time}, {end_time}"
 
+        # Non-manual machines are not required to be finished before end of day
+        if task in self.non_manual_task_machines:
+            current_task_duration = 0
+
         # Determine the window in which the start_time falls
         window_start = (start_time // self.total_minutes_per_day) * self.total_minutes_per_day
-        window_end = window_start + self.working_minutes_per_day
+        window_end = window_start + self.working_minutes_per_day - current_task_duration
 
         # Check if the start_time is within the valid window
         if start_time < window_start or start_time >= window_end:
@@ -1114,6 +1135,7 @@ class GeneticAlgorithmScheduler:
     def slack_logic(
         self,
         m: int,
+        task: int,
         avail_m: Dict[int, int],
         slack_m: Dict[Any, deque],
         slack_time_used: bool,
@@ -1127,6 +1149,7 @@ class GeneticAlgorithmScheduler:
 
         Args:
             m (int): The machine identifier.
+            task (int): The task number within the job (as in task_to_machines dict).
             avail_m (Dict[int, int]): Dictionary mapping machine IDs to their available times.
             slack_m (Dict[int, List]): Dictionary mapping machine IDs to their slack windows (tuples of start and end times).
             slack_time_used (bool): Flag indicating whether slack time has been used.
@@ -1166,7 +1189,9 @@ class GeneticAlgorithmScheduler:
         if previous_task_finish > avail_m[m]:
             # Start time is the completion of the previous task of the job in question
             start = self.adjust_start_time(
-                previous_task_finish + changeover_duration + self.task_time_buffer
+                previous_task_finish + changeover_duration + self.task_time_buffer,
+                task=task,
+                current_task_duration=current_task_dur,
             )
 
             # Difference between the moment the machine becomes available and the new tasks starts is slack
@@ -1174,7 +1199,9 @@ class GeneticAlgorithmScheduler:
             # We subtract changeover_duration, because even though the task actually starts later,
             # the changeover_duration cannot be used for a different task
             slack_window_upd = self.slack_window_check(
-                (avail_m[m], start - changeover_duration - self.task_time_buffer)
+                (avail_m[m], start - changeover_duration - self.task_time_buffer),
+                task=task,
+                current_task_duration=current_task_dur,
             )
 
             if slack_window_upd:
@@ -1215,7 +1242,9 @@ class GeneticAlgorithmScheduler:
                                 + self.task_time_buffer
                             ),
                             unused_time[1],
-                        )
+                        ),
+                        task=task,
+                        current_task_duration=current_task_dur,
                     )
 
                     if slack_window_upd:
@@ -1229,7 +1258,9 @@ class GeneticAlgorithmScheduler:
                     # the changeover_duration cannot be used for a different task
                     if start == (previous_task_finish + changeover_duration + self.task_time_buffer):
                         slack_window_upd = self.slack_window_check(
-                            (unused_time[0], previous_task_finish)
+                            (unused_time[0], previous_task_finish),
+                            task=task,
+                            current_task_duration=current_task_dur,
                         )
 
                         if (
@@ -1244,7 +1275,9 @@ class GeneticAlgorithmScheduler:
 
             # If slack time is not used, start when the machine becomes available
             if not slack_time_used:
-                start = self.adjust_start_time(avail_m[m] + changeover_duration)
+                start = self.adjust_start_time(
+                    avail_m[m] + changeover_duration, task=task, current_task_duration=current_task_dur
+                )
 
         if start is None:
             logger.warning("No real start time was defined!")
@@ -1263,7 +1296,7 @@ class GeneticAlgorithmScheduler:
         Returns:
             Deque[Tuple[int, int, int, float, float, int, str]]:
                 - A deque representing a proposed schedule, where each element is a tuple containing:
-                  (job_id, task_id, machine_id, start_time, duration, placeholder, part_id).
+                  (job_id, task, machine_id, start_time, duration, placeholder, part_id).
 
         The function operates as follows:
         1. Initializes availability and product tracking dictionaries for machines.
@@ -1308,7 +1341,7 @@ class GeneticAlgorithmScheduler:
             part_id, _ = self.J[job_id]
 
             # Loop over the tasks in the job (i.e. get the tasks for the part ID for this job)
-            for task_id in self.part_to_tasks[part_id]:
+            for task in self.part_to_tasks[part_id]:
                 # Generate random float [0, 1]
                 random_roll = random.random()
 
@@ -1317,8 +1350,8 @@ class GeneticAlgorithmScheduler:
                 slack_time_used = False
 
                 # Conditional logic; separate flow for first task of OP1 (HAAS)
-                if task_id in [1, 30]:
-                    compat_task_0 = self.task_to_machines[task_id]
+                if task in [1, 30]:
+                    compat_task_0 = self.task_to_machines[task]
                     preferred_machines = self.get_preferred_machines(
                         compat_task_0, product_m, job_id, fixture_to_machine_assignment
                     )
@@ -1342,7 +1375,7 @@ class GeneticAlgorithmScheduler:
                         )
                         changeover_finish_time.append(start)
                 else:
-                    m = self.pick_early_machine(task_id, avail_m, random_roll)
+                    m = self.pick_early_machine(task, avail_m, random_roll)
                     changeover_duration = 0
 
                     # Determine the changeover duration. self.task_time_buffer will also be added
@@ -1357,28 +1390,33 @@ class GeneticAlgorithmScheduler:
                         else:
                             changeover_duration = self.change_over_time_op2
 
-                    if task_id in [1, 10, 30]:
-                        start = self.adjust_start_time(avail_m[m] + changeover_duration, task_id)
+                    if task in [1, 10, 30]:
+                        start = self.adjust_start_time(
+                            avail_m[m] + changeover_duration,
+                            task,
+                            current_task_duration=self.dur[(job_id, task)],
+                        )
 
                     else:
                         start, slack_time_used = self.slack_logic(
                             m,
+                            task,
                             avail_m,
                             slack_m,
                             slack_time_used,
                             P_j[-1][3],  # Previous task start
                             P_j[-1][4],  # Previous task duration
-                            self.dur[(job_id, task_id)],
+                            self.dur[(job_id, task)],
                             changeover_duration,
                         )
 
                 P_j.append(
                     (
                         job_id,
-                        task_id,
+                        task,
                         m,
                         start,
-                        self.dur[(job_id, task_id)],
+                        self.dur[(job_id, task)],
                         0,
                         part_id,
                     )
@@ -1389,7 +1427,7 @@ class GeneticAlgorithmScheduler:
                     after_hours_starts = self.count_after_hours_start(P_j, m, start)
 
                 if not slack_time_used:
-                    avail_m[m] = self.find_avail_m(start, job_id, task_id, after_hours_starts)
+                    avail_m[m] = self.find_avail_m(start, job_id, task, after_hours_starts)
 
                 product_m[m] = part_id
 
@@ -1510,28 +1548,28 @@ class GeneticAlgorithmScheduler:
                             (self.J[job_id][1] - (start_time + job_task_dur)),
                             1.02,
                         )
-                        * (2 if task_id in [1, 30] else 1)
+                        * (2 if task in [1, 30] else 1)
                         * (self.urgent_multiplier if job_id in self.urgent_orders else 1)
                         + (
                             # Fixed size bonus for completing the job on time (only applies if the final task is
                             # completed on time)
                             on_time_bonus
                             if (self.J[job_id][1] - (start_time + job_task_dur)) > 0
-                            and task_id in [7, 20, 44]
+                            and task in [7, 20, 44]
                             else 0
                         )
                     )
                     for (
                         job_id,
-                        task_id,
+                        task,
                         machine,
                         start_time,
                         job_task_dur,
                         _,
                         _,
                     ) in schedule
-                    # Only consider the completion time of the final task and HAAS machines
-                    if task_id in [7, 20, 44] or task_id in [1, 30]
+                    # Only consider the completion time of the final task
+                    if task in [7, 20, 44] or task in [1, 30]
                 )
             )
             # Evaluate each schedule in the population
@@ -1591,16 +1629,16 @@ class GeneticAlgorithmScheduler:
 
             # Loop over the tasks one by one
             for task_entry in job_tasks:
-                _, task_id, m, _, _, task_idx, _ = task_entry
+                _, task, m, _, _, task_idx, _ = task_entry
                 slack_time_used = False
 
-                if task_id in [1, 30]:
+                if task in [1, 30]:
                     # Start time is the time that the machine comes available if no changeover is required
                     # else, the changeover time is added, and an optional waiting time if we need to wait
                     # for another changeover to finish first (only one changeover can happen concurrently)
 
                     # Extract compatible HAAS machines for first task
-                    compat_task_0 = self.task_to_machines[task_id]
+                    compat_task_0 = self.task_to_machines[task]
 
                     # New preferred machines logic
                     preferred_machines = self.get_preferred_machines(
@@ -1647,23 +1685,28 @@ class GeneticAlgorithmScheduler:
                             changeover_duration = self.change_over_time_op2
 
                     # First tasks of OP1 and OP2 do not need to consider slack
-                    if task_id in [10]:
-                        start = self.adjust_start_time(avail_m[m] + changeover_duration, task_id)
+                    if task in [10]:
+                        start = self.adjust_start_time(
+                            avail_m[m] + changeover_duration,
+                            task,
+                            current_task_duration=self.dur[(job_id, task)],
+                        )
                     else:
                         start, slack_time_used = self.slack_logic(
                             m,
+                            task,
                             avail_m,
                             slack_m,
                             slack_time_used,
                             P_prime_sorted[-1][3],
                             P_prime_sorted[-1][4],
-                            self.dur[(job_id, task_id)],
+                            self.dur[(job_id, task)],
                             changeover_duration,
                         )
 
                 # If slack time is used no need to update latest machine availability
                 if not slack_time_used:
-                    avail_m[m] = self.find_avail_m(start, job_id, task_id)
+                    avail_m[m] = self.find_avail_m(start, job_id, task)
 
                 # Record part ID of the latest product to be processed on a machine for changeovers
                 product_m[m] = part_id
@@ -1672,17 +1715,17 @@ class GeneticAlgorithmScheduler:
                 if start is None:
                     logger.warning(
                         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - No start time found for job ID {job_id}, "
-                        f"task ID {task_id}, machine {m}"
+                        f"task {task}, machine {m}"
                     )
 
                 # Add the task to the sorted list of tasks in this proposed schedule
                 P_prime_sorted.append(
                     (
                         job_id,
-                        task_id,
+                        task,
                         m,
                         start,
-                        self.dur[(job_id, task_id)],
+                        self.dur[(job_id, task)],
                         task_idx,
                         part_id,
                     )
@@ -1693,7 +1736,7 @@ class GeneticAlgorithmScheduler:
 
                 # If slack time is used no need to update latest machine availability
                 if not slack_time_used:
-                    avail_m[m] = self.find_avail_m(start, job_id, task_id, after_hours_starts)
+                    avail_m[m] = self.find_avail_m(start, job_id, task, after_hours_starts)
 
                 # Record part ID of the latest product to be processed on a machine for changeovers
                 product_m[m] = part_id
@@ -1846,7 +1889,7 @@ class GeneticAlgorithmScheduler:
 
                     # Create new tasks with swapped start times and machines
                     # task_details follow this format:
-                    # (job_id, task_id, machine, start_time, duration, task_index, part_id)
+                    # (job_id, task, machine, start_time, duration, task_index, part_id)
                     new_task1 = (task1[0], task1[1], task2[2], task2[3], task1[4], task1[5], task1[6])
                     new_task2 = (task2[0], task2[1], task1[2], task1[3], task2[4], task2[5], task2[6])
 
@@ -1923,6 +1966,7 @@ class GeneticAlgorithmScheduler:
         self.change_over_machines_op1 = scheduling_options["change_over_machines_op1"]
         self.change_over_machines_op2 = scheduling_options["change_over_machines_op2"]
         self.cemented_only_haas_machines = scheduling_options["cemented_only_haas_machines"]
+        self.non_manual_task_machines = scheduling_options["non_manual_task_machines"]
         self.compatibility_dict = compatibility_dict
         self.arbor_dict = arbor_dict
         self.cemented_arbors = cemented_arbors
