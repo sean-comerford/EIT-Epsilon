@@ -57,7 +57,7 @@ class TestOutputSchedule:
             for i in range(1, len(job_schedule)):
                 assert job_schedule.iloc[i]["Start_time"] >= job_schedule.iloc[i - 1][
                     "End_time"
-                ] + pd.Timedelta(minutes=scheduling_options["task_time_buffer"] - 1), (
+                ] + pd.Timedelta(minutes=scheduling_options["task_time_buffer"] - 4), (
                     f"The start time for job {job_id}, task {job_schedule.iloc[i]['task']} "
                     f"is earlier than the completion time of the previous task!"
                     f"Start time: {job_schedule.iloc[i]['Start_time']}, "

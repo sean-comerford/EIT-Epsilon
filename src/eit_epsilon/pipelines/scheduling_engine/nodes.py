@@ -1111,9 +1111,7 @@ class GeneticAlgorithmScheduler:
         preferred_machines = [
             machine
             for machine in compat_task_0
-            if product_m[machine] == 0
-            or product_m[machine] == part_id
-            or product_m[machine] in self.compatibility_dict[part_id]
+            if product_m[machine] == 0 or product_m[machine] == part_id
         ]
 
         # Extract the appropriate arbor from custom part ID
@@ -1360,11 +1358,7 @@ class GeneticAlgorithmScheduler:
                         if random_roll < 0.5
                         else random.choice(preferred_machines)
                     )
-                    if (
-                        product_m.get(m) == 0
-                        or product_m.get(m) == part_id
-                        or product_m.get(m) in self.compatibility_dict[part_id]
-                    ):
+                    if product_m.get(m) == 0 or product_m.get(m) == part_id:
                         start = avail_m[m]
                     else:
                         start = (
@@ -1382,9 +1376,7 @@ class GeneticAlgorithmScheduler:
                     # in all cases, either in slack_logic() or find_avail_m()
                     if m in self.change_over_machines_op2:
                         if (
-                            product_m.get(m) == 0
-                            or product_m.get(m) == part_id
-                            or product_m.get(m) in self.compatibility_dict[part_id]
+                            product_m.get(m) == 0 or product_m.get(m) == part_id
                         ):  # Previous part was the same or compatible, or there wasn't a previous part
                             changeover_duration = self.drag_machine_setup_time
                         else:
@@ -1649,11 +1641,7 @@ class GeneticAlgorithmScheduler:
                     if m not in preferred_machines:
                         m = random.choice(preferred_machines)
 
-                    if (
-                        product_m.get(m) == 0
-                        or product_m.get(m) == part_id
-                        or product_m.get(m) in self.compatibility_dict[part_id]
-                    ):
+                    if product_m.get(m) == 0 or product_m.get(m) == part_id:
                         start = avail_m[m]
                     else:
                         # If the changeover would not be finished before the end of day,
@@ -1676,9 +1664,7 @@ class GeneticAlgorithmScheduler:
                     # in all cases, either in slack_logic() or find_avail_m()
                     if m in self.change_over_machines_op2:
                         if (
-                            product_m.get(m) == 0
-                            or product_m.get(m) == part_id
-                            or product_m.get(m) in self.compatibility_dict[part_id]
+                            product_m.get(m) == 0 or product_m.get(m) == part_id
                         ):  # Previous part was the same or compatible, or there wasn't a previous part
                             changeover_duration = self.drag_machine_setup_time
                         else:
