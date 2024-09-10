@@ -32,6 +32,7 @@ def create_pipeline(**kwargs) -> Pipeline:
                     "croom_task_durations",
                     "params:task_to_machines",
                     "params:scheduling_options",
+                    "params:machine_dict",
                 ],
                 outputs="input_repr_dict",
                 name="build_ga_representation",
