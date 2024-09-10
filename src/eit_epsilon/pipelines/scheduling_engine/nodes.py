@@ -895,7 +895,7 @@ class GeneticAlgorithmScheduler:
         This method:
         1. Initializes an empty assignment dictionary where each arbor is associated with a list of machines.
         2. Iterates over the arbors, checking if they are cemented or cementless.
-        3. Assigns each arbor to a set number of machines based on its frequency.
+        3. Assigns each arbor to a set number of machines, based on the number of arbors of that type that are available.
         4. Cementless arbors can be assigned to machines [1, 2, 3, 4, 5, 6] while cemented arbors are limited to machines [1, 2, 3].
         5. The method uses a random choice mechanism to vary the machines to which arbors are assigned.
 
@@ -940,10 +940,11 @@ class GeneticAlgorithmScheduler:
                 # Cemented arbors
                 # Randomly select from cemented machines: [1, 2, 3] or [1, 2]
                 machines = selected_machines_ctd
-                machine_index = machine_index_cemented
-
-            # Determine the number of machines to assign based on frequency
-            num_machines_to_assign = random.choice([1, 2])
+                machine_index = machine_index_cemented         
+            
+            # Determine how many of this type of arbor there are and then randomly determine how many 
+            # machines should be assigned this type e.g. if there are 2 of this type assign either 1 or 2
+            num_machines_to_assign = random.randint(1, self.arbor_quantities[arbor])
 
             # Assign the arbor to the appropriate number of machines
             for _ in range(num_machines_to_assign):
@@ -1891,6 +1892,7 @@ class GeneticAlgorithmScheduler:
         compatibility_dict: Dict[str, Any],
         arbor_dict: Dict[str, Any],
         cemented_arbors: Dict[str, str],
+        arbor_quantites: Dict[str, str],
     ) -> Tuple[Any, deque]:
         """
         Runs the genetic algorithm by initializing the population, evaluating it, and selecting the best schedule.
@@ -1926,6 +1928,7 @@ class GeneticAlgorithmScheduler:
         self.compatibility_dict = compatibility_dict
         self.arbor_dict = arbor_dict
         self.cemented_arbors = cemented_arbors
+        self.arbor_quantities = arbor_quantites
         self.max_iterations = scheduling_options["max_iterations"]
         self.urgent_multiplier = scheduling_options["urgent_multiplier"]
         self.task_time_buffer = scheduling_options["task_time_buffer"]

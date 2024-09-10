@@ -132,6 +132,32 @@ cementless_arbors: {
     '6N': '800.6000.23.00'
 }
 
+# The quantity of each arbor (fixture) type
+arbor_quantities: {
+    '1008644': 2,
+    '1008654': 2,
+    '1008663': 2,
+    '1008668': 2,
+    '1008672': 2,
+    '1008677': 1,
+    '1008639': 2,
+    '1008649': 2,
+    '800.6000.10.00': 2,
+    '800.6001.11.00': 1,
+    '800.6000.12.00': 1,
+    '800.6000.13.00': 2,
+    '800.6000.14.00': 2,
+    '800.6000.15.00': 2,
+    '800.6000.16.00': 2,
+    '800.6000.17.00': 2,
+    '800.6000.18.00': 1,
+    '800.6000.19.00': 1,
+    '800.6000.20.00': 1,
+    '800.6001.13.00': 1,
+    '800.6001.14.00': 1,
+    '800.6000.23.00': 1
+}
+
 scheduling_options:
   start_date: "2024-04-03T06:30"  # Starting date used to calculate difference with due date
   change_over_time_op1: 180  # Minutes required to do a changeover on the HAAS machines (Only OP 1)
@@ -158,7 +184,8 @@ scheduling_options:
     'Part Description': 'Product',
     'Due Date ': 'Due_date',
     'Order Qty': 'Order Qty'
-}
+  }
+
 
 visualization_options:
   title: "Production Schedule Milling & Grinding"
