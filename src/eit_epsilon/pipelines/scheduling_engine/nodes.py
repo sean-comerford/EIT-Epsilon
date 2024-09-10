@@ -781,7 +781,7 @@ class GeneticAlgorithmScheduler:
             start (int): The starting time in the schedule in minutes.
             job_id (int): The index of the job in the job list.
             task (int): The task number within the job.
-            after_hours_starts (int): The number of hours after which jobs can run overnight.
+            after_hours_starts (int): The number of task starts on a machine after working hours.
 
         Returns:
             Union[int, float]: The next available time for the machine to start the task.
@@ -1568,10 +1568,8 @@ class GeneticAlgorithmScheduler:
                         _,
                         _,
                     ) in schedule
-
                     # Only consider the completion time of the final task
                     if task in [7, 20, 44] or task in [1, 30]
-
                 )
             )
             # Evaluate each schedule in the population
