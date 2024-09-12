@@ -60,6 +60,7 @@ def create_pipeline(**kwargs) -> Pipeline:
                     "compatibility_dict",
                     "arbor_dict",
                     "params:cemented_arbors",
+                    "params:arbor_quantities",
                 ],
                 outputs=["best_schedule", "best_scores"],
                 name="genetic_algorithm",
