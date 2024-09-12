@@ -1319,14 +1319,20 @@ class GeneticAlgorithmScheduler:
         fixture_to_machine_assignment = self.assign_arbors_to_machines(arbor_frequencies)
 
         # Based on the random number we either randomly shuffle or apply some sorting logic
-        if random_roll < 0.6:
-            random.shuffle(J_temp)
+        random.shuffle(J_temp)
+        if random_roll < 0.3:
+            pass  # Already shuffled
+        elif random_roll < 0.6:
+            # The original shuffle determines the relative order of products with the same part ID
+            J_temp.sort(
+                key=lambda x: self.J[x][0][::-1], reverse=random.choice([True, False])
+            )  # Sort on the part ID
         elif random_roll < 0.7:
-            J_temp.sort(key=lambda x: self.J[x][0])  # Sort on the part ID
-        elif random_roll < 0.8:
             J_temp.sort(key=lambda x: self.J[x][1], reverse=True)  # Sort on the due time
         elif random_roll < 0.9:
-            J_temp.sort(key=lambda x: (self.J[x][0], self.J[x][1]), reverse=True)
+            J_temp.sort(
+                key=lambda x: (self.J[x][0][::-1], self.J[x][1]), reverse=random.choice([True, False])
+            )
         else:
             for job in self.urgent_orders:
                 J_temp.remove(job)
@@ -1540,7 +1546,7 @@ class GeneticAlgorithmScheduler:
                             (self.J[job_id][1] - (start_time + job_task_dur)),
                             1.02,
                         )
-                        * (2 if task in [1, 30] else 1)
+                        * (50 if task in [1, 30] else 1)
                         * (self.urgent_multiplier if job_id in self.urgent_orders else 1)
                         + (
                             # Fixed size bonus for completing the job on time (only applies if the final task is
