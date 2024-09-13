@@ -8,6 +8,7 @@ from .nodes import (
     identify_changeovers,
     GeneticAlgorithmScheduler,
     create_start_end_time,
+    calculate_kpi,
 )
 
 
@@ -90,6 +91,12 @@ def create_pipeline(**kwargs) -> Pipeline:
                 inputs=["croom_reformatted_orders", "changeovers", "params:scheduling_options"],
                 outputs=["final_schedule", "final_changeovers"],
                 name="create_start_end_time",
+            ),
+            node(
+                func=calculate_kpi,
+                inputs="final_schedule",
+                outputs="kpi_results",
+                name="calculate_kpi",
             ),
             node(
                 func=create_chart,

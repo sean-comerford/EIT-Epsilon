@@ -2270,6 +2270,52 @@ def create_start_end_time(
     return croom_reformatted_orders, changeovers
 
 
+def calculate_kpi(schedule: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate the percentage of jobs finished on time and the average lead time per order.
+
+    Args:
+        schedule (pd.DataFrame): The final schedule containing 'Order', 'task', 'End_time', 'Due_date', and 'Order_date' columns.
+
+    Returns:
+        pd.DataFrame: A DataFrame containing the calculated KPIs (OTIF and average lead time).
+    """
+    # Ensure 'Due_date', 'End_time', and 'Order_date' are in datetime format
+    schedule["Due_date"] = pd.to_datetime(schedule["Due_date"])
+    schedule["End_time"] = pd.to_datetime(schedule["End_time"])
+    schedule["Order_date"] = pd.to_datetime(schedule["Order_date"])
+
+    # Identify the largest task for each unique order
+    max_tasks = schedule.groupby("Order")["task"].max().reset_index()
+
+    # Merge to get the 'End_time' and 'Order_date' of the largest task for each order
+    max_tasks = max_tasks.merge(schedule, on=["Order", "task"], how="left")
+
+    # Compare 'Due_date' with 'End_time'
+    on_time_jobs = max_tasks[max_tasks["End_time"] <= max_tasks["Due_date"]]
+
+    # Calculate the percentage of jobs finished on time
+    percentage_on_time = len(on_time_jobs) / len(max_tasks) * 100
+
+    # Calculate the lead time for each order
+    max_tasks["Lead_time"] = (max_tasks["End_time"] - max_tasks["Order_date"]).dt.days
+
+    # Calculate the average lead time per order
+    average_lead_time = max_tasks["Lead_time"].mean()
+
+    # TODO: Prognosis of real OTIF when considerings scrap (Ask Bryan for percentage estimate)
+    # Print the OTIF percentage and average lead time
+    logger.info(f"Percentage of jobs finished on time (OTIF): {percentage_on_time:.2f}%")
+    logger.info(f"Average lead time per order: {average_lead_time:.2f} days")
+
+    # Create a DataFrame for Excel output
+    kpi_df = pd.DataFrame(
+        {"OTIF (%)": [round(percentage_on_time, 1)], "avg. lead time": [round(average_lead_time, 1)]}
+    )
+
+    return kpi_df
+
+
 def create_chart(
     schedule: pd.DataFrame, parameters: Dict[str, Union[str, Dict[str, str]]]
 ) -> pd.DataFrame:

@@ -58,6 +58,16 @@ final_changeovers:
     engine: openpyxl
     sheet_name: Schedule
 
+kpi_results:
+  type: pandas.ExcelDataset
+  filepath: data/08_reporting/kpi_results.xlsx
+  save_args:
+    engine: openpyxl
+    sheet_name: KPIs
+  load_args:
+    engine: openpyxl
+    sheet_name: KPIs
+
 cr_cycle_times:
   type: pandas.ParquetDataset
   filepath: data/03_primary/cr_cycle_times.pq
