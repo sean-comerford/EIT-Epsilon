@@ -61,6 +61,7 @@ def create_pipeline(**kwargs) -> Pipeline:
                     "arbor_dict",
                     "params:cemented_arbors",
                     "params:arbor_quantities",
+                    "params:HAAS_starting_part_ids",
                 ],
                 outputs=["best_schedule", "best_scores"],
                 name="genetic_algorithm",

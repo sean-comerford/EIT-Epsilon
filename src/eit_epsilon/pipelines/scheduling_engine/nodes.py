@@ -711,6 +711,7 @@ class GeneticAlgorithmScheduler:
         self.arbor_dict = None
         self.cemented_arbors = None
         self.arbor_quantities = None
+        self.HAAS_starting_part_ids = None
         self.urgent_orders = None
         self.urgent_multiplier = None
         self.max_iterations = None
@@ -933,7 +934,7 @@ class GeneticAlgorithmScheduler:
         selected_machines_cls = random.choice(
             [machines_cementless, machines_cementless[:-1], machines_cementless[:-2]]
         )
-        selected_machines_ctd = random.choice([machines_cemented, machines_cemented[:-1]])
+        selected_machines_ctd = random.choice([machines_cemented, machines_cemented[:-1]])        
 
         for arbor, frequency in arbor_frequency.items():
             # Create a boolean for the cemented status
@@ -1306,10 +1307,12 @@ class GeneticAlgorithmScheduler:
         5. Returns the generated individual schedule.
         """
         avail_m = {m: 0 for m in self.M}
-        slack_m = {m: deque() for m in self.M}
-        product_m = {m: 0 for m in self.M}
+        slack_m = {m: deque() for m in self.M}        
         changeover_finish_time = deque([0])
         P_j = deque()
+        
+        # Set up the previous parts that were on the HAAS machines. 0 means no previous part               
+        product_m = {m: self.HAAS_starting_part_ids.get(m, 0) for m in self.M}        
 
         # Create a temporary copy of the Job IDs
         J_temp = list(self.J.keys())
@@ -1923,6 +1926,7 @@ class GeneticAlgorithmScheduler:
         arbor_dict: Dict[str, Any],
         cemented_arbors: Dict[str, str],
         arbor_quantities: Dict[str, int],
+        HAAS_starting_part_ids: Dict[str, str],
     ) -> Tuple[Any, deque]:
         """
         Runs the genetic algorithm by initializing the population, evaluating it, and selecting the best schedule.
@@ -1961,6 +1965,7 @@ class GeneticAlgorithmScheduler:
         self.arbor_dict = arbor_dict
         self.cemented_arbors = cemented_arbors
         self.arbor_quantities = arbor_quantities
+        self.HAAS_starting_part_ids = HAAS_starting_part_ids
         self.max_iterations = scheduling_options["max_iterations"]
         self.urgent_multiplier = scheduling_options["urgent_multiplier"]
         self.task_time_buffer = scheduling_options["task_time_buffer"]
@@ -1975,7 +1980,7 @@ class GeneticAlgorithmScheduler:
         start_time = time.time()
 
         # Count arbor frequencies
-        arbor_frequencies = self.count_arbor_frequencies()
+        arbor_frequencies = self.count_arbor_frequencies()       
 
         # Create gene pool
         gene_pool = self.parallel_init_population(

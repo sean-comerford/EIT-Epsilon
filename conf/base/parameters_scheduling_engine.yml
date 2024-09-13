@@ -104,6 +104,16 @@ machine_dict: {
     35: 'Polishing-2',
 }
 
+# Specifies which parts the HAAS machines are already set up for (i.e. from a previous job)
+HAAS_starting_part_ids: {
+   1: 'RIGHT-CR-5-CLS-OP1',
+   2: 'RIGHT-CR-8-CLS-OP1',
+   3: 'LEFT-CR-8-CLS-OP1',
+   4: 'RIGHT-CR-6-CTD-OP1',
+   5: 'LEFT-CR-7-CTD-OP1',
+   6: 'RIGHT-CR-4N-CTD-OP1',
+}
+
 cemented_arbors: {
     '5': '1008644',
     '6': '1008654',
