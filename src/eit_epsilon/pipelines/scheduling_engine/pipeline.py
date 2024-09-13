@@ -102,7 +102,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             node(
                 func=calculate_kpi,
                 inputs="final_schedule",
-                outputs=None,
+                outputs="kpi_results",
                 name="calculate_kpi",
             ),
             node(

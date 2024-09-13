@@ -2190,7 +2190,7 @@ def create_start_end_time(
     return croom_reformatted_orders, changeovers
 
 
-def calculate_kpi(schedule: pd.DataFrame) -> Tuple[float, float]:
+def calculate_kpi(schedule: pd.DataFrame) -> pd.DataFrame:
     """
     Calculate the percentage of jobs finished on time and the average lead time per order.
 
@@ -2198,7 +2198,7 @@ def calculate_kpi(schedule: pd.DataFrame) -> Tuple[float, float]:
         schedule (pd.DataFrame): The final schedule containing 'Order', 'task', 'End_time', 'Due_date', and 'Order_date' columns.
 
     Returns:
-        Tuple[float, float]: The percentage of jobs finished on time and the average lead time per order in days.
+        pd.DataFrame: A DataFrame containing the calculated KPIs (OTIF and average lead time).
     """
     # Ensure 'Due_date', 'End_time', and 'Order_date' are in datetime format
     schedule["Due_date"] = pd.to_datetime(schedule["Due_date"])
@@ -2228,7 +2228,12 @@ def calculate_kpi(schedule: pd.DataFrame) -> Tuple[float, float]:
     logger.info(f"Percentage of jobs finished on time (OTIF): {percentage_on_time:.2f}%")
     logger.info(f"Average lead time per order: {average_lead_time:.2f} days")
 
-    return percentage_on_time, average_lead_time
+    # Create a DataFrame for Excel output
+    kpi_df = pd.DataFrame(
+        {"OTIF (%)": [round(percentage_on_time, 1)], "avg. lead time": [round(average_lead_time, 1)]}
+    )
+
+    return kpi_df
 
 
 def create_chart(
