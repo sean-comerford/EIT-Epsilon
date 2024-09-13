@@ -721,7 +721,8 @@ class GeneticAlgorithmScheduler:
         """
         Adjusts the start time to ensure it falls within working hours. If the start time is outside the
         working hours, it is pushed to the start of the next working day. Additionally, if the start time
-        falls on a weekend, it is pushed to the following Monday.
+        falls on a weekend, it is pushed to the following Monday. For tasks 17 and 42, the first hour of
+        each day is not available.
 
         Args:
             start (float): The initial start time in minutes from the reference start date.
@@ -751,7 +752,7 @@ class GeneticAlgorithmScheduler:
                 # Push to Monday morning
                 start += self.total_minutes_per_day
             elif weekday == 5:  # Saturday
-                if task not in [1, 0]:  # If not task type 1, push to Monday
+                if task not in [1, 30]:  # If not task type 1, push to Monday
                     start += self.total_minutes_per_day * 2
                 else:
                     break  # Task type 1 can stay on Saturday
@@ -759,6 +760,12 @@ class GeneticAlgorithmScheduler:
                 break  # It's a weekday, no adjustment needed
 
             actual_start_datetime = starting_date + timedelta(minutes=start)
+
+        # Adjust for Nutshell drag (17, 42)
+        if task in [17, 42]:
+            # Quirk of the nutshell drag: it needs to warm up for the first hour of each day
+            if current_day_start <= start < current_day_start + 60:
+                start = current_day_start + 60
 
         return start
 
@@ -1242,11 +1249,9 @@ class GeneticAlgorithmScheduler:
                 for unused_time in slack_m[ghost_m]:
                     # Ghost machines require equal start and end times and matching part_id to the paired machine
                     # The third field in the tuple `unused_time[2]` contains the part_id
-                    if (
-                        (unused_time[0] >= previous_task_finish)
-                        and (unused_time[0] + current_task_dur) <= unused_time[1]
-                        and (unused_time[2] == part_id)
-                    ):
+                    if (unused_time[0] >= previous_task_finish) and (
+                        unused_time[0] + current_task_dur
+                    ) <= unused_time[1]:
                         # For a ghost machine start time must be equal to the start of a task on the paired machine
                         start = unused_time[0]
 
@@ -1441,6 +1446,14 @@ class GeneticAlgorithmScheduler:
                             + self.change_over_time_op1
                         )
                         changeover_finish_time.append(start)
+
+                # No slack_logic for FPI-Inspect task (doesn't make sense for the conveyor belt logic)
+                elif task_id in [16]:
+                    # For other tasks, pick the earliest available machine
+                    m = self.pick_early_machine(task_id, avail_m, random_roll)
+
+                    start = avail_m[m]
+
                 else:
                     # For other tasks, pick the earliest available machine
                     m = self.pick_early_machine(task_id, avail_m, random_roll)
@@ -1486,6 +1499,17 @@ class GeneticAlgorithmScheduler:
                 # Update machine availability if slack time was not used
                 if not slack_time_used:
                     avail_m[m] = self.find_avail_m(start, job_id, task_id, after_hours_starts)
+
+                    # TODO: Find out what's wrong here
+                    if task_id in [
+                        16
+                    ]:  # In the FPI Inspect case, next task can only start ten minutes later
+                        for machine in [
+                            machine for machine in self.task_to_machines[16] if machine != m
+                        ]:
+                            avail_m[machine] = (
+                                max(avail_m[machine], avail_m[m] - self.dur[(job_id, task_id)]) + 10
+                            )
 
                 # Update the product assignment for the machine
                 product_m[m] = part_id
@@ -1727,6 +1751,9 @@ class GeneticAlgorithmScheduler:
                         # Update time that a mechanic becomes available for a new changeover
                         changeover_finish_time.append(start)
 
+                elif task_id in [16]:  # FPI Inspect should not use slack_logic
+                    start = avail_m[m]
+
                 else:
                     # Initialize changeover time to 0
                     changeover_duration = 0
@@ -1758,6 +1785,14 @@ class GeneticAlgorithmScheduler:
                 # If slack time is used no need to update latest machine availability
                 if not slack_time_used:
                     avail_m[m] = self.find_avail_m(start, job_id, task_id)
+
+                    if task_id in [
+                        16
+                    ]:  # In the FPI Inspect case, next task can only start ten minutes later
+                        for machine in [
+                            machine for machine in self.task_to_machines[16] if machine != m
+                        ]:
+                            avail_m[machine] = avail_m[m] + 10
 
                 # Record part ID of the latest product to be processed on a machine for changeovers
                 product_m[m] = part_id

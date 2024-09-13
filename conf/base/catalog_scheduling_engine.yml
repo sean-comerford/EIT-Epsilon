@@ -168,7 +168,9 @@ gantt_chart_json:
         categoryorder: 'array'
         categoryarray: [
             'Final Inspect-2', 'Final Inspect-1', 'Polishing-2', 'Polishing-1', 'Nutshell Drag (Ghost)',
-            'Nutshell Drag', 'FPI Inspect-1', 'Post-Plastic Inspect-4', 'Post-Plastic Inspect-3',
+            'Nutshell Drag', 'FPI Inspect-14', 'FPI Inspect-13', 'FPI Inspect-12', 'FPI Inspect-11', 'FPI Inspect-10',
+            'FPI Inspect-9', 'FPI Inspect-8', 'FPI Inspect-7', 'FPI Inspect-6', 'FPI Inspect-5', 'FPI Inspect-4',
+            'FPI Inspect-3', 'FPI Inspect-2', 'FPI Inspect-1', 'Post-Plastic Inspect-4', 'Post-Plastic Inspect-3',
             'Post-Plastic Inspect-2', 'Post-Plastic Inspect-1', 'Plastic Drag (Ghost)', 'Plastic Drag', 'Wash-2 (Ghost)',
             'Wash-2', 'Ceramic Drag (Ghost)', 'Ceramic Drag', 'Final Wash-1 (Ghost)', 'Final Wash-1',
             'Optional touch-up Inspect-6', 'Optional touch-up Inspect-5', 'Optional touch-up Inspect-4',
@@ -185,7 +187,7 @@ gantt_chart_json:
       title_font_size: 32
       font_size: 14
       width: 1800
-      height: 1000
+      height: 1500
       showlegend: True
       legend:
         orientation: v
