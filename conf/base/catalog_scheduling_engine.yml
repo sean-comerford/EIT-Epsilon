@@ -98,6 +98,33 @@ best_scores:
   type: pickle.PickleDataset
   filepath: data/07_model_output/best_scores.pkl
 
+# Mapping pipeline files
+
+mapping_dict:
+  type: pickle.PickleDataset
+  filepath: data/05_model_input/mapping_dict.pkl
+
+ctd_mapping:
+  type: pandas.ExcelDataset
+  filepath: data/08_reporting/ctd_mapping.xlsx
+  load_args:
+    engine: openpyxl
+    sheet_name: Orders
+
+op1_mapping:
+  type: pandas.ExcelDataset
+  filepath: data/08_reporting/op1_mapping.xlsx
+  load_args:
+    engine: openpyxl
+    sheet_name: Orders
+
+op2_mapping:
+  type: pandas.ExcelDataset
+  filepath: data/08_reporting/op2_mapping.xlsx
+  load_args:
+    engine: openpyxl
+    sheet_name: Orders
+
 # Tim's input
 
 job_list:
