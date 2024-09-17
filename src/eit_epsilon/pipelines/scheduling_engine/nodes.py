@@ -1031,6 +1031,7 @@ class GeneticAlgorithmScheduler:
         start_add = 60 if m == 51 else 0
 
         # Determine the window in which the start_time falls
+        # start_add is used to cancel slack_windows that use the first hour of the day for nutshell drag tasks
         window_start = (
             start_time // self.total_minutes_per_day
         ) * self.total_minutes_per_day + start_add
@@ -1297,10 +1298,7 @@ class GeneticAlgorithmScheduler:
                         break
 
             # If there is no ghost machine, start time will still be undefined
-            # The nutshell drag is excluded from using slack time because it needs a one hour warm-up
-            # Additionally we want to enforce more usage of double batches, which is more like what happens on the
-            # factory floor.
-            if start is None and m != 51:
+            if start is None:
                 # Loop over slack in this machine
                 for unused_time in slack_m[m]:
                     # If the unused time + duration of task is less than the end of the slack window
