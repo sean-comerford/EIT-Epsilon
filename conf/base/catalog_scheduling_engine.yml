@@ -58,6 +58,16 @@ final_changeovers:
     engine: openpyxl
     sheet_name: Schedule
 
+kpi_results:
+  type: pandas.ExcelDataset
+  filepath: data/08_reporting/kpi_results.xlsx
+  save_args:
+    engine: openpyxl
+    sheet_name: KPIs
+  load_args:
+    engine: openpyxl
+    sheet_name: KPIs
+
 cr_cycle_times:
   type: pandas.ParquetDataset
   filepath: data/03_primary/cr_cycle_times.pq
@@ -97,6 +107,33 @@ best_schedule:
 best_scores:
   type: pickle.PickleDataset
   filepath: data/07_model_output/best_scores.pkl
+
+# Mapping pipeline files
+
+mapping_dict:
+  type: pickle.PickleDataset
+  filepath: data/05_model_input/mapping_dict.pkl
+
+ctd_mapping:
+  type: pandas.ExcelDataset
+  filepath: data/08_reporting/ctd_mapping.xlsx
+  load_args:
+    engine: openpyxl
+    sheet_name: Orders
+
+op1_mapping:
+  type: pandas.ExcelDataset
+  filepath: data/08_reporting/op1_mapping.xlsx
+  load_args:
+    engine: openpyxl
+    sheet_name: Orders
+
+op2_mapping:
+  type: pandas.ExcelDataset
+  filepath: data/08_reporting/op2_mapping.xlsx
+  load_args:
+    engine: openpyxl
+    sheet_name: Orders
 
 # Tim's input
 

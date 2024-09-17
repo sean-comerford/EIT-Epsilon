@@ -713,6 +713,7 @@ class GeneticAlgorithmScheduler:
         self.arbor_dict = None
         self.ghost_machine_dict = None
         self.cemented_arbors = None
+        self.arbor_quantities = None
         self.urgent_orders = None
         self.urgent_multiplier = None
         self.max_iterations = None
@@ -776,7 +777,7 @@ class GeneticAlgorithmScheduler:
             start (int): The starting time in the schedule in minutes.
             job_id (int): The index of the job in the job list.
             task_id (int): The task number within the job.
-            after_hours_starts (int): The number of jobs that can start after working hours.
+            after_hours_starts (int): The number of task starts on a machine after working hours.
 
         Returns:
             int: The next available time for the machine to start the task.
@@ -903,7 +904,7 @@ class GeneticAlgorithmScheduler:
         This method:
         1. Initializes an empty assignment dictionary where each arbor is associated with a list of machines.
         2. Iterates over the arbors, checking if they are cemented or cementless.
-        3. Assigns each arbor to a set number of machines based on its frequency.
+        3. Assigns each arbor to a set number of machines, based on the number of arbors of that type that are available.
         4. Cementless arbors can be assigned to machines [1, 2, 3, 4, 5, 6] while cemented arbors are limited to machines [1, 2, 3].
         5. The method uses a random choice mechanism to vary the machines to which arbors are assigned.
 
@@ -950,8 +951,9 @@ class GeneticAlgorithmScheduler:
                 machines = selected_machines_ctd
                 machine_index = machine_index_cemented
 
-            # Determine the number of machines to assign based on frequency
-            num_machines_to_assign = random.choice([1, 2])
+            # Determine how many of this type of arbor there are and then randomly determine how many
+            # machines should be assigned this type e.g. if there are 2 of this type assign either 1 or 2
+            num_machines_to_assign = random.randint(1, self.arbor_quantities[arbor])
 
             # Assign the arbor to the appropriate number of machines
             for _ in range(num_machines_to_assign):
@@ -1105,9 +1107,7 @@ class GeneticAlgorithmScheduler:
         preferred_machines = [
             machine
             for machine in compat_task_0
-            if product_m[machine] == 0
-            or product_m[machine] == part_id
-            or product_m[machine] in self.compatibility_dict[part_id]
+            if product_m[machine] == 0 or product_m[machine] == part_id
         ]
 
         # Extract the appropriate arbor from custom part ID
@@ -1425,18 +1425,24 @@ class GeneticAlgorithmScheduler:
         random_roll = random.random()
         fixture_to_machine_assignment = self.assign_arbors_to_machines(arbor_frequencies)
 
-        # Randomly shuffle or sort the job list based on the random roll
-        if random_roll < 0.6:
-            random.shuffle(J_temp)
+
+        # Based on the random number we either randomly shuffle or apply some sorting logic
+        random.shuffle(J_temp)
+        if random_roll < 0.3:
+            pass  # Already shuffled
+        elif random_roll < 0.6:
+            # The original shuffle determines the relative order of products with the same part ID
+            J_temp.sort(
+                key=lambda x: self.J[x][0][::-1], reverse=random.choice([True, False])
+            )  # Sort on the part ID
         elif random_roll < 0.7:
-            J_temp.sort(key=lambda x: self.J[x][0])
-        elif random_roll < 0.8:
-            J_temp.sort(key=lambda x: self.J[x][1], reverse=True)
+            J_temp.sort(key=lambda x: self.J[x][1], reverse=True)  # Sort on the due time
         elif random_roll < 0.9:
-            J_temp.sort(key=lambda x: (self.J[x][0], self.J[x][1]), reverse=True)
+            J_temp.sort(
+                key=lambda x: (self.J[x][0][::-1], self.J[x][1]), reverse=random.choice([True, False])
+            )
         else:
             # Shuffle and then bring urgent orders to the front
-            random.shuffle(J_temp)
             for job in self.urgent_orders:
                 J_temp.remove(job)
                 J_temp.append(job)
@@ -1464,6 +1470,7 @@ class GeneticAlgorithmScheduler:
                         if random_roll < 0.5
                         else random.choice(preferred_machines)
                     )
+
                     # Determine the start time based on product compatibility
                     if (
                         product_m.get(m) == 0
@@ -1496,6 +1503,7 @@ class GeneticAlgorithmScheduler:
                             or product_m.get(m) == part_id
                             or product_m.get(m) in self.compatibility_dict[part_id]
                         ):
+
                             changeover_duration = self.drag_machine_setup_time
                         else:
                             changeover_duration = self.change_over_time_op2
@@ -1756,11 +1764,7 @@ class GeneticAlgorithmScheduler:
                     if m not in preferred_machines:
                         m = random.choice(preferred_machines)
 
-                    if (
-                        product_m.get(m) == 0
-                        or product_m.get(m) == part_id
-                        or product_m.get(m) in self.compatibility_dict[part_id]
-                    ):
+                    if product_m.get(m) == 0 or product_m.get(m) == part_id:
                         start = avail_m[m]
                     else:
                         # If the changeover would not be finished before the end of day,
@@ -1783,9 +1787,7 @@ class GeneticAlgorithmScheduler:
                     # in all cases, either in slack_logic() or find_avail_m()
                     if m in self.change_over_machines_op2:
                         if (
-                            product_m.get(m) == 0
-                            or product_m.get(m) == part_id
-                            or product_m.get(m) in self.compatibility_dict[part_id]
+                            product_m.get(m) == 0 or product_m.get(m) == part_id
                         ):  # Previous part was the same or compatible, or there wasn't a previous part
                             changeover_duration = self.drag_machine_setup_time
                         else:
@@ -2036,6 +2038,7 @@ class GeneticAlgorithmScheduler:
         arbor_dict: Dict[str, Any],
         ghost_machine_dict: Dict[int, int],
         cemented_arbors: Dict[str, str],
+        arbor_quantities: Dict[str, int],
     ) -> Tuple[Any, deque]:
         """
         Runs the genetic algorithm by initializing the population, evaluating it, and selecting the best schedule.
@@ -2047,6 +2050,7 @@ class GeneticAlgorithmScheduler:
             ghost_machine_dict (Dict[int, int]): Dictionary containing mapping from machines to ghost machines
             arbor_dict (Dict[str, Any]): Dictionary containing the arbor information for changeovers [custom_part_id: arbor_num].
             cemented_arbors (Dict[str, str]): Dictionary containing the cemented arbor information.
+            arbor_quantities (Dict[str, int]): Dictionary containing the arbor quantities.
 
         Returns:
             Tuple[Any, deque]: The best schedule with the highest score and the
@@ -2074,6 +2078,7 @@ class GeneticAlgorithmScheduler:
         self.arbor_dict = arbor_dict
         self.ghost_machine_dict = ghost_machine_dict
         self.cemented_arbors = cemented_arbors
+        self.arbor_quantities = arbor_quantities
         self.max_iterations = scheduling_options["max_iterations"]
         self.urgent_multiplier = scheduling_options["urgent_multiplier"]
         self.task_time_buffer = scheduling_options["task_time_buffer"]
@@ -2381,6 +2386,52 @@ def create_start_end_time(
     changeovers = changeovers.sort_values(["Machine", "Start_time"])
 
     return croom_reformatted_orders, changeovers
+
+
+def calculate_kpi(schedule: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate the percentage of jobs finished on time and the average lead time per order.
+
+    Args:
+        schedule (pd.DataFrame): The final schedule containing 'Order', 'task', 'End_time', 'Due_date', and 'Order_date' columns.
+
+    Returns:
+        pd.DataFrame: A DataFrame containing the calculated KPIs (OTIF and average lead time).
+    """
+    # Ensure 'Due_date', 'End_time', and 'Order_date' are in datetime format
+    schedule["Due_date"] = pd.to_datetime(schedule["Due_date"])
+    schedule["End_time"] = pd.to_datetime(schedule["End_time"])
+    schedule["Order_date"] = pd.to_datetime(schedule["Order_date"])
+
+    # Identify the largest task for each unique order
+    max_tasks = schedule.groupby("Order")["task"].max().reset_index()
+
+    # Merge to get the 'End_time' and 'Order_date' of the largest task for each order
+    max_tasks = max_tasks.merge(schedule, on=["Order", "task"], how="left")
+
+    # Compare 'Due_date' with 'End_time'
+    on_time_jobs = max_tasks[max_tasks["End_time"] <= max_tasks["Due_date"]]
+
+    # Calculate the percentage of jobs finished on time
+    percentage_on_time = len(on_time_jobs) / len(max_tasks) * 100
+
+    # Calculate the lead time for each order
+    max_tasks["Lead_time"] = (max_tasks["End_time"] - max_tasks["Order_date"]).dt.days
+
+    # Calculate the average lead time per order
+    average_lead_time = max_tasks["Lead_time"].mean()
+
+    # TODO: Prognosis of real OTIF when considerings scrap (Ask Bryan for percentage estimate)
+    # Print the OTIF percentage and average lead time
+    logger.info(f"Percentage of jobs finished on time (OTIF): {percentage_on_time:.2f}%")
+    logger.info(f"Average lead time per order: {average_lead_time:.2f} days")
+
+    # Create a DataFrame for Excel output
+    kpi_df = pd.DataFrame(
+        {"OTIF (%)": [round(percentage_on_time, 1)], "avg. lead time": [round(average_lead_time, 1)]}
+    )
+
+    return kpi_df
 
 
 def create_chart(
