@@ -1,57 +1,56 @@
 task_to_machines: {
-
   # Cementless OP1
   1: [1, 2, 3, 4, 5, 6],  # HAAS
   2: [7, 8],  # Post-HAAS Inspection
   3: [9],  # First Wash
-  4: [10, 11, 12, 13, 14, 15],  # Manual Prep & Touch-up
-  5: [16, 17, 18, 19, 20, 21],  # Optional touch-up inspection
-  6: [22],  # Final Wash
-  7: [23, 24],  # Final inspection
+  4: [11, 12, 13, 14, 15, 16],  # Manual Prep & Touch-up
+  5: [17, 18, 19, 20, 21, 22],  # Optional touch-up inspection
+  6: [23],  # Final Wash
+  7: [25, 26],  # Final inspection
 
   # Cementless OP2
-  10: [25],  # Ceramic drag
-  11: [26],  # Wash 2
-  12: [27],  # Plastic drag
-  13: [26],  # Wash 2
-  14: [28, 29, 30, 31],  # Post-Plastic Inspection
-  15: [10, 11, 12, 13, 14, 15],  # Manual Prep & Touch-up
-  16: [32],  # FPI-Inspect
-  17: [33],  # Nutshell drag
-  18: [34, 35],  # Polishing
-  19: [22],  # Final Wash
-  20: [23, 24],  # Final inspection
+  10: [27],  # Ceramic drag
+  11: [29],  # Wash 2
+  12: [31],  # Plastic drag
+  13: [29],  # Wash 2
+  14: [33, 34, 35, 36],  # Post-Plastic Inspection
+  15: [11, 12, 13, 14, 15, 16],  # Manual Prep & Touch-up
+  16: [37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50],  # FPI-Inspect
+  17: [51],  # Nutshell drag
+  18: [53, 54],  # Polishing
+  19: [23],  # Final Wash
+  20: [25, 26],  # Final inspection
 
   # Cemented (All)
-  30: [1, 2, 3],  # HAAS (only cemented)
+  30: [4, 5, 6],  # HAAS (only cemented)
   31: [7, 8],  # Post-HAAS Inspection
   32: [9],  # First Wash
-  33: [25],  # Ceramic drag
-  34: [26],  # Wash 2
-  35: [10, 11, 12, 13, 14, 15],  # Plastic prep (Blast included)
-  36: [28, 29, 30, 31],  # Post-Plastic Inspection
-  37: [27],  # Plastic drag
-  38: [26],  # Wash 2
-  39: [28, 29, 30, 31],  # Post-Plastic Inspection
-  40: [10, 11, 12, 13, 14, 15],  # Manual Prep & Touch-up
-  41: [16, 17, 18, 19, 20, 21],  # Optional touch-up inspection
-  42: [33],  # Nutshell drag
-  43: [34, 35],  # Polishing
-  44: [23, 24],  # Final inspection
+  33: [27],  # Ceramic drag
+  34: [29],  # Wash 2
+  35: [11, 12, 13, 14, 15, 16],  # Plastic prep (Blast included)
+  36: [33, 34, 35, 36],  # Post-Plastic Inspection
+  37: [31],  # Plastic drag
+  38: [29],  # Wash 2
+  39: [33, 34, 35, 36],  # Post-Plastic Inspection
+  40: [11, 12, 13, 14, 15, 16],  # Manual Prep & Touch-up
+  41: [17, 18, 19, 20, 21, 22],  # Optional touch-up inspection
+  42: [51],  # Nutshell drag
+  43: [53, 54],  # Polishing
+  44: [25, 26],  # Final inspection
 }
 
 # Define OP2 size categories for CR
 size_categories_op2_cr: {
-    "small": {"1", "2", "3N"},
-    "medium": {"3", "4N", "4", "5N", "5", "6N"},
-    "large": {"6", "7", "8", "9", "10"}
+  "small": {"1", "2", "3N"},
+  "medium": {"3", "4N", "4", "5N", "5", "6N"},
+  "large": {"6", "7", "8", "9", "10"}
 }
 
 # Define OP2 size categories for PS
 size_categories_op2_ps: {
-    "small": {"1", "2"},
-    "medium": {"3N", "3", "4N", "4", "5N", "5"},
-    "large": {"6N", "6", "7", "8", "9", "10"}
+  "small": {"1", "2"},
+  "medium": {"3N", "3", "4N", "4", "5N", "5"},
+  "large": {"6N", "6", "7", "8", "9", "10"}
 }
 
 column_mapping_reformat: {
@@ -67,69 +66,103 @@ column_mapping_reformat: {
 }
 
 machine_dict: {
-    1: 'HAAS-1',
-    2: 'HAAS-2',
-    3: 'HAAS-3',
-    4: 'HAAS-4',
-    5: 'HAAS-5',
-    6: 'HAAS-6',
-    7: 'Post-HAAS Inspect-1',
-    8: 'Post-HAAS Inspect-2',
-    9: 'Wash-1',
-    10: 'Manual Prep & Touch-up-1',
-    11: 'Manual Prep & Touch-up-2',
-    12: 'Manual Prep & Touch-up-3',
-    13: 'Manual Prep & Touch-up-4',
-    14: 'Manual Prep & Touch-up-5',
-    15: 'Manual Prep & Touch-up-6',
-    16: 'Optional touch-up Inspect-1',
-    17: 'Optional touch-up Inspect-2',
-    18: 'Optional touch-up Inspect-3',
-    19: 'Optional touch-up Inspect-4',
-    20: 'Optional touch-up Inspect-5',
-    21: 'Optional touch-up Inspect-6',
-    22: 'Final Wash-1',
-    23: 'Final Inspect-1',
-    24: 'Final Inspect-2',
-    25: 'Ceramic Drag',
-    26: 'Wash-2',
-    27: 'Plastic Drag',
-    28: 'Post-Plastic Inspect-1',
-    29: 'Post-Plastic Inspect-2',
-    30: 'Post-Plastic Inspect-3',
-    31: 'Post-Plastic Inspect-4',
-    32: 'FPI Inspect-1',
-    33: 'Nutshell Drag',
-    34: 'Polishing-1',
-    35: 'Polishing-2',
+  1: 'HAAS-1',
+  2: 'HAAS-2',
+  3: 'HAAS-3',
+  4: 'HAAS-4',
+  5: 'HAAS-5',
+  6: 'HAAS-6',
+  7: 'Post-HAAS Inspect-1',
+  8: 'Post-HAAS Inspect-2',
+  9: 'Wash-1',
+  10: 'Wash-1 (Ghost)',
+  11: 'Manual Prep & Touch-up-1',
+  12: 'Manual Prep & Touch-up-2',
+  13: 'Manual Prep & Touch-up-3',
+  14: 'Manual Prep & Touch-up-4',
+  15: 'Manual Prep & Touch-up-5',
+  16: 'Manual Prep & Touch-up-6',
+  17: 'Optional touch-up Inspect-1',
+  18: 'Optional touch-up Inspect-2',
+  19: 'Optional touch-up Inspect-3',
+  20: 'Optional touch-up Inspect-4',
+  21: 'Optional touch-up Inspect-5',
+  22: 'Optional touch-up Inspect-6',
+  23: 'Final Wash-1',
+  24: 'Final Wash-1 (Ghost)',
+  25: 'Final Inspect-1',
+  26: 'Final Inspect-2',
+  27: 'Ceramic Drag',
+  28: 'Ceramic Drag (Ghost)',
+  29: 'Wash-2',
+  30: 'Wash-2 (Ghost)',
+  31: 'Plastic Drag',
+  32: 'Plastic Drag (Ghost)',
+  33: 'Post-Plastic Inspect-1',
+  34: 'Post-Plastic Inspect-2',
+  35: 'Post-Plastic Inspect-3',
+  36: 'Post-Plastic Inspect-4',
+  37: 'FPI Inspect-1',
+  38: 'FPI Inspect-2',
+  39: 'FPI Inspect-3',
+  40: 'FPI Inspect-4',
+  41: 'FPI Inspect-5',
+  42: 'FPI Inspect-6',
+  43: 'FPI Inspect-7',
+  44: 'FPI Inspect-8',
+  45: 'FPI Inspect-9',
+  46: 'FPI Inspect-10',
+  47: 'FPI Inspect-11',
+  48: 'FPI Inspect-12',
+  49: 'FPI Inspect-13',
+  50: 'FPI Inspect-14',
+  51: 'Nutshell Drag',
+  52: 'Nutshell Drag (Ghost)',
+  53: 'Polishing-1',
+  54: 'Polishing-2'
+}
+
+ghost_machine_dict: {
+  9: 10,
+  10: 9,
+  23: 24,
+  24: 23,
+  27: 28,
+  28: 27,
+  29: 30,
+  30: 29,
+  31: 32,
+  32: 31,
+  51: 52,
+  52: 51
 }
 
 cemented_arbors: {
-    '5': '1008644',
-    '6': '1008654',
-    '7': '1008663',
-    '8': '1008668',
-    '9': '1008672',
-    '10': '1008677',
-    '4N': '1008639',
-    '5N': '1008649'
+  '5': '1008644',
+  '6': '1008654',
+  '7': '1008663',
+  '8': '1008668',
+  '9': '1008672',
+  '10': '1008677',
+  '4N': '1008639',
+  '5N': '1008649'
 }
 
 cementless_arbors: {
-    '1': '800.6000.10.00',
-    '2': '800.6001.11.00',
-    '3': '800.6000.12.00',
-    '4': '800.6000.13.00',
-    '5': '800.6000.14.00',
-    '6': '800.6000.15.00',
-    '7': '800.6000.16.00',
-    '8': '800.6000.17.00',
-    '9': '800.6000.18.00',
-    '10': '800.6000.19.00',
-    '3N': '800.6000.20.00',
-    '4N': '800.6001.13.00',
-    '5N': '800.6001.14.00',
-    '6N': '800.6000.23.00'
+  '1': '800.6000.10.00',
+  '2': '800.6001.11.00',
+  '3': '800.6000.12.00',
+  '4': '800.6000.13.00',
+  '5': '800.6000.14.00',
+  '6': '800.6000.15.00',
+  '7': '800.6000.16.00',
+  '8': '800.6000.17.00',
+  '9': '800.6000.18.00',
+  '10': '800.6000.19.00',
+  '3N': '800.6000.20.00',
+  '4N': '800.6001.13.00',
+  '5N': '800.6001.14.00',
+  '6N': '800.6000.23.00'
 }
 
 # The quantity of each arbor (fixture) type
@@ -158,27 +191,30 @@ arbor_quantities: {
     '800.6000.23.00': 1
 }
 
-scheduling_options:
-  start_date: "2024-04-03T06:30"  # Starting date used to calculate difference with due date
-  change_over_time_op1: 180  # Minutes required to do a changeover on the HAAS machines (Only OP 1)
-  change_over_time_op2: 25  # Minutes required to do a changeover on the non-Drag OP 2 machines
-  change_over_machines_op1: [1, 2, 3, 4, 5, 6] # Machines that require a changeover for OP1 (key in machine dict above)
-  change_over_machines_op2: [25, 27, 33]  # Machines that require a changeover for OP2 (key in machine dict above)
-  cemented_only_haas_machines: [4, 5, 6] # HAAS Machines that can process cemented (primary) products
-  non_manual_task_machines: [1, 3, 6, 10, 11, 12, 13, 17, 30, 32, 33, 34, 37, 38, 42] # Non-manual tasks (can go past EOD)
-  task_time_buffer: 5  # Number of extra minutes to keep between tasks as a buffer (switching time)
-  n: 1000  # Number of random schedules to generate
-  n_e: 0.05  # Proportion of best schedules to automatically pass on to the next generation (e.g.: 10%)
-  n_c: 0.15  # Proportion of children to generate in the offspring function
-  working_minutes_per_day: 480  # Number of working minutes per day (8 hours * 60 minutes)
-  total_minutes_per_day: 1440  # Number of minutes in exactly 24 hours
-  drag_machine_setup_time: 15  # Time it takes to set up a new batch on the drag machines
-  max_iterations: 10  # Maximum number of iterations/generations to run the algorithm
-  time_budget: 0  # Maximum runtime for the algorithm in seconds - 0 means no limit; max_iterations will be used
-  offspring_frequency: 7  # Enable offspring every X generations (E.g.: a value of 2 means every other generation)
-  urgent_multiplier: 3  # Multiplier for (due_date - completion_time) for urgent_orders
-  urgent_orders: []  # List of job indices of urgent orders; starting from 1,
-  changeover_machines_op1_full_name: ['HAAS-1', 'HAAS-2', 'HAAS-3', 'HAAS-4', 'HAAS-5', 'HAAS-6']
+
+scheduling_options: {
+  start_date: "2024-04-01T06:30",  # Starting date used to calculate difference with due date
+  change_over_time_op1: 180,  # Minutes required to do a changeover on the HAAS machines
+  change_over_time_op2: 15,  # Minutes required to do a changeover on the non-Drag OP 2 machines
+  change_over_machines_op1: [1, 2, 3, 4, 5, 6], # Machines that require a changeover for OP1 (key in machine dict above)
+  change_over_machines_op2: [27, 28, 31, 32, 51, 52],  # Machines that require a changeover for OP2 (key in machine dict above)
+  cemented_only_haas_machines: [4, 5, 6], # HAAS Machines that can process cemented (primary) products
+  non_manual_task_machines: [1, 3, 6, 10, 11, 12, 13, 17, 30, 32, 33, 34, 37, 38, 42], # Non-manual tasks (can go past EOD)
+  non_slack_machines: [37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50],  # Machines that cannot use slack time
+  task_time_buffer: 5,  # Number of extra minutes to keep between tasks as a buffer (switching time)
+  n: 1200,  # Number of random schedules to generate
+  n_e: 0.05,  # Proportion of best schedules to automatically pass on to the next generation (e.g.: 10%)
+  n_c: 0.15,  # Proportion of children to generate in the offspring function
+  working_minutes_per_day: 480,  # Number of working minutes per day (8 hours * 60 minutes)
+  total_minutes_per_day: 1440,  # Number of minutes in exactly 24 hours
+  drag_machine_setup_time: 15,  # Time it takes to set up a new batch on the drag machines
+  max_iterations: 30,  # Maximum number of iterations/generations to run the algorithm
+  time_budget: 0,  # Maximum runtime for the algorithm in seconds - 0 means no limit; max_iterations will be used
+  offspring_frequency: 7,  # Enable offspring every X generations (E.g.: a value of 2 means every other generation)
+  urgent_multiplier: 3,  # Multiplier for (due_date - completion_time) for urgent_orders
+  urgent_orders: [],  # List of job indices of urgent orders; starting from 1,
+  changeover_machines_op1_full_name: ['HAAS-1', 'HAAS-2', 'HAAS-3', 'HAAS-4', 'HAAS-5', 'HAAS-6'],
+
   column_mapping: {
     'Job ID': 'Order',
     'Created Date': 'Order_date',
@@ -187,12 +223,14 @@ scheduling_options:
     'Order Qty': 'Order Qty'
   }
 
+}
 
-visualization_options:
-  title: "Production Schedule Milling & Grinding"
+visualization_options: {
+  title: "Production Schedule Milling & Grinding",
   column_mapping: {
     'Start': 'Start_time',
     'End': 'End_time',
     'Resource': 'Machine',
     'Task': 'Job'
   }
+}
