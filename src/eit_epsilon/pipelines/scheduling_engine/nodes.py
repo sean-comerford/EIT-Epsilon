@@ -740,7 +740,10 @@ class GeneticAlgorithmScheduler:
 
         # Adjust if start time is outside of working hours
         if start >= current_day_start + self.working_minutes_per_day:
-            start = current_day_start + self.total_minutes_per_day
+            if task in [17, 42]:
+                start = current_day_start + self.total_minutes_per_day + 60
+            else:
+                start = current_day_start + self.total_minutes_per_day
 
         # Determine the adjusted start date and time
         actual_start_datetime: datetime = starting_date + timedelta(minutes=start)
@@ -996,12 +999,13 @@ class GeneticAlgorithmScheduler:
 
         return m
 
-    def slack_window_check(self, slack: Tuple[float, float]) -> Optional[Tuple[float, float]]:
+    def slack_window_check(self, slack: Tuple[float, float], m: int) -> Optional[Tuple[float, float]]:
         """
         Check and adjust a given slack time window to ensure it falls within valid working hours.
 
         Args:
             slack (Tuple[float, float]): A tuple containing the start and end times of the slack window.
+            m (int): The machine identifier.
 
         Returns:
             Optional[Tuple[float, float]]: The adjusted slack window if valid, or None if invalid.
@@ -1023,8 +1027,13 @@ class GeneticAlgorithmScheduler:
             end_time, (int, float)
         ), f"Expected numeric type for start- and end time, received: {start_time}, {end_time}"
 
+        # One hour warm-up time for the nutshell drag, else 0
+        start_add = 60 if m == 51 else 0
+
         # Determine the window in which the start_time falls
-        window_start = (start_time // self.total_minutes_per_day) * self.total_minutes_per_day
+        window_start = (
+            start_time // self.total_minutes_per_day
+        ) * self.total_minutes_per_day + start_add
         window_end = window_start + self.working_minutes_per_day
 
         # Check if the start_time is within the valid window
@@ -1150,6 +1159,29 @@ class GeneticAlgorithmScheduler:
             if slack_window_upd:
                 slack_m[ghost_m].append(slack_window_upd)
 
+    def nutshell_warmup(self, m: int, start: Union[int, float]) -> Union[int, float]:
+        """
+        Adjusts the start time to ensure it does not fall within the first hour of the working day.
+
+        This method checks if the given start time falls within the first hour of the working day.
+        If it does, the start time is adjusted to the start of the next hour.
+
+        Args:
+            m (int): The machine identifier.
+            start (Union[int, float]): The initial start time in minutes from the reference start date.
+
+        Returns:
+            Union[int, float]: The adjusted start time in minutes from the reference start date.
+        """
+        # If the machine is nutshell drag
+        if m == 51:
+            time_in_day = start % self.total_minutes_per_day
+
+            if time_in_day < 60:
+                start += 60 - time_in_day
+
+        return start
+
     def slack_logic(
         self,
         m: int,
@@ -1224,11 +1256,13 @@ class GeneticAlgorithmScheduler:
             # We subtract changeover_duration, because even though the task actually starts later,
             # the changeover_duration cannot be used for a different task
             slack_window_upd = self.slack_window_check(
-                (avail_m[m], start - changeover_duration - self.task_time_buffer)
+                (avail_m[m], start - changeover_duration - self.task_time_buffer), m
             )
 
             if slack_window_upd and m not in self.non_slack_machines:
                 slack_m[m].append(slack_window_upd)
+
+            start = self.nutshell_warmup(m, start)
 
             # If the machine has a ghost machine, we can define the real running time of the original/main machine
             # as slack on the ghost machine
@@ -1262,7 +1296,11 @@ class GeneticAlgorithmScheduler:
                         # Stop searching if a suitable slack window has been found
                         break
 
-            if start is None:
+            # If there is no ghost machine, start time will still be undefined
+            # The nutshell drag is excluded from using slack time because it needs a one hour warm-up
+            # Additionally we want to enforce more usage of double batches, which is more like what happens on the
+            # factory floor.
+            if start is None and m != 51:
                 # Loop over slack in this machine
                 for unused_time in slack_m[m]:
                     # If the unused time + duration of task is less than the end of the slack window
@@ -1303,7 +1341,8 @@ class GeneticAlgorithmScheduler:
                                     + self.task_time_buffer
                                 ),
                                 unused_time[1],
-                            )
+                            ),
+                            m,
                         )
 
                         if slack_window_upd and m not in self.non_slack_machines:
@@ -1317,7 +1356,7 @@ class GeneticAlgorithmScheduler:
                         # the changeover_duration cannot be used for a different task
                         if start == (previous_task_finish + changeover_duration + self.task_time_buffer):
                             slack_window_upd = self.slack_window_check(
-                                (unused_time[0], previous_task_finish)
+                                (unused_time[0], previous_task_finish), m
                             )
 
                             # Do not append slack windows smaller than a few minutes
@@ -1334,6 +1373,9 @@ class GeneticAlgorithmScheduler:
             # If slack time is not used, start when the machine becomes available
             if not slack_time_used:
                 start = self.adjust_start_time(avail_m[m] + changeover_duration)
+
+                # Check if nutshell warmup time is applicable
+                start = self.nutshell_warmup(m, start)
 
                 # Again, if the machine has a ghost machine, we can define the real running time of the task
                 # on the original/main machine as slack on the ghost machine

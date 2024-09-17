@@ -181,7 +181,7 @@ scheduling_options: {
   working_minutes_per_day: 480,  # Number of working minutes per day (8 hours * 60 minutes)
   total_minutes_per_day: 1440,  # Number of minutes in exactly 24 hours
   drag_machine_setup_time: 15,  # Time it takes to set up a new batch on the drag machines
-  max_iterations: 25,  # Maximum number of iterations/generations to run the algorithm
+  max_iterations: 5,  # Maximum number of iterations/generations to run the algorithm
   time_budget: 0,  # Maximum runtime for the algorithm in seconds - 0 means no limit; max_iterations will be used
   offspring_frequency: 7,  # Enable offspring every X generations (E.g.: a value of 2 means every other generation)
   urgent_multiplier: 3,  # Multiplier for (due_date - completion_time) for urgent_orders
