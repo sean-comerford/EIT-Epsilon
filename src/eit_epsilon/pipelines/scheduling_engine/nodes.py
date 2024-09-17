@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -16,6 +15,7 @@ import itertools
 from collections import defaultdict, Counter
 from concurrent.futures import ProcessPoolExecutor
 from collections import deque
+from pathlib import Path
 
 # Instantiate logger
 logger = logging.getLogger(__name__)
@@ -1425,7 +1425,6 @@ class GeneticAlgorithmScheduler:
         random_roll = random.random()
         fixture_to_machine_assignment = self.assign_arbors_to_machines(arbor_frequencies)
 
-
         # Based on the random number we either randomly shuffle or apply some sorting logic
         random.shuffle(J_temp)
         if random_roll < 0.3:
@@ -1503,7 +1502,6 @@ class GeneticAlgorithmScheduler:
                             or product_m.get(m) == part_id
                             or product_m.get(m) in self.compatibility_dict[part_id]
                         ):
-
                             changeover_duration = self.drag_machine_setup_time
                         else:
                             changeover_duration = self.change_over_time_op2
@@ -1663,7 +1661,7 @@ class GeneticAlgorithmScheduler:
                             (self.J[job_id][1] - (start_time + job_task_dur)),
                             1.02,
                         )
-                        * (2 if task_id in [1, 30] else 1)
+                        * (50 if task_id in [1, 30] else 1)
                         * (self.urgent_multiplier if job_id in self.urgent_orders else 1)
                         + (
                             # Fixed size bonus for completing the job on time (only applies if the final task is
@@ -2465,3 +2463,84 @@ def save_chart_to_html(gantt_chart: plotly.graph_objs.Figure) -> None:
     """
     filepath = Path(os.getcwd()) / "data/08_reporting/gantt_chart.html"
     plotly.offline.plot(gantt_chart, filename=str(filepath))
+
+
+def order_to_id(
+    mapping_dict: Dict[str, int], schedule: pd.DataFrame, croom_processed_orders: pd.DataFrame
+) -> Tuple[Dict[str, int], pd.DataFrame]:
+    """
+    Assigns unique IDs to orders in the schedule and updates the mapping dictionary to keep track of these IDs.
+    The order of jobs in `croom_processed_orders` determines the order of IDs assigned.
+
+    Args:
+        mapping_dict (Dict[str, int]): A dictionary mapping order names to unique IDs.
+        schedule (pd.DataFrame): A DataFrame containing the schedule with an 'Order' column.
+        croom_processed_orders (pd.DataFrame): A DataFrame containing the processed orders with a 'Job ID' column.
+
+    Returns:
+        Tuple[Dict[str, int], pd.DataFrame]: The updated mapping dictionary and the schedule DataFrame with IDs.
+    """
+    # Extract the order of jobs from `croom_processed_orders`
+    job_order = croom_processed_orders["Job ID"].tolist()
+
+    # Sort the `schedule` DataFrame based on the order of jobs
+    schedule["Order"] = pd.Categorical(schedule["Order"], categories=job_order, ordered=True)
+    schedule = schedule.sort_values("Order")
+
+    # Identify valid orders present in the schedule
+    valid_orders = set(schedule["Order"])
+
+    # Update the mapping dictionary to only include valid orders
+    updated_mapping_dict = {k: v for k, v in mapping_dict.items() if k in valid_orders}
+
+    # Find unused numbers between 1 and 300
+    unused_numbers = set(np.arange(1, 301)) - set(updated_mapping_dict.values())
+
+    # Assign new IDs to new orders
+    for order in schedule["Order"]:
+        if order not in updated_mapping_dict:
+            new_id = unused_numbers.pop()  # Assign a new unique ID from the unused set
+            updated_mapping_dict[order] = new_id  # Map the order to the new ID
+
+    # Function to map order to ID in the schedule DataFrame
+    def find_mapping(row: pd.Series) -> pd.Series:
+        id_value = updated_mapping_dict.get(row["Order"], None)
+        row["ID"] = id_value
+        return row
+
+    # Apply the mapping function row-wise to the schedule DataFrame
+    schedule = schedule.apply(find_mapping, axis=1)
+
+    return updated_mapping_dict, schedule
+
+
+def split_and_save_schedule(schedule: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Splits the schedule into three DataFrames; one for cemented parts, one for OP1 parts, and one for OP2 parts.
+
+    Args:
+        schedule (pd.DataFrame): A DataFrame containing the schedule with 'Custom Part ID', 'Order', and 'ID' columns.
+
+    Returns:
+        Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]: Three DataFrames for CTD, OP1, and OP2 parts.
+    """
+    # Filter for the required columns and keep unique rows
+    filtered_schedule = schedule[["Custom Part ID", "Order", "ID"]].drop_duplicates()
+
+    # Split the DataFrame based on 'Custom Part ID'
+    ctd_df = filtered_schedule[filtered_schedule["Custom Part ID"].str.contains("CTD")]
+    op1_df = filtered_schedule[
+        ~filtered_schedule["Custom Part ID"].str.contains("CTD")
+        & filtered_schedule["Custom Part ID"].str.contains("OP1")
+    ]
+    op2_df = filtered_schedule[
+        ~filtered_schedule["Custom Part ID"].str.contains("CTD")
+        & filtered_schedule["Custom Part ID"].str.contains("OP2")
+    ]
+
+    # Drop the 'Custom Part ID' column from each split DataFrame
+    ctd_df = ctd_df.drop(columns=["Custom Part ID"])
+    op1_df = op1_df.drop(columns=["Custom Part ID"])
+    op2_df = op2_df.drop(columns=["Custom Part ID"])
+
+    return ctd_df, op1_df, op2_df
