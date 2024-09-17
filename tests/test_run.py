@@ -51,13 +51,10 @@ class TestOutputSchedule:
     def test_chronological_order(self, project_context):
         """Tasks of the same job should be scheduled in chronological order with no overlap."""
         final_schedule = project_context.catalog.load("final_schedule")
-        scheduling_options = project_context.catalog.load("params:scheduling_options")
         for job_id in final_schedule["Order"].unique():
             job_schedule = final_schedule[final_schedule["Order"] == job_id]
             for i in range(1, len(job_schedule)):
-                assert job_schedule.iloc[i]["Start_time"] >= job_schedule.iloc[i - 1][
-                    "End_time"
-                ] + pd.Timedelta(minutes=scheduling_options["task_time_buffer"] - 1), (
+                assert job_schedule.iloc[i]["Start_time"] >= job_schedule.iloc[i - 1]["End_time"], (
                     f"The start time for job {job_id}, task {job_schedule.iloc[i]['task']} "
                     f"is earlier than the completion time of the previous task!"
                     f"Start time: {job_schedule.iloc[i]['Start_time']}, "

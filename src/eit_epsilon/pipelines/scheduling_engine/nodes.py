@@ -708,6 +708,7 @@ class GeneticAlgorithmScheduler:
         self.change_over_machines_op1 = None
         self.change_over_machines_op2 = None
         self.cemented_only_haas_machines = None
+        self.non_slack_machines = None
         self.compatibility_dict = None
         self.arbor_dict = None
         self.ghost_machine_dict = None
@@ -760,12 +761,6 @@ class GeneticAlgorithmScheduler:
                 break  # It's a weekday, no adjustment needed
 
             actual_start_datetime = starting_date + timedelta(minutes=start)
-
-        # Adjust for Nutshell drag (17, 42)
-        if task in [17, 42]:
-            # Quirk of the nutshell drag: it needs to warm up for the first hour of each day
-            if current_day_start <= start < current_day_start + 60:
-                start = current_day_start + 60
 
         return start
 
@@ -1232,7 +1227,7 @@ class GeneticAlgorithmScheduler:
                 (avail_m[m], start - changeover_duration - self.task_time_buffer)
             )
 
-            if slack_window_upd:
+            if slack_window_upd and m not in self.non_slack_machines:
                 slack_m[m].append(slack_window_upd)
 
             # If the machine has a ghost machine, we can define the real running time of the original/main machine
@@ -1311,7 +1306,7 @@ class GeneticAlgorithmScheduler:
                             )
                         )
 
-                        if slack_window_upd:
+                        if slack_window_upd and m not in self.non_slack_machines:
                             slack_m[m].append(slack_window_upd)
 
                         # Append another slack window if previous start was not at the beginning of the slack window,
@@ -1447,13 +1442,6 @@ class GeneticAlgorithmScheduler:
                         )
                         changeover_finish_time.append(start)
 
-                # No slack_logic for FPI-Inspect task (doesn't make sense for the conveyor belt logic)
-                elif task_id in [16]:
-                    # For other tasks, pick the earliest available machine
-                    m = self.pick_early_machine(task_id, avail_m, random_roll)
-
-                    start = avail_m[m]
-
                 else:
                     # For other tasks, pick the earliest available machine
                     m = self.pick_early_machine(task_id, avail_m, random_roll)
@@ -1500,13 +1488,9 @@ class GeneticAlgorithmScheduler:
                 if not slack_time_used:
                     avail_m[m] = self.find_avail_m(start, job_id, task_id, after_hours_starts)
 
-                    # TODO: Find out what's wrong here
-                    if task_id in [
-                        16
-                    ]:  # In the FPI Inspect case, next task can only start ten minutes later
-                        for machine in [
-                            machine for machine in self.task_to_machines[16] if machine != m
-                        ]:
+                    if m in self.non_slack_machines:
+                        # In the FPI Inspect case, next task can only start ten minutes later
+                        for machine in [machine for machine in self.non_slack_machines if machine != m]:
                             avail_m[machine] = (
                                 max(avail_m[machine], avail_m[m] - self.dur[(job_id, task_id)]) + 10
                             )
@@ -1750,9 +1734,6 @@ class GeneticAlgorithmScheduler:
 
                         # Update time that a mechanic becomes available for a new changeover
                         changeover_finish_time.append(start)
-
-                elif task_id in [16]:  # FPI Inspect should not use slack_logic
-                    start = avail_m[m]
 
                 else:
                     # Initialize changeover time to 0
@@ -2048,6 +2029,7 @@ class GeneticAlgorithmScheduler:
         self.change_over_machines_op1 = scheduling_options["change_over_machines_op1"]
         self.change_over_machines_op2 = scheduling_options["change_over_machines_op2"]
         self.cemented_only_haas_machines = scheduling_options["cemented_only_haas_machines"]
+        self.non_slack_machines = scheduling_options["non_slack_machines"]
         self.compatibility_dict = compatibility_dict
         self.arbor_dict = arbor_dict
         self.ghost_machine_dict = ghost_machine_dict
