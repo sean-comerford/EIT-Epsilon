@@ -646,13 +646,15 @@ class JobShop(Job, Shop):
         return input_repr_dict
 
     @staticmethod
-    def generate_arbor_mapping(input_repr_dict, cemented_arbors, cementless_arbors, HAAS_starting_part_ids):
+    def generate_arbor_mapping(
+        input_repr_dict, cemented_arbors, cementless_arbors, HAAS_starting_part_ids
+    ):
         # Initialize the dictionary to store the results
         arbor_mapping = {}
 
         # Extract part_ids from class attribute
         part_ids = [part_id for part_id, _ in input_repr_dict["J"].values()]
-        
+
         # Add part IDs that were on the HAAS machines already (and may not be in the list of jobs)
         for pID in HAAS_starting_part_ids.values():
             part_ids.append(pID)
@@ -938,7 +940,7 @@ class GeneticAlgorithmScheduler:
         selected_machines_cls = random.choice(
             [machines_cementless, machines_cementless[:-1], machines_cementless[:-2]]
         )
-        selected_machines_ctd = random.choice([machines_cemented, machines_cemented[:-1]])        
+        selected_machines_ctd = random.choice([machines_cemented, machines_cemented[:-1]])
 
         for arbor, frequency in arbor_frequency.items():
             # Create a boolean for the cemented status
@@ -960,16 +962,19 @@ class GeneticAlgorithmScheduler:
             # Determine how many of this type of arbor there are and then randomly determine how many
             # machines should be assigned this type e.g. if there are 2 of this type assign either 1 or 2
             num_machines_to_assign = random.randint(1, self.arbor_quantities[arbor])
-            
-            # If this arbor is already on a machine from the very beginning, then with a certain probability use that machine     
-            # Use arbor_dict to map from part id to arbor                          
-            for m, pID in self.HAAS_starting_part_ids.items():
-                if self.arbor_dict[pID] == arbor and random.random() < 0.75:
+
+            # If this arbor is already on a machine from the very beginning,
+            # then with a certain probability use that machine
+            # Use arbor_dict to map from part id to arbor
+            for m, starting_part_id in self.HAAS_starting_part_ids.items():
+                if self.arbor_dict[starting_part_id] == arbor and random.random() < 0.9:
                     arbor_to_machines[arbor].append(m)
                     num_machines_to_assign -= 1
-                    if num_machines_to_assign == 0: break
-            
-            # Assign the arbor to the appropriate number of machines (provided the arbor hasn't been assigned to the machine already)
+                    if num_machines_to_assign == 0:
+                        break
+
+            # Assign the arbor to the appropriate number of machines
+            # (provided the arbor hasn't been assigned to the machine already)
             for _ in range(num_machines_to_assign):
                 if machines[machine_index] not in arbor_to_machines[arbor]:
                     arbor_to_machines[arbor].append(machines[machine_index])
@@ -1434,12 +1439,12 @@ class GeneticAlgorithmScheduler:
         """
         # Initialize machine availability, slack times, and product assignments
         avail_m = {m: 0 for m in self.M}
-        slack_m = {m: deque() for m in self.M}        
+        slack_m = {m: deque() for m in self.M}
         changeover_finish_time = deque([0])
         P_j = deque()
-        
-        # Set up the previous parts that were on the HAAS machines. 0 means no previous part               
-        product_m = {m: self.HAAS_starting_part_ids.get(m, 0) for m in self.M}        
+
+        # Set up the previous parts that were on the HAAS machines. 0 means no previous part
+        product_m = {m: self.HAAS_starting_part_ids.get(m, 0) for m in self.M}
 
         # Create a temporary list of job IDs and determine the fixture to machine assignment
         J_temp = list(self.J.keys())
@@ -2114,7 +2119,7 @@ class GeneticAlgorithmScheduler:
         start_time = time.time()
 
         # Count arbor frequencies
-        arbor_frequencies = self.count_arbor_frequencies()       
+        arbor_frequencies = self.count_arbor_frequencies()
 
         # Create gene pool
         gene_pool = self.parallel_init_population(
