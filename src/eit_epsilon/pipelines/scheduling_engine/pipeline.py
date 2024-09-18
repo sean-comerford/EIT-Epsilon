@@ -66,6 +66,7 @@ def create_pipeline(**kwargs) -> Pipeline:
                     "params:ghost_machine_dict",
                     "params:cemented_arbors",
                     "params:arbor_quantities",
+                    "params:custom_tasks_dict",
                 ],
                 outputs=["best_schedule", "best_scores"],
                 name="genetic_algorithm",
