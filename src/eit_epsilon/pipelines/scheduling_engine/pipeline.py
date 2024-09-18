@@ -8,6 +8,9 @@ from .nodes import (
     identify_changeovers,
     GeneticAlgorithmScheduler,
     create_start_end_time,
+    calculate_kpi,
+    order_to_id,
+    split_and_save_schedule,
 )
 
 
@@ -32,6 +35,7 @@ def create_pipeline(**kwargs) -> Pipeline:
                     "croom_task_durations",
                     "params:task_to_machines",
                     "params:scheduling_options",
+                    "params:machine_dict",
                 ],
                 outputs="input_repr_dict",
                 name="build_ga_representation",
@@ -59,9 +63,11 @@ def create_pipeline(**kwargs) -> Pipeline:
                     "params:scheduling_options",
                     "compatibility_dict",
                     "arbor_dict",
+                    "params:ghost_machine_dict",
                     "params:cemented_arbors",
                     "params:arbor_quantities",
                     "params:HAAS_starting_part_ids",
+                    "params:custom_tasks_dict",
                 ],
                 outputs=["best_schedule", "best_scores"],
                 name="genetic_algorithm",
@@ -93,6 +99,12 @@ def create_pipeline(**kwargs) -> Pipeline:
                 name="create_start_end_time",
             ),
             node(
+                func=calculate_kpi,
+                inputs="final_schedule",
+                outputs="kpi_results",
+                name="calculate_kpi",
+            ),
+            node(
                 func=create_chart,
                 inputs=["final_schedule", "params:visualization_options"],
                 outputs="gantt_chart_json",
@@ -103,6 +115,22 @@ def create_pipeline(**kwargs) -> Pipeline:
                 inputs="gantt_chart_json",
                 outputs=None,
                 name="save_chart_to_html",
+            ),
+            node(
+                func=order_to_id,
+                inputs=["mapping_dict_read", "final_schedule", "croom_processed_orders"],
+                outputs=["mapping_dict_write", "final_schedule_with_id"],
+                name="order_to_id",
+            ),
+            node(
+                func=split_and_save_schedule,
+                inputs="final_schedule_with_id",
+                outputs=[
+                    "ctd_mapping",
+                    "op1_mapping",
+                    "op2_mapping",
+                ],
+                name="split_and_save_schedule",
             ),
         ]
     )
