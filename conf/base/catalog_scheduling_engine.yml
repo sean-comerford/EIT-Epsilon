@@ -110,7 +110,11 @@ best_scores:
 
 # Mapping pipeline files
 
-mapping_dict:
+mapping_dict_read:
+  type: pickle.PickleDataset
+  filepath: data/05_model_input/mapping_dict.pkl
+
+mapping_dict_write:
   type: pickle.PickleDataset
   filepath: data/05_model_input/mapping_dict.pkl
 
@@ -170,6 +174,16 @@ remaining_orders:
 final_schedule:
   type: pandas.ExcelDataset
   filepath: data/08_reporting/final_schedule.xlsx
+  save_args:
+    engine: openpyxl
+    sheet_name: Schedule
+  load_args:
+    engine: openpyxl
+    sheet_name: Schedule
+
+final_schedule_with_id:
+  type: pandas.ExcelDataset
+  filepath: data/08_reporting/final_schedule_with_id.xlsx
   save_args:
     engine: openpyxl
     sheet_name: Schedule

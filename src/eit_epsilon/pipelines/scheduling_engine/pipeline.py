@@ -9,6 +9,8 @@ from .nodes import (
     GeneticAlgorithmScheduler,
     create_start_end_time,
     calculate_kpi,
+    order_to_id,
+    split_and_save_schedule,
 )
 
 
@@ -112,6 +114,22 @@ def create_pipeline(**kwargs) -> Pipeline:
                 inputs="gantt_chart_json",
                 outputs=None,
                 name="save_chart_to_html",
+            ),
+            node(
+                func=order_to_id,
+                inputs=["mapping_dict_read", "final_schedule", "croom_processed_orders"],
+                outputs=["mapping_dict_write", "final_schedule_with_id"],
+                name="order_to_id",
+            ),
+            node(
+                func=split_and_save_schedule,
+                inputs="final_schedule_with_id",
+                outputs=[
+                    "ctd_mapping",
+                    "op1_mapping",
+                    "op2_mapping",
+                ],
+                name="split_and_save_schedule",
             ),
         ]
     )
