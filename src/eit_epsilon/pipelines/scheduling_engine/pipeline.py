@@ -52,7 +52,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             ),
             node(
                 func=jobshop.generate_arbor_mapping,
-                inputs=["input_repr_dict", "params:cemented_arbors", "params:cementless_arbors"],
+                inputs=["input_repr_dict", "params:cemented_arbors", "params:cementless_arbors", "params:HAAS_starting_part_ids"],
                 outputs="arbor_dict",
                 name="generate_arbor_mapping",
             ),
@@ -66,6 +66,7 @@ def create_pipeline(**kwargs) -> Pipeline:
                     "params:ghost_machine_dict",
                     "params:cemented_arbors",
                     "params:arbor_quantities",
+                    "params:HAAS_starting_part_ids",
                     "params:custom_tasks_dict",
                 ],
                 outputs=["best_schedule", "best_scores"],
