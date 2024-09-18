@@ -1279,7 +1279,7 @@ class GeneticAlgorithmScheduler:
                 for unused_time in slack_m[ghost_m]:
                     # Ghost machines require equal start and end times and matching part_id to the paired machine
                     # The third field in the tuple `unused_time[2]` contains the part_id
-                    if (unused_time[0] >= previous_task_finish) and (
+                    if (unused_time[0] >= previous_task_finish + changeover_duration) and (
                         unused_time[0] + current_task_dur
                     ) <= unused_time[1]:
                         # For a ghost machine start time must be equal to the start of a task on the paired machine
@@ -1425,7 +1425,6 @@ class GeneticAlgorithmScheduler:
         random_roll = random.random()
         fixture_to_machine_assignment = self.assign_arbors_to_machines(arbor_frequencies)
 
-
         # Based on the random number we either randomly shuffle or apply some sorting logic
         random.shuffle(J_temp)
         if random_roll < 0.3:
@@ -1503,7 +1502,6 @@ class GeneticAlgorithmScheduler:
                             or product_m.get(m) == part_id
                             or product_m.get(m) in self.compatibility_dict[part_id]
                         ):
-
                             changeover_duration = self.drag_machine_setup_time
                         else:
                             changeover_duration = self.change_over_time_op2
