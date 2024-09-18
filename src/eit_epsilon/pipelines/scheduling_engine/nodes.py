@@ -1497,11 +1497,7 @@ class GeneticAlgorithmScheduler:
                     )
 
                     # Determine the start time based on product compatibility
-                    if (
-                        product_m.get(m) == 0
-                        or product_m.get(m) == part_id
-                        or product_m.get(m) in self.compatibility_dict[part_id]
-                    ):
+                    if product_m.get(m) == 0 or product_m.get(m) == part_id:
                         start = avail_m[m]
                     else:
                         start = (
@@ -1523,11 +1519,7 @@ class GeneticAlgorithmScheduler:
 
                     # Dynamically define changeover time for specific machines
                     if m in self.change_over_machines_op2:
-                        if (
-                            product_m.get(m) == 0
-                            or product_m.get(m) == part_id
-                            or product_m.get(m) in self.compatibility_dict[part_id]
-                        ):
+                        if product_m.get(m) == 0 or product_m.get(m) == part_id:
                             changeover_duration = self.drag_machine_setup_time
                         else:
                             changeover_duration = self.change_over_time_op2
@@ -2575,3 +2567,61 @@ def split_and_save_schedule(schedule: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Da
     op2_df = op2_df.drop(columns=["Custom Part ID"])
 
     return ctd_df, op1_df, op2_df
+
+
+def output_schedule_per_machine(
+    schedule: pd.DataFrame, task_to_names: Dict[int, str]
+) -> Dict[str, pd.DataFrame]:
+    """
+    Splits the schedule into separate DataFrames for each machine, combining specific groups of machines into single schedules.
+    Replaces task IDs with task names.
+
+    Args:
+        schedule (pd.DataFrame): A DataFrame containing the schedule with 'Machine' and other relevant columns.
+        task_to_names (Dict[int, str]): A dictionary mapping task IDs to task names.
+
+    Returns:
+        Dict[str, pd.DataFrame]: A dictionary where keys are machine names or combined group names, and values are DataFrames for each schedule.
+    """
+    # Replace task IDs with task names
+    schedule["task"] = schedule["task"].map(task_to_names)
+
+    # Sort by start time of tasks
+    schedule.sort_values(["Start_time", "Machine"], inplace=True)
+
+    # Define machine groups
+    fpi_inspect_machines = [machine for machine in schedule["Machine"].unique() if "FPI" in machine]
+    ghost_machines = [machine for machine in schedule["Machine"].unique() if "(Ghost)" in machine]
+
+    # Initialize dictionary to hold schedules
+    schedules = {}
+
+    # Combine FPI Inspect machines into one schedule
+    fpi_inspect_schedule = schedule[schedule["Machine"].isin(fpi_inspect_machines)]
+    schedules["FPI Inspect"] = fpi_inspect_schedule
+
+    # Combine Ghost machines with their non-Ghost counterparts
+    ghost_pairs = {}
+    for machine in ghost_machines:
+        base_machine = machine.replace(" (Ghost)", "")
+        if base_machine in schedule["Machine"].unique():
+            if base_machine not in ghost_pairs:
+                ghost_pairs[base_machine] = []
+            ghost_pairs[base_machine].append(machine)
+
+    for base_machine, ghosts in ghost_pairs.items():
+        combined_schedule = schedule[schedule["Machine"].isin([base_machine] + ghosts)]
+        schedules[base_machine] = combined_schedule
+
+    # Create separate schedules for all other machines
+    paired_machines = list(ghost_pairs.keys()) + ghost_machines
+    other_machines = schedule[~schedule["Machine"].isin(fpi_inspect_machines + paired_machines)]
+    for machine in other_machines["Machine"].unique():
+        if machine not in schedules:  # Ensure we don't overwrite ghost pair schedules
+            schedules[machine] = other_machines[other_machines["Machine"] == machine]
+
+    # Keep only relevant columns for the operators
+    for key in schedules:
+        schedules[key] = schedules[key][["Order", "ID", "Start_time", "Machine", "task"]]
+
+    return schedules

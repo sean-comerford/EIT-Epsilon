@@ -191,6 +191,14 @@ final_schedule_with_id:
     engine: openpyxl
     sheet_name: Schedule
 
+machine_schedules:
+  type: pandas.ExcelDataset
+  filepath: data/08_reporting/machine_schedules.xlsx
+  load_args:
+    engine: openpyxl
+  save_args:
+    engine: openpyxl
+
 gantt_chart_json:
   type: plotly.PlotlyDataset
   filepath: data/08_reporting/gantt_chart.json

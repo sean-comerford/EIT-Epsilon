@@ -11,6 +11,7 @@ from .nodes import (
     calculate_kpi,
     order_to_id,
     split_and_save_schedule,
+    output_schedule_per_machine,
 )
 
 
@@ -131,6 +132,12 @@ def create_pipeline(**kwargs) -> Pipeline:
                     "op2_mapping",
                 ],
                 name="split_and_save_schedule",
+            ),
+            node(
+                func=output_schedule_per_machine,
+                inputs=["final_schedule_with_id", "params:task_to_names"],
+                outputs="machine_schedules",
+                name="output_schedule_per_machine",
             ),
         ]
     )
