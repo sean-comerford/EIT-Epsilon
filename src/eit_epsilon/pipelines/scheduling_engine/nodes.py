@@ -651,7 +651,7 @@ class JobShop(Job, Shop):
         # Extract part_ids from class attribute
         part_ids = [part_id for part_id, _ in input_repr_dict["J"].values()]
         
-        # Add part IDs that were only the HAAS machines already (and may not be in the list of jobs)
+        # Add part IDs that were on the HAAS machines already (and may not be in the list of jobs)
         for pID in HAAS_starting_part_ids.values():
             part_ids.append(pID)
 
