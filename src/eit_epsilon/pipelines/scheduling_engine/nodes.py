@@ -695,6 +695,7 @@ class GeneticAlgorithmScheduler:
         self.n_e = None
         self.n_c = None
         self.P = None
+        self.custom_tasks = None
         self.start_date = None
         self.scores = None
         self.day_range = None
@@ -1343,7 +1344,11 @@ class GeneticAlgorithmScheduler:
                             m,
                         )
 
-                        if slack_window_upd and m not in self.non_slack_machines:
+                        if (
+                            slack_window_upd
+                            and m not in self.non_slack_machines
+                            and slack_window_upd[1] - slack_window_upd[0] >= self.task_time_buffer
+                        ):
                             slack_m[m].append(slack_window_upd)
 
                         # Append another slack window if previous start was not at the beginning of the slack window,
@@ -1451,7 +1456,12 @@ class GeneticAlgorithmScheduler:
             job_id = J_temp.pop()
             part_id, _ = self.J[job_id]
 
-            for task_id in self.part_to_tasks[part_id]:
+            # Extract a custom task list based on job_id from custom_tasks if available,
+            # otherwise extract tasks based on the part ID
+            task_list = self.custom_tasks.get(job_id, self.part_to_tasks.get(part_id))
+
+            # Task list is extracted from part_to_tasks dictionary
+            for task_id in task_list:
                 random_roll = random.random()
                 slack_time_used = False
 
@@ -1661,7 +1671,7 @@ class GeneticAlgorithmScheduler:
                             (self.J[job_id][1] - (start_time + job_task_dur)),
                             1.02,
                         )
-                        * (2 if task_id in [1, 30] else 1)
+                        * (50 if task_id in [1, 30] else 1)
                         * (self.urgent_multiplier if job_id in self.urgent_orders else 1)
                         + (
                             # Fixed size bonus for completing the job on time (only applies if the final task is
@@ -2037,6 +2047,7 @@ class GeneticAlgorithmScheduler:
         ghost_machine_dict: Dict[int, int],
         cemented_arbors: Dict[str, str],
         arbor_quantities: Dict[str, int],
+        custom_tasks_dict: Dict[int, List[int]],
     ) -> Tuple[Any, deque]:
         """
         Runs the genetic algorithm by initializing the population, evaluating it, and selecting the best schedule.
@@ -2049,6 +2060,7 @@ class GeneticAlgorithmScheduler:
             arbor_dict (Dict[str, Any]): Dictionary containing the arbor information for changeovers [custom_part_id: arbor_num].
             cemented_arbors (Dict[str, str]): Dictionary containing the cemented arbor information.
             arbor_quantities (Dict[str, int]): Dictionary containing the arbor quantities.
+            custom_tasks_dict (Dict[int, List[int]]): Dictionary containing custom tasks for specific jobs.
 
         Returns:
             Tuple[Any, deque]: The best schedule with the highest score and the
@@ -2062,6 +2074,7 @@ class GeneticAlgorithmScheduler:
         self.n = scheduling_options["n"]
         self.n_e = scheduling_options["n_e"]
         self.n_c = scheduling_options["n_c"]
+        self.custom_tasks = custom_tasks_dict
         self.start_date = scheduling_options["start_date"]
         self.working_minutes_per_day = scheduling_options["working_minutes_per_day"]
         self.total_minutes_per_day = scheduling_options["total_minutes_per_day"]
