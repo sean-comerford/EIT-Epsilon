@@ -1280,7 +1280,7 @@ class GeneticAlgorithmScheduler:
                 for unused_time in slack_m[ghost_m]:
                     # Ghost machines require equal start and end times and matching part_id to the paired machine
                     # The third field in the tuple `unused_time[2]` contains the part_id
-                    if (unused_time[0] >= previous_task_finish) and (
+                    if (unused_time[0] >= previous_task_finish + changeover_duration) and (
                         unused_time[0] + current_task_dur
                     ) <= unused_time[1]:
                         # For a ghost machine start time must be equal to the start of a task on the paired machine
