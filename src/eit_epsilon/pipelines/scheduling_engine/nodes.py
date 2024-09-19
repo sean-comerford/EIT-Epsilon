@@ -628,7 +628,9 @@ class JobShop(Job, Shop):
         J_op_2 = self.create_jobs(croom_processed_orders, scheduling_options, operation="OP 2")
 
         # Combine jobs from both operations (Operation 1 and Operation 2) into one list of jobs (J)
-        J.update(J_op_2)
+        if J_op_2:
+            J.update(J_op_2)
+
         part_id_to_task_seq = self.create_part_id_to_task_seq(croom_processed_orders)
         M = self.create_machines(machine_dict)
         dur = self.get_duration_matrix(
@@ -1440,8 +1442,15 @@ class GeneticAlgorithmScheduler:
         # Initialize machine availability, slack times, and product assignments
         avail_m = {m: 0 for m in self.M}
         slack_m = {m: deque() for m in self.M}
-        changeover_finish_time = deque([0])
+        changeover_slack = deque()
         P_j = deque()
+
+        # Populate changeover slack with all possible starting moments for doing a changeover on HAAS
+        value = 0
+        while value < len(self.J.keys()) * self.working_minutes_per_day:
+            adjusted_value = self.adjust_changeover_finish_time(value)
+            changeover_slack.append(adjusted_value)
+            value = adjusted_value + self.change_over_time_op1
 
         # Set up the previous parts that were on the HAAS machines. 0 means no previous part
         product_m = {m: self.HAAS_starting_part_ids.get(m, 0) for m in self.M}
@@ -1501,19 +1510,28 @@ class GeneticAlgorithmScheduler:
                         else random.choice(preferred_machines)
                     )
 
-                    # Determine the start time based on product compatibility
-                    if product_m.get(m) == 0 or product_m.get(m) == part_id:
-                        start = avail_m[m]
-                    else:
-                        start = (
-                            self.adjust_changeover_finish_time(
-                                # Maximum is taken of the last changeover finish time and the machine availability
-                                avail_m[m]
-                                + max((changeover_finish_time[-1] - avail_m[m]), 0)
-                            )
-                            + self.change_over_time_op1
+                    # If a changeover is needed, loop over all possible (unused) changeover times to find the first
+                    # one later than avail_m[m]; use this to determine the start time
+                    start = (
+                        avail_m[m]
+                        if product_m.get(m) in [0, part_id]
+                        else next(
+                            (
+                                slack_time + self.change_over_time_op1
+                                for slack_time in changeover_slack
+                                if slack_time >= avail_m[m]
+                            ),
+                            avail_m[m],
                         )
-                        changeover_finish_time.append(start)
+                    )
+
+                    # Remove the used changeover time from the list of possible changeover start times (for HAAS)
+                    changeover_slack = deque(
+                        filter(
+                            lambda x: x < avail_m[m] or x != start - self.change_over_time_op1,
+                            changeover_slack,
+                        )
+                    )
 
                 else:
                     # For other tasks, pick the earliest available machine
@@ -1522,7 +1540,7 @@ class GeneticAlgorithmScheduler:
                     # Initialize changeover duration as 0 (this will apply in most cases)
                     changeover_duration = 0
 
-                    # Dynamically define changeover time for specific machines
+                    # Dynamically define changeover time for Roslers (drag machines)
                     if m in self.change_over_machines_op2:
                         if product_m.get(m) == 0 or product_m.get(m) == part_id:
                             changeover_duration = self.drag_machine_setup_time
@@ -2231,7 +2249,8 @@ def reformat_output(
 def identify_changeovers(df: pd.DataFrame, scheduling_options: Dict[str, Any]) -> pd.DataFrame:
     """
     Identify and return a DataFrame of changeovers for specified machines. Changeovers occur when there is more than
-    a specified threshold of minutes between the end time of one task and the start time of the next task.
+    a specified threshold of minutes between the end time of one task and the start time of the next task, or at the
+    very start if the first task starts at 09:30 or 12:30.
 
     Parameters:
     df (pd.DataFrame): DataFrame containing scheduling data with columns ['Machine', 'Start_time', 'End_time'].
@@ -2247,6 +2266,7 @@ def identify_changeovers(df: pd.DataFrame, scheduling_options: Dict[str, Any]) -
     # Extract the list of machines from the scheduling options
     machines = scheduling_options["changeover_machines_op1_full_name"]
     threshold = scheduling_options["change_over_time_op1"]
+    total_minutes_per_day = scheduling_options["total_minutes_per_day"]
 
     # Loop through each machine in the list
     for machine in machines:
@@ -2257,19 +2277,35 @@ def identify_changeovers(df: pd.DataFrame, scheduling_options: Dict[str, Any]) -
             .reset_index(drop=True)
         )
 
+        # Check for changeover at the very start
+        if not machine_tasks.empty:
+            first_start_time = machine_tasks.at[0, "Start_time"]
+            if first_start_time % total_minutes_per_day in [
+                threshold,
+                threshold * 2,
+            ]:  # 09:30 and 12:30 in minutes
+                changeover_end_time = first_start_time
+                changeover_start_time = first_start_time - threshold
+                all_changeovers.append(
+                    {
+                        "Machine": machine,
+                        "Start_time": changeover_start_time,
+                        "End_time": changeover_end_time,
+                    }
+                )
+
         # Iterate through the tasks to find gaps
         for i in range(len(machine_tasks) - 1):
-            current_end_time: float = machine_tasks.at[i, "End_time"]
-            next_start_time: float = machine_tasks.at[i + 1, "Start_time"]
+            current_end_time = machine_tasks.at[i, "End_time"]
+            next_start_time = machine_tasks.at[i + 1, "Start_time"]
 
             # Calculate the gap between the current task's end time and the next task's start time
-            gap: float = next_start_time - current_end_time
+            gap = next_start_time - current_end_time
 
             # If the gap is greater than the threshold, identify the changeover period
             if gap > threshold:
                 changeover_end_time = next_start_time
                 changeover_start_time = next_start_time - threshold
-                # Append the changeover period to the list
                 all_changeovers.append(
                     {
                         "Machine": machine,
@@ -2279,7 +2315,7 @@ def identify_changeovers(df: pd.DataFrame, scheduling_options: Dict[str, Any]) -
                 )
 
     # Create a DataFrame from the list of changeovers
-    changeovers_df: pd.DataFrame = pd.DataFrame(all_changeovers)
+    changeovers_df = pd.DataFrame(all_changeovers)
 
     return changeovers_df
 

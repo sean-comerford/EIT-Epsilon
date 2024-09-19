@@ -32,7 +32,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             node(
                 func=jobshop.build_ga_representation,
                 inputs=[
-                    "croom_processed_orders",
+                    "croom_processed_forecast_orders",
                     "croom_task_durations",
                     "params:task_to_machines",
                     "params:scheduling_options",
@@ -44,7 +44,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             node(
                 func=jobshop.build_changeover_compatibility,
                 inputs=[
-                    "croom_processed_orders",
+                    "croom_processed_forecast_orders",
                     "params:size_categories_op2_cr",
                     "params:size_categories_op2_ps",
                 ],
@@ -53,7 +53,12 @@ def create_pipeline(**kwargs) -> Pipeline:
             ),
             node(
                 func=jobshop.generate_arbor_mapping,
-                inputs=["input_repr_dict", "params:cemented_arbors", "params:cementless_arbors", "params:HAAS_starting_part_ids"],
+                inputs=[
+                    "input_repr_dict",
+                    "params:cemented_arbors",
+                    "params:cementless_arbors",
+                    "params:HAAS_starting_part_ids",
+                ],
                 outputs="arbor_dict",
                 name="generate_arbor_mapping",
             ),
@@ -76,7 +81,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             node(
                 func=reformat_output,
                 inputs=[
-                    "croom_processed_orders",
+                    "croom_processed_forecast_orders",
                     "best_schedule",
                     "params:column_mapping_reformat",
                     "params:machine_dict",
@@ -119,7 +124,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             ),
             node(
                 func=order_to_id,
-                inputs=["mapping_dict_read", "final_schedule", "croom_processed_orders"],
+                inputs=["mapping_dict_read", "final_schedule", "croom_processed_forecast_orders"],
                 outputs=["mapping_dict_write", "final_schedule_with_id"],
                 name="order_to_id",
             ),

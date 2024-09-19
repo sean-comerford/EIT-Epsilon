@@ -15,6 +15,13 @@ croom_open_orders:
     engine: openpyxl
     sheet_name: Data Week 11
 
+order_forecast:
+  type: pandas.ExcelDataset
+  filepath: data/01_raw/order_forecast.xlsx
+  load_args:
+    engine: openpyxl
+    sheet_name: Sheet1
+
 monza_cycle_times_op1:
   type: pandas.ExcelDataset
   filepath: data/01_raw/Monza cycle times for op1 + 2 2021-09-14.xlsx
@@ -39,6 +46,10 @@ croom_task_durations:
 croom_processed_orders:
   type: pandas.ParquetDataset
   filepath: data/03_primary/croom_processed_orders.pq
+
+croom_processed_forecast_orders:
+  type: pandas.ParquetDataset
+  filepath: data/03_primary/croom_processed_forecast_orders.pq
 
 croom_reformatted_orders:
   type: pandas.ParquetDataset
@@ -211,8 +222,7 @@ gantt_chart_json:
       color: Order
       title: Production Schedule
       hover_name: Order
-
-      hover_data: ['Order_date', 'Due_date', 'task', 'Custom Part ID', 'Order Qty']
+      hover_data: ['Due_date', 'task', 'Custom Part ID', 'Production Qty']
       template: simple_white
       color_discrete_sequence: ['rgb(41, 24, 107)', 'rgb(42, 35, 160)', 'rgb(15, 71, 153)',
                                 'rgb(18, 95, 142)', 'rgb(38, 116, 137)', 'rgb(53, 136, 136)',
