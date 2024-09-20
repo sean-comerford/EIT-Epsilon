@@ -65,7 +65,7 @@ def apply_split_quantity(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: The DataFrame with a new 'Quantities' column.
     """
-    df["Quantities"] = df["Week 39"].apply(split_quantity)
+    df["Quantities"] = df["Total"].apply(split_quantity)
     return df
 
 
@@ -104,6 +104,7 @@ def process_product_description(new_df: pd.DataFrame, preprocess_options: dict) 
 
     Args:
         new_df (pd.DataFrame): The input DataFrame.
+        preprocess_options (dict): The preprocessing options.
 
     Returns:
         pd.DataFrame: The DataFrame with new columns added.

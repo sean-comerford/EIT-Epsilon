@@ -649,8 +649,23 @@ class JobShop(Job, Shop):
 
     @staticmethod
     def generate_arbor_mapping(
-        input_repr_dict, cemented_arbors, cementless_arbors, HAAS_starting_part_ids
-    ):
+        input_repr_dict: Dict[str, Any],
+        cemented_arbors: Dict[str, int],
+        cementless_arbors: Dict[str, int],
+        HAAS_starting_part_ids: Dict[int, str],
+    ) -> Dict[str, int]:
+        """
+        Generates a mapping of part IDs to arbor numbers based on cement type and size.
+
+        Args:
+            input_repr_dict (Dict[str, Any]): The input representation dictionary containing job information.
+            cemented_arbors (Dict[str, int]): A dictionary mapping sizes to arbor numbers for cemented parts.
+            cementless_arbors (Dict[str, int]): A dictionary mapping sizes to arbor numbers for cementless parts.
+            HAAS_starting_part_ids (Dict[int, str]): A dictionary of part IDs that were already on the HAAS machines.
+
+        Returns:
+            Dict[str, int]: A dictionary mapping part IDs to arbor numbers.
+        """
         # Initialize the dictionary to store the results
         arbor_mapping = {}
 
@@ -728,6 +743,7 @@ class GeneticAlgorithmScheduler:
         self.urgent_multiplier = None
         self.max_iterations = None
         self.task_time_buffer = None
+        self.changeover_slack = None
 
     def adjust_start_time(self, start: float, task: int = None) -> float:
         """
@@ -944,7 +960,14 @@ class GeneticAlgorithmScheduler:
         )
         selected_machines_ctd = random.choice([machines_cemented, machines_cemented[:-1]])
 
-        for arbor, frequency in arbor_frequency.items():
+        # Randomly shuffle the arbor order
+        arbors = list(arbor_frequency.items())
+
+        # Randomly shuffle the arbor order
+        if random.random() < 0.9:
+            random.shuffle(arbors)
+
+        for arbor, frequency in arbors:
             # Create a boolean for the cemented status
             cemented = arbor in self.cemented_arbors.values()
 
@@ -961,15 +984,20 @@ class GeneticAlgorithmScheduler:
                 machines = selected_machines_ctd
                 machine_index = machine_index_cemented
 
-            # Determine how many of this type of arbor there are and then randomly determine how many
-            # machines should be assigned this type e.g. if there are 2 of this type assign either 1 or 2
-            num_machines_to_assign = random.randint(1, self.arbor_quantities[arbor])
+            # Determine the position of the current arbor in the sorted counter object
+            sorted_arbors = [arbor for arbor, _ in arbor_frequency.most_common()]
+            position = sorted_arbors.index(arbor) + 1
+
+            # Calculate the probability based on the position
+            probability_two_machines = (len(sorted_arbors) - position + 1) / len(sorted_arbors)
+            num_machines_to_assign = 2 if random.random() < probability_two_machines else 1
 
             # If this arbor is already on a machine from the very beginning,
             # then with a certain probability use that machine
             # Use arbor_dict to map from part id to arbor
+            # TODO: The same arbor still does not mean no changeover required, since we need the same part ID
             for m, starting_part_id in self.HAAS_starting_part_ids.items():
-                if self.arbor_dict[starting_part_id] == arbor and random.random() < 0.9:
+                if self.arbor_dict[starting_part_id] == arbor:
                     arbor_to_machines[arbor].append(m)
                     num_machines_to_assign -= 1
                     if num_machines_to_assign == 0:
@@ -1412,6 +1440,19 @@ class GeneticAlgorithmScheduler:
 
         return start, slack_time_used, m
 
+    def populate_changeover_slack(self):
+        # Initialize changeover slack
+        changeover_slack = deque()
+
+        # Populate changeover slack with all possible starting moments for doing a changeover on HAAS
+        value = 0
+        while value < len(self.J.keys()) * self.working_minutes_per_day:
+            adjusted_value = self.adjust_changeover_finish_time(value)
+            changeover_slack.append(adjusted_value)
+            value = adjusted_value + self.change_over_time_op1
+
+        return changeover_slack
+
     def generate_individual(
         self, arbor_frequencies: Counter
     ) -> Deque[Tuple[int, int, int, float, float, int, str]]:
@@ -1442,15 +1483,8 @@ class GeneticAlgorithmScheduler:
         # Initialize machine availability, slack times, and product assignments
         avail_m = {m: 0 for m in self.M}
         slack_m = {m: deque() for m in self.M}
-        changeover_slack = deque()
+        changeover_slack = self.changeover_slack.copy()
         P_j = deque()
-
-        # Populate changeover slack with all possible starting moments for doing a changeover on HAAS
-        value = 0
-        while value < len(self.J.keys()) * self.working_minutes_per_day:
-            adjusted_value = self.adjust_changeover_finish_time(value)
-            changeover_slack.append(adjusted_value)
-            value = adjusted_value + self.change_over_time_op1
 
         # Set up the previous parts that were on the HAAS machines. 0 means no previous part
         product_m = {m: self.HAAS_starting_part_ids.get(m, 0) for m in self.M}
@@ -1515,22 +1549,23 @@ class GeneticAlgorithmScheduler:
                     start = (
                         avail_m[m]
                         if product_m.get(m) in [0, part_id]
-                        else next(
-                            (
+                        else min(
+                            [
                                 slack_time + self.change_over_time_op1
                                 for slack_time in changeover_slack
                                 if slack_time >= avail_m[m]
-                            ),
-                            avail_m[m],
+                            ],
+                            default=avail_m[m],
                         )
                     )
 
                     # Remove the used changeover time from the list of possible changeover start times (for HAAS)
                     changeover_slack = deque(
-                        filter(
-                            lambda x: x < avail_m[m] or x != start - self.change_over_time_op1,
-                            changeover_slack,
-                        )
+                        [
+                            slack_time
+                            for slack_time in changeover_slack
+                            if slack_time < avail_m[m] or slack_time != start - self.change_over_time_op1
+                        ]
                     )
 
                 else:
@@ -2092,6 +2127,7 @@ class GeneticAlgorithmScheduler:
             arbor_dict (Dict[str, Any]): Dictionary containing the arbor information for changeovers [custom_part_id: arbor_num].
             cemented_arbors (Dict[str, str]): Dictionary containing the cemented arbor information.
             arbor_quantities (Dict[str, int]): Dictionary containing the arbor quantities.
+            HAAS_starting_part_ids (Dict[str, str]): Dictionary containing the starting part IDs for HAAS machines.
             custom_tasks_dict (Dict[int, List[int]]): Dictionary containing custom tasks for specific jobs.
 
         Returns:
@@ -2132,6 +2168,7 @@ class GeneticAlgorithmScheduler:
             len(self.J) // 5 * self.working_minutes_per_day,
             self.working_minutes_per_day,
         )
+        self.changeover_slack = self.populate_changeover_slack()
 
         # Initialize start time
         start_time = time.time()
@@ -2161,6 +2198,13 @@ class GeneticAlgorithmScheduler:
             while True:
                 # Check if time_budget has expired
                 elapsed_time = round(time.time() - start_time)
+
+                # Give time progress update
+                logger.info(
+                    f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Iteration {iteration + 1}"
+                    f" - {elapsed_time}/{time_budget} seconds elapsed"
+                )
+
                 if elapsed_time > time_budget:
                     logger.info(
                         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Time budget has expired"
@@ -2483,14 +2527,18 @@ def calculate_kpi(schedule: pd.DataFrame) -> pd.DataFrame:
     # Calculate the average lead time per order
     average_lead_time = max_tasks["Lead_time"].mean()
 
-    # TODO: Prognosis of real OTIF when considerings scrap (Ask Bryan for percentage estimate)
     # Print the OTIF percentage and average lead time
-    logger.info(f"Percentage of jobs finished on time (OTIF): {percentage_on_time:.2f}%")
+    logger.info(f"Percentage of jobs finished on time (OT): {percentage_on_time:.2f}%")
+    logger.info(f"Prognosis for OTIF (%) (assuming 4% scrap): {percentage_on_time * 0.96:.2f}%")
     logger.info(f"Average lead time per order: {average_lead_time:.2f} days")
 
     # Create a DataFrame for Excel output
     kpi_df = pd.DataFrame(
-        {"OTIF (%)": [round(percentage_on_time, 1)], "avg. lead time": [round(average_lead_time, 1)]}
+        {
+            "OT (%)": [round(percentage_on_time, 1)],
+            "Prognosis OTIF (%)": [round(percentage_on_time * 0.96, 1)],
+            "avg. lead time": [round(average_lead_time, 1)],
+        }
     )
 
     return kpi_df
@@ -2663,6 +2711,6 @@ def output_schedule_per_machine(
 
     # Keep only relevant columns for the operators
     for key in schedules:
-        schedules[key] = schedules[key][["Order", "ID", "Start_time", "Machine", "task"]]
+        schedules[key] = schedules[key][["Order", "ID", "Machine", "task"]]
 
     return schedules
