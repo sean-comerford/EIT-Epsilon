@@ -150,8 +150,32 @@ op2_mapping:
     engine: openpyxl
     sheet_name: Orders
 
-# Tim's input
+# Analysis files
+closed_jobs_2024:
+  type: pandas.ExcelDataset
+  filepath: data/01_raw/closed_jobs_2024.xlsm
+  save_args:
+    engine: openpyxl
+    sheet_name: Sheet1
+  load_args:
+    engine: openpyxl
+    sheet_name: Sheet1
 
+timecards_2024:
+    type: pandas.ExcelDataset
+    filepath: data/01_raw/timecards_2024.xlsx
+    save_args:
+        engine: openpyxl
+        sheet_name: Sheet1
+    load_args:
+        engine: openpyxl
+        sheet_name: Sheet1
+
+croom_processed_backtest_orders:
+  type: pandas.ParquetDataset
+  filepath: data/03_primary/croom_processed_backtest_orders.pq
+
+# Tim's input
 job_list:
   type: pandas.ExcelDataset
   filepath: data/02_intermediate/initial_job_list.xlsx

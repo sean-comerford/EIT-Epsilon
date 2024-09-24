@@ -624,6 +624,11 @@ class JobShop(Job, Shop):
         Returns:
             Dict[str, any]: The GA representation.
         """
+
+        # Debug statement
+        logger.info(f"Number of input jobs: {len(croom_processed_orders)}")
+
+        # Create jobs for Operation 1 and Operation 2 separately
         J = self.create_jobs(croom_processed_orders, scheduling_options)
         J_op_2 = self.create_jobs(croom_processed_orders, scheduling_options, operation="OP 2")
 
@@ -1582,16 +1587,24 @@ class GeneticAlgorithmScheduler:
                         else:
                             changeover_duration = self.change_over_time_op2
 
+                    # For partial jobs (some tasks are already completed prior to scheduling),
+                    # we should not consider previous task duration for the first task to be planned
+                    if job_id in self.custom_tasks and self.custom_tasks[job_id][0] == task_id:
+                        previous_task_start = 0
+                        previous_task_dur = 0
+                    else:
+                        # Task 10 is the first task of OP2, hence no previous task duration
+                        previous_task_start = P_j[-1][3] if P_j and task_id not in [10] else 0
+                        previous_task_dur = P_j[-1][4] if P_j and task_id not in [10] else 0
+
                     # Apply slack logic to determine the start time
                     start, slack_time_used, m = self.slack_logic(
                         m,
                         avail_m,
                         slack_m,
                         slack_time_used,
-                        P_j[-1][3]
-                        if P_j and task_id not in [10]
-                        else 0,  # Task 10 is the first task of OP2, hence no previous task duration
-                        P_j[-1][4] if P_j and task_id not in [10] else 0,
+                        previous_task_start,
+                        previous_task_dur,
                         self.dur[(job_id, task_id)],
                         part_id,
                         changeover_duration,
