@@ -2183,6 +2183,9 @@ class GeneticAlgorithmScheduler:
         )
         self.changeover_slack = self.populate_changeover_slack()
 
+        # Debug statement
+        logger.info(f"Number of partial tasks: {len(self.custom_tasks)}")
+
         # Initialize start time
         start_time = time.time()
 
