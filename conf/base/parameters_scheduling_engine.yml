@@ -139,12 +139,12 @@ ghost_machine_dict: {
 
 # Specifies which parts the HAAS machines are already set up for (i.e. from a previous job)
 HAAS_starting_part_ids: {
-   1: 'RIGHT-CR-7-CLS-OP1',
+   1: 'RIGHT-CR-8-CLS-OP1',
    2: 'LEFT-CR-7-CLS-OP1',
-   3: 'LEFT-CR-8-CLS-OP1',
+   3: 'RIGHT-CR-6-CLS-OP1',
    4: 'LEFT-CR-8-CLS-OP1',
    5: 'LEFT-PS-5N-CTD-OP1',
-   6: 'LEFT-PS-5N-CTD-OP1',
+   6: 'RIGHT-CR-5N-CTD-OP1',
 }
 
 cemented_arbors: {
@@ -245,7 +245,7 @@ custom_tasks_dict: {
 }
 
 scheduling_options: {
-  start_date: "2024-03-04T06:30",  # Starting date used to calculate difference with due date
+  start_date: "2024-03-13T06:30",  # Starting date used to calculate difference with due date
   change_over_time_op1: 180,  # Minutes required to do a changeover on the HAAS machines
   change_over_time_op2: 15,  # Minutes required to do a changeover on the non-Drag OP 2 machines
   change_over_machines_op1: [1, 2, 3, 4, 5, 6], # Machines that require a changeover for OP1 (key in machine dict above)
@@ -260,8 +260,8 @@ scheduling_options: {
   working_minutes_per_day: 480,  # Number of working minutes per day (8 hours * 60 minutes)
   total_minutes_per_day: 1440,  # Number of minutes in exactly 24 hours
   drag_machine_setup_time: 15,  # Time it takes to set up a new batch on the drag machines
-  max_iterations: 0,  # Maximum number of iterations/generations to run the algorithm
-  time_budget: 1200,  # Maximum runtime for the algorithm in seconds - 0 means no limit; max_iterations will be used
+  max_iterations: 20,  # Maximum number of iterations/generations to run the algorithm
+  time_budget: 0,  # Maximum runtime for the algorithm in seconds - 0 means no limit; max_iterations will be used
   offspring_frequency: 7,  # Enable offspring every X generations (E.g.: a value of 2 means every other generation)
   urgent_multiplier: 3,  # Multiplier for (due_date - completion_time) for urgent_orders
   urgent_orders: [],  # List of job indices of urgent orders; starting from 1,

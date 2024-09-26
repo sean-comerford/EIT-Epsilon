@@ -181,7 +181,7 @@ croom_processed_backtest_orders:
 
 final_schedule_march_two_dates_backtest:
     type: pandas.ExcelDataset
-    filepath: data/08_reporting/final_schedule_march_two_dates_backtest.xlsx
+    filepath: data/08_reporting/final_schedule_assembled.xlsx
     save_args:
         engine: openpyxl
         sheet_name: Schedule

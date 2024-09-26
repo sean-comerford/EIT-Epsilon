@@ -25,7 +25,7 @@ cementless_op2_tasks = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
 cemented_tasks = [30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44]
 
 
-def find_partial_tasks(project_context, user_date: str = "2024-03-04") -> None:
+def find_partial_tasks(project_context, user_date: str = "2024-03-13") -> None:
     """
     Find the remaining tasks for each order based on the first occurrence of each order.
 

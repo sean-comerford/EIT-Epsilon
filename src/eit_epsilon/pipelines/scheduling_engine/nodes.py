@@ -176,9 +176,10 @@ class Job:
         )
 
         # Debug statement
-        sample_of_keys = random.sample(list(J), 2)
-        sample = [(k, v) for k, v in J.items() if k in sample_of_keys]
-        logger.info(f"Snippet of Jobs for {operation}: {sample}")
+        if J:
+            sample_of_keys = random.sample(list(J), 2)
+            sample = [(k, v) for k, v in J.items() if k in sample_of_keys]
+            logger.info(f"Snippet of Jobs for {operation}: {sample}")
 
         return J
 
@@ -1002,7 +1003,7 @@ class GeneticAlgorithmScheduler:
             # Use arbor_dict to map from part id to arbor
             # TODO: The same arbor still does not mean no changeover required, since we need the same part ID
             for m, starting_part_id in self.HAAS_starting_part_ids.items():
-                if self.arbor_dict[starting_part_id] == arbor:
+                if self.arbor_dict[starting_part_id] == arbor and random.random() < 0.7:
                     arbor_to_machines[arbor].append(m)
                     num_machines_to_assign -= 1
                     if num_machines_to_assign == 0:
@@ -2184,7 +2185,7 @@ class GeneticAlgorithmScheduler:
         self.changeover_slack = self.populate_changeover_slack()
 
         # Debug statement
-        logger.info(f"Number of partial tasks: {len(self.custom_tasks)}")
+        logger.info(f"Number of partial jobs: {len(self.custom_tasks)}")
 
         # Initialize start time
         start_time = time.time()
@@ -2408,7 +2409,10 @@ def create_start_end_time(
 
     # Sort by start time ascending
     croom_reformatted_orders.sort_values("Start_time", inplace=True)
-    changeovers.sort_values("Start_time", inplace=True)
+
+    # Could be that there are no changeovers at all required
+    if not changeovers.empty:
+        changeovers.sort_values("Start_time", inplace=True)
 
     # Initialize empty 'Start_time_date' column
     croom_reformatted_orders["Start_time_date"] = None
@@ -2434,10 +2438,11 @@ def create_start_end_time(
     )
 
     # Overwrite the integer start time with the calculated datetimes for changeovers
-    changeovers["Start_time"] = changeovers["Start_time_date"]
-    changeovers["End_time"] = changeovers["Start_time"] + pd.Timedelta(
-        minutes=scheduling_options["change_over_time_op1"]
-    )
+    if not changeovers.empty:
+        changeovers["Start_time"] = changeovers["Start_time_date"]
+        changeovers["End_time"] = changeovers["Start_time"] + pd.Timedelta(
+            minutes=scheduling_options["change_over_time_op1"]
+        )
 
     # Define the time range for valid changeovers
     # Define start_time_min based on the time part of base_date
@@ -2452,10 +2457,11 @@ def create_start_end_time(
     start_time_max = end_time.time()
 
     # Filter out changeovers outside the valid time range
-    changeovers = changeovers[
-        (changeovers["Start_time"].dt.time >= start_time_min)
-        & (changeovers["Start_time"].dt.time <= start_time_max)
-    ]
+    if not changeovers.empty:
+        changeovers = changeovers[
+            (changeovers["Start_time"].dt.time >= start_time_min)
+            & (changeovers["Start_time"].dt.time <= start_time_max)
+        ]
 
     # Reorder by earliest start time
     croom_reformatted_orders.sort_values(by="Start_time", inplace=True)
@@ -2505,7 +2511,9 @@ def create_start_end_time(
 
     # Sort again by job and task before plotting
     croom_reformatted_orders = croom_reformatted_orders.sort_values(["Job", "task"])
-    changeovers = changeovers.sort_values(["Machine", "Start_time"])
+
+    if not changeovers.empty:
+        changeovers = changeovers.sort_values(["Machine", "Start_time"])
 
     return croom_reformatted_orders, changeovers
 
