@@ -15,6 +15,13 @@ croom_open_orders:
     engine: openpyxl
     sheet_name: Data Week 11
 
+order_forecast:
+  type: pandas.ExcelDataset
+  filepath: data/01_raw/order_forecast.xlsx
+  load_args:
+    engine: openpyxl
+    sheet_name: Sheet1
+
 monza_cycle_times_op1:
   type: pandas.ExcelDataset
   filepath: data/01_raw/Monza cycle times for op1 + 2 2021-09-14.xlsx
@@ -39,6 +46,10 @@ croom_task_durations:
 croom_processed_orders:
   type: pandas.ParquetDataset
   filepath: data/03_primary/croom_processed_orders.pq
+
+croom_processed_forecast_orders:
+  type: pandas.ParquetDataset
+  filepath: data/03_primary/croom_processed_forecast_orders.pq
 
 croom_reformatted_orders:
   type: pandas.ParquetDataset
@@ -100,6 +111,10 @@ task_to_machines:
   type: pickle.PickleDataset
   filepath: data/01_raw/task_to_machines.pkl
 
+custom_tasks_dict:
+  type: pickle.PickleDataset
+  filepath: data/01_raw/custom_tasks_dict.pkl
+
 best_schedule:
   type: pickle.PickleDataset
   filepath: data/07_model_output/best_schedule.pkl
@@ -139,8 +154,42 @@ op2_mapping:
     engine: openpyxl
     sheet_name: Orders
 
-# Tim's input
+# Analysis files
+closed_jobs_2024:
+  type: pandas.ExcelDataset
+  filepath: data/01_raw/closed_jobs_2024.xlsm
+  save_args:
+    engine: openpyxl
+    sheet_name: Sheet1
+  load_args:
+    engine: openpyxl
+    sheet_name: Sheet1
 
+timecards_2024:
+    type: pandas.ExcelDataset
+    filepath: data/01_raw/timecards_2024.xlsx
+    save_args:
+        engine: openpyxl
+        sheet_name: Sheet1
+    load_args:
+        engine: openpyxl
+        sheet_name: Sheet1
+
+croom_processed_backtest_orders:
+  type: pandas.ParquetDataset
+  filepath: data/03_primary/croom_processed_backtest_orders.pq
+
+final_schedule_march_two_dates_backtest:
+    type: pandas.ExcelDataset
+    filepath: data/08_reporting/final_schedule_assembled.xlsx
+    save_args:
+        engine: openpyxl
+        sheet_name: Schedule
+    load_args:
+        engine: openpyxl
+        sheet_name: Schedule
+
+# Tim's input
 job_list:
   type: pandas.ExcelDataset
   filepath: data/02_intermediate/initial_job_list.xlsx
@@ -211,8 +260,7 @@ gantt_chart_json:
       color: Order
       title: Production Schedule
       hover_name: Order
-
-      hover_data: ['Order_date', 'Due_date', 'task', 'Custom Part ID', 'Order Qty']
+      hover_data: ['Due_date', 'task', 'Custom Part ID', 'Production Qty']
       template: simple_white
       color_discrete_sequence: ['rgb(41, 24, 107)', 'rgb(42, 35, 160)', 'rgb(15, 71, 153)',
                                 'rgb(18, 95, 142)', 'rgb(38, 116, 137)', 'rgb(53, 136, 136)',

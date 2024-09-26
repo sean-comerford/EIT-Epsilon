@@ -176,9 +176,10 @@ class Job:
         )
 
         # Debug statement
-        sample_of_keys = random.sample(list(J), 2)
-        sample = [(k, v) for k, v in J.items() if k in sample_of_keys]
-        logger.info(f"Snippet of Jobs for {operation}: {sample}")
+        if J:
+            sample_of_keys = random.sample(list(J), 2)
+            sample = [(k, v) for k, v in J.items() if k in sample_of_keys]
+            logger.info(f"Snippet of Jobs for {operation}: {sample}")
 
         return J
 
@@ -624,11 +625,18 @@ class JobShop(Job, Shop):
         Returns:
             Dict[str, any]: The GA representation.
         """
+
+        # Debug statement
+        logger.info(f"Number of input jobs: {len(croom_processed_orders)}")
+
+        # Create jobs for Operation 1 and Operation 2 separately
         J = self.create_jobs(croom_processed_orders, scheduling_options)
         J_op_2 = self.create_jobs(croom_processed_orders, scheduling_options, operation="OP 2")
 
         # Combine jobs from both operations (Operation 1 and Operation 2) into one list of jobs (J)
-        J.update(J_op_2)
+        if J_op_2:
+            J.update(J_op_2)
+
         part_id_to_task_seq = self.create_part_id_to_task_seq(croom_processed_orders)
         M = self.create_machines(machine_dict)
         dur = self.get_duration_matrix(
@@ -647,8 +655,23 @@ class JobShop(Job, Shop):
 
     @staticmethod
     def generate_arbor_mapping(
-        input_repr_dict, cemented_arbors, cementless_arbors, HAAS_starting_part_ids
-    ):
+        input_repr_dict: Dict[str, Any],
+        cemented_arbors: Dict[str, int],
+        cementless_arbors: Dict[str, int],
+        HAAS_starting_part_ids: Dict[int, str],
+    ) -> Dict[str, int]:
+        """
+        Generates a mapping of part IDs to arbor numbers based on cement type and size.
+
+        Args:
+            input_repr_dict (Dict[str, Any]): The input representation dictionary containing job information.
+            cemented_arbors (Dict[str, int]): A dictionary mapping sizes to arbor numbers for cemented parts.
+            cementless_arbors (Dict[str, int]): A dictionary mapping sizes to arbor numbers for cementless parts.
+            HAAS_starting_part_ids (Dict[int, str]): A dictionary of part IDs that were already on the HAAS machines.
+
+        Returns:
+            Dict[str, int]: A dictionary mapping part IDs to arbor numbers.
+        """
         # Initialize the dictionary to store the results
         arbor_mapping = {}
 
@@ -726,6 +749,7 @@ class GeneticAlgorithmScheduler:
         self.urgent_multiplier = None
         self.max_iterations = None
         self.task_time_buffer = None
+        self.changeover_slack = None
 
     def adjust_start_time(self, start: float, task: int = None) -> float:
         """
@@ -942,7 +966,14 @@ class GeneticAlgorithmScheduler:
         )
         selected_machines_ctd = random.choice([machines_cemented, machines_cemented[:-1]])
 
-        for arbor, frequency in arbor_frequency.items():
+        # Randomly shuffle the arbor order
+        arbors = list(arbor_frequency.items())
+
+        # Randomly shuffle the arbor order
+        if random.random() < 0.9:
+            random.shuffle(arbors)
+
+        for arbor, frequency in arbors:
             # Create a boolean for the cemented status
             cemented = arbor in self.cemented_arbors.values()
 
@@ -959,15 +990,20 @@ class GeneticAlgorithmScheduler:
                 machines = selected_machines_ctd
                 machine_index = machine_index_cemented
 
-            # Determine how many of this type of arbor there are and then randomly determine how many
-            # machines should be assigned this type e.g. if there are 2 of this type assign either 1 or 2
-            num_machines_to_assign = random.randint(1, self.arbor_quantities[arbor])
+            # Determine the position of the current arbor in the sorted counter object
+            sorted_arbors = [arbor for arbor, _ in arbor_frequency.most_common()]
+            position = sorted_arbors.index(arbor) + 1
+
+            # Calculate the probability based on the position
+            probability_two_machines = (len(sorted_arbors) - position + 1) / len(sorted_arbors)
+            num_machines_to_assign = 2 if random.random() < probability_two_machines else 1
 
             # If this arbor is already on a machine from the very beginning,
             # then with a certain probability use that machine
             # Use arbor_dict to map from part id to arbor
+            # TODO: The same arbor still does not mean no changeover required, since we need the same part ID
             for m, starting_part_id in self.HAAS_starting_part_ids.items():
-                if self.arbor_dict[starting_part_id] == arbor and random.random() < 0.9:
+                if self.arbor_dict[starting_part_id] == arbor and random.random() < 0.7:
                     arbor_to_machines[arbor].append(m)
                     num_machines_to_assign -= 1
                     if num_machines_to_assign == 0:
@@ -1410,6 +1446,19 @@ class GeneticAlgorithmScheduler:
 
         return start, slack_time_used, m
 
+    def populate_changeover_slack(self):
+        # Initialize changeover slack
+        changeover_slack = deque()
+
+        # Populate changeover slack with all possible starting moments for doing a changeover on HAAS
+        value = 0
+        while value < len(self.J.keys()) * self.working_minutes_per_day:
+            adjusted_value = self.adjust_changeover_finish_time(value)
+            changeover_slack.append(adjusted_value)
+            value = adjusted_value + self.change_over_time_op1
+
+        return changeover_slack
+
     def generate_individual(
         self, arbor_frequencies: Counter
     ) -> Deque[Tuple[int, int, int, float, float, int, str]]:
@@ -1440,7 +1489,7 @@ class GeneticAlgorithmScheduler:
         # Initialize machine availability, slack times, and product assignments
         avail_m = {m: 0 for m in self.M}
         slack_m = {m: deque() for m in self.M}
-        changeover_finish_time = deque([0])
+        changeover_slack = self.changeover_slack.copy()
         P_j = deque()
 
         # Set up the previous parts that were on the HAAS machines. 0 means no previous part
@@ -1501,19 +1550,29 @@ class GeneticAlgorithmScheduler:
                         else random.choice(preferred_machines)
                     )
 
-                    # Determine the start time based on product compatibility
-                    if product_m.get(m) == 0 or product_m.get(m) == part_id:
-                        start = avail_m[m]
-                    else:
-                        start = (
-                            self.adjust_changeover_finish_time(
-                                # Maximum is taken of the last changeover finish time and the machine availability
-                                avail_m[m]
-                                + max((changeover_finish_time[-1] - avail_m[m]), 0)
-                            )
-                            + self.change_over_time_op1
+                    # If a changeover is needed, loop over all possible (unused) changeover times to find the first
+                    # one later than avail_m[m]; use this to determine the start time
+                    start = (
+                        avail_m[m]
+                        if product_m.get(m) in [0, part_id]
+                        else min(
+                            [
+                                slack_time + self.change_over_time_op1
+                                for slack_time in changeover_slack
+                                if slack_time >= avail_m[m]
+                            ],
+                            default=avail_m[m],
                         )
-                        changeover_finish_time.append(start)
+                    )
+
+                    # Remove the used changeover time from the list of possible changeover start times (for HAAS)
+                    changeover_slack = deque(
+                        [
+                            slack_time
+                            for slack_time in changeover_slack
+                            if slack_time < avail_m[m] or slack_time != start - self.change_over_time_op1
+                        ]
+                    )
 
                 else:
                     # For other tasks, pick the earliest available machine
@@ -1522,12 +1581,22 @@ class GeneticAlgorithmScheduler:
                     # Initialize changeover duration as 0 (this will apply in most cases)
                     changeover_duration = 0
 
-                    # Dynamically define changeover time for specific machines
+                    # Dynamically define changeover time for Roslers (drag machines)
                     if m in self.change_over_machines_op2:
                         if product_m.get(m) == 0 or product_m.get(m) == part_id:
                             changeover_duration = self.drag_machine_setup_time
                         else:
                             changeover_duration = self.change_over_time_op2
+
+                    # For partial jobs (some tasks are already completed prior to scheduling),
+                    # we should not consider previous task duration for the first task to be planned
+                    if job_id in self.custom_tasks and self.custom_tasks[job_id][0] == task_id:
+                        previous_task_start = 0
+                        previous_task_dur = 0
+                    else:
+                        # Task 10 is the first task of OP2, hence no previous task duration
+                        previous_task_start = P_j[-1][3] if P_j and task_id not in [10] else 0
+                        previous_task_dur = P_j[-1][4] if P_j and task_id not in [10] else 0
 
                     # Apply slack logic to determine the start time
                     start, slack_time_used, m = self.slack_logic(
@@ -1535,10 +1604,8 @@ class GeneticAlgorithmScheduler:
                         avail_m,
                         slack_m,
                         slack_time_used,
-                        P_j[-1][3]
-                        if P_j and task_id not in [10]
-                        else 0,  # Task 10 is the first task of OP2, hence no previous task duration
-                        P_j[-1][4] if P_j and task_id not in [10] else 0,
+                        previous_task_start,
+                        previous_task_dur,
                         self.dur[(job_id, task_id)],
                         part_id,
                         changeover_duration,
@@ -2074,6 +2141,7 @@ class GeneticAlgorithmScheduler:
             arbor_dict (Dict[str, Any]): Dictionary containing the arbor information for changeovers [custom_part_id: arbor_num].
             cemented_arbors (Dict[str, str]): Dictionary containing the cemented arbor information.
             arbor_quantities (Dict[str, int]): Dictionary containing the arbor quantities.
+            HAAS_starting_part_ids (Dict[str, str]): Dictionary containing the starting part IDs for HAAS machines.
             custom_tasks_dict (Dict[int, List[int]]): Dictionary containing custom tasks for specific jobs.
 
         Returns:
@@ -2114,6 +2182,10 @@ class GeneticAlgorithmScheduler:
             len(self.J) // 5 * self.working_minutes_per_day,
             self.working_minutes_per_day,
         )
+        self.changeover_slack = self.populate_changeover_slack()
+
+        # Debug statement
+        logger.info(f"Number of partial jobs: {len(self.custom_tasks)}")
 
         # Initialize start time
         start_time = time.time()
@@ -2143,6 +2215,13 @@ class GeneticAlgorithmScheduler:
             while True:
                 # Check if time_budget has expired
                 elapsed_time = round(time.time() - start_time)
+
+                # Give time progress update
+                logger.info(
+                    f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Iteration {iteration + 1}"
+                    f" - {elapsed_time}/{time_budget} seconds elapsed"
+                )
+
                 if elapsed_time > time_budget:
                     logger.info(
                         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Time budget has expired"
@@ -2231,7 +2310,8 @@ def reformat_output(
 def identify_changeovers(df: pd.DataFrame, scheduling_options: Dict[str, Any]) -> pd.DataFrame:
     """
     Identify and return a DataFrame of changeovers for specified machines. Changeovers occur when there is more than
-    a specified threshold of minutes between the end time of one task and the start time of the next task.
+    a specified threshold of minutes between the end time of one task and the start time of the next task, or at the
+    very start if the first task starts at 09:30 or 12:30.
 
     Parameters:
     df (pd.DataFrame): DataFrame containing scheduling data with columns ['Machine', 'Start_time', 'End_time'].
@@ -2247,6 +2327,7 @@ def identify_changeovers(df: pd.DataFrame, scheduling_options: Dict[str, Any]) -
     # Extract the list of machines from the scheduling options
     machines = scheduling_options["changeover_machines_op1_full_name"]
     threshold = scheduling_options["change_over_time_op1"]
+    total_minutes_per_day = scheduling_options["total_minutes_per_day"]
 
     # Loop through each machine in the list
     for machine in machines:
@@ -2257,19 +2338,35 @@ def identify_changeovers(df: pd.DataFrame, scheduling_options: Dict[str, Any]) -
             .reset_index(drop=True)
         )
 
+        # Check for changeover at the very start
+        if not machine_tasks.empty:
+            first_start_time = machine_tasks.at[0, "Start_time"]
+            if first_start_time % total_minutes_per_day in [
+                threshold,
+                threshold * 2,
+            ]:  # 09:30 and 12:30 in minutes
+                changeover_end_time = first_start_time
+                changeover_start_time = first_start_time - threshold
+                all_changeovers.append(
+                    {
+                        "Machine": machine,
+                        "Start_time": changeover_start_time,
+                        "End_time": changeover_end_time,
+                    }
+                )
+
         # Iterate through the tasks to find gaps
         for i in range(len(machine_tasks) - 1):
-            current_end_time: float = machine_tasks.at[i, "End_time"]
-            next_start_time: float = machine_tasks.at[i + 1, "Start_time"]
+            current_end_time = machine_tasks.at[i, "End_time"]
+            next_start_time = machine_tasks.at[i + 1, "Start_time"]
 
             # Calculate the gap between the current task's end time and the next task's start time
-            gap: float = next_start_time - current_end_time
+            gap = next_start_time - current_end_time
 
             # If the gap is greater than the threshold, identify the changeover period
             if gap > threshold:
                 changeover_end_time = next_start_time
                 changeover_start_time = next_start_time - threshold
-                # Append the changeover period to the list
                 all_changeovers.append(
                     {
                         "Machine": machine,
@@ -2279,7 +2376,7 @@ def identify_changeovers(df: pd.DataFrame, scheduling_options: Dict[str, Any]) -
                 )
 
     # Create a DataFrame from the list of changeovers
-    changeovers_df: pd.DataFrame = pd.DataFrame(all_changeovers)
+    changeovers_df = pd.DataFrame(all_changeovers)
 
     return changeovers_df
 
@@ -2312,7 +2409,10 @@ def create_start_end_time(
 
     # Sort by start time ascending
     croom_reformatted_orders.sort_values("Start_time", inplace=True)
-    changeovers.sort_values("Start_time", inplace=True)
+
+    # Could be that there are no changeovers at all required
+    if not changeovers.empty:
+        changeovers.sort_values("Start_time", inplace=True)
 
     # Initialize empty 'Start_time_date' column
     croom_reformatted_orders["Start_time_date"] = None
@@ -2338,10 +2438,11 @@ def create_start_end_time(
     )
 
     # Overwrite the integer start time with the calculated datetimes for changeovers
-    changeovers["Start_time"] = changeovers["Start_time_date"]
-    changeovers["End_time"] = changeovers["Start_time"] + pd.Timedelta(
-        minutes=scheduling_options["change_over_time_op1"]
-    )
+    if not changeovers.empty:
+        changeovers["Start_time"] = changeovers["Start_time_date"]
+        changeovers["End_time"] = changeovers["Start_time"] + pd.Timedelta(
+            minutes=scheduling_options["change_over_time_op1"]
+        )
 
     # Define the time range for valid changeovers
     # Define start_time_min based on the time part of base_date
@@ -2356,10 +2457,11 @@ def create_start_end_time(
     start_time_max = end_time.time()
 
     # Filter out changeovers outside the valid time range
-    changeovers = changeovers[
-        (changeovers["Start_time"].dt.time >= start_time_min)
-        & (changeovers["Start_time"].dt.time <= start_time_max)
-    ]
+    if not changeovers.empty:
+        changeovers = changeovers[
+            (changeovers["Start_time"].dt.time >= start_time_min)
+            & (changeovers["Start_time"].dt.time <= start_time_max)
+        ]
 
     # Reorder by earliest start time
     croom_reformatted_orders.sort_values(by="Start_time", inplace=True)
@@ -2409,7 +2511,9 @@ def create_start_end_time(
 
     # Sort again by job and task before plotting
     croom_reformatted_orders = croom_reformatted_orders.sort_values(["Job", "task"])
-    changeovers = changeovers.sort_values(["Machine", "Start_time"])
+
+    if not changeovers.empty:
+        changeovers = changeovers.sort_values(["Machine", "Start_time"])
 
     return croom_reformatted_orders, changeovers
 
@@ -2447,14 +2551,18 @@ def calculate_kpi(schedule: pd.DataFrame) -> pd.DataFrame:
     # Calculate the average lead time per order
     average_lead_time = max_tasks["Lead_time"].mean()
 
-    # TODO: Prognosis of real OTIF when considerings scrap (Ask Bryan for percentage estimate)
     # Print the OTIF percentage and average lead time
-    logger.info(f"Percentage of jobs finished on time (OTIF): {percentage_on_time:.2f}%")
+    logger.info(f"Percentage of jobs finished on time (OT): {percentage_on_time:.2f}%")
+    logger.info(f"Prognosis for OTIF (%) (assuming 4% scrap): {percentage_on_time * 0.96:.2f}%")
     logger.info(f"Average lead time per order: {average_lead_time:.2f} days")
 
     # Create a DataFrame for Excel output
     kpi_df = pd.DataFrame(
-        {"OTIF (%)": [round(percentage_on_time, 1)], "avg. lead time": [round(average_lead_time, 1)]}
+        {
+            "OT (%)": [round(percentage_on_time, 1)],
+            "Prognosis OTIF (%)": [round(percentage_on_time * 0.96, 1)],
+            "avg. lead time": [round(average_lead_time, 1)],
+        }
     )
 
     return kpi_df
@@ -2627,6 +2735,6 @@ def output_schedule_per_machine(
 
     # Keep only relevant columns for the operators
     for key in schedules:
-        schedules[key] = schedules[key][["Order", "ID", "Start_time", "Machine", "task"]]
+        schedules[key] = schedules[key][["Order", "ID", "Machine", "task"]]
 
     return schedules
