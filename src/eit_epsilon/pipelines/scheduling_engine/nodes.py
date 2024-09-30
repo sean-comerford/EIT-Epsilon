@@ -604,6 +604,20 @@ class JobShop(Job, Shop):
 
         return combined_compatibility_dict
 
+    @staticmethod
+    def map_timecard_entry_to_task_list(work_process, part_id):
+        work_process.drop_duplicates(inplace=True)
+        last = work_process.iloc[-1]
+        
+        if len(work_process) > 1:
+            prev = work_process.iloc[-2]
+            
+        start = -1
+        
+        if 'CTD' in part_id:
+            end = 44
+            
+            if last.endswith('HAAS'): 
                 start = 31
             elif last == 'INSPE_GRINS':
                 start = 32
@@ -711,7 +725,22 @@ class JobShop(Job, Shop):
                 
         # Use the timecard data to remove completed jobs from J, and store partially completed ones in custom_tasks_dict
         #timecards = timecards[['Job ID', 'Operation', 'Work Centre ID', 'Process ID']]       
+        
+        custom_tasks_dict = {}
+        for job_id in timecards['Job ID'].unique():
             if job_id not in J:
+                # The job is in the time card, but not the list of open orders
+                continue
+            
+            rows = timecards.loc[timecards['Job ID'] == job_id].sort_values(by='Operation')            
+            
+            # For testing: randomly set some jobs to be partially completed
+            # if random.random() < 0.15:
+            #     r = random.randint(2, 4)
+            #     rows = rows.iloc[:-4]
+            
+            work_process = rows['Work Centre ID'] + '_' + rows['Process ID']
+            if work_process.iloc[-1] in ['INSPE_FINSP', 'SHIP_FINAL']:
                 # TODO: How should we deal with a job that is complete already?
                 # TODO: Do we want to output something if the job has passed final inspection but not been shipped?
                 # del J[job_id]
