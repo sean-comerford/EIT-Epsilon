@@ -33,6 +33,7 @@ def create_pipeline(**kwargs) -> Pipeline:
                 func=jobshop.build_ga_representation,
                 inputs=[
                     "croom_processed_backtest_orders",
+                    "timecards",
                     "croom_task_durations",
                     "params:task_to_machines",
                     "params:scheduling_options",
