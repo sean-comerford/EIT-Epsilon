@@ -15,6 +15,14 @@ croom_open_orders:
     engine: openpyxl
     sheet_name: Data Week 11
 
+timecards: # To determine which jobs are finished or partly finished
+  type: pandas.ExcelDataset
+  filepath: data/01_raw/Timecards 01 Mar 24 to 31 Aug 2024.xlsx
+  load_args:
+    engine: openpyxl
+    sheet_name: Sheet1
+    usecols: ['Job ID', 'Operation', 'Work Centre ID', 'Process ID']
+
 order_forecast:
   type: pandas.ExcelDataset
   filepath: data/01_raw/order_forecast.xlsx

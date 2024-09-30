@@ -604,9 +604,78 @@ class JobShop(Job, Shop):
 
         return combined_compatibility_dict
 
+                start = 31
+            elif last == 'INSPE_GRINS':
+                start = 32
+            elif last == 'MECWS_CLEN' and prev == 'INSPE_GRINS': # First wash
+                start = 33 
+            elif last == 'ROS1_ROS1': # Ceramic drag
+                start = 34
+            elif last == 'MECWS_CLEN' and prev == 'ROS1_ROS1': # First wash 2
+                start = 35          
+            elif last == 'BBLAS_BLAST':
+                pass # Blast complete but not prep. What should we do here?
+            elif last == 'MANP_PREP': # Blast & plastic prep
+                start = 37
+            elif last == 'ROS2_ROS2': # Plastic drag
+                start = 38
+            elif last == 'MECWS_CLEN' and prev == 'ROS2_ROS2': # Second wash 2
+                start = 39
+            elif last == 'INSPE_PLAIN': # Post-Plastic Inpection
+                start = 40
+            elif last == 'MANP_OPT': # Manual Prep & Touch-up
+                start = 41
+            elif last == 'ROS3_ROS3': # Nutshell drag
+                start = 43
+            elif last == 'MANP_POL': # Polishing
+                start = 44
+
+        elif 'OP1' in part_id:
+            end = 7
+            
+            if last.endswith('HAAS'): 
+                start = 2
+            elif last == 'INSPE_GRINS':
+                start = 3
+            elif last == 'MECWS_CLEN' and prev == 'INSPE_GRINS': # First wash
+                start = 4
+            elif last == 'MANP_POLIS': # Manual prep & touch-up
+                start = 5 # Next task is Optional touch-up inspection
+            elif last == 'MECWS_CLEN' and prev == 'INSPE_P INS': # Final wash
+                start = 7            
+
+        elif 'OP2' in part_id:
+            end = 20
+            
+            if last == 'ROS1_ROS1': # Ceramic drag
+                start = 11
+            elif last == 'MECWS_CLEN' and prev == 'ROS1_ROS1': # First wash 2
+                start = 12
+            elif last == 'ROS2_ROS2': # Plastic drag
+                start = 13
+            elif last == 'MECWS_CLEN' and prev == 'ROS2_ROS2': # Second wash 2
+                start = 14
+            elif last == 'INSPE_PLAIN': # Post-Plastic Inpection
+                start = 15
+            elif last == 'MANP_OPT': # Manual Prep & Touch-up
+                start = 16
+            elif last == 'FPI-FPI':
+                start = 17
+            elif last == 'ROS3_ROS3': # Nutshell drag
+                start = 18
+            elif last == 'MANP_POL': # Polishing
+                start = 19
+            elif last == 'MECWM_FCLEN': # Polishing
+                start = 20
+
+        if start == -1: return None
+        
+        return list(range(start, end + 1))
+
     def build_ga_representation(
         self,
         croom_processed_orders: pd.DataFrame,
+        timecards: pd.DataFrame,
         croom_task_durations: pd.DataFrame,
         task_to_machines: Dict[int, List[int]],
         scheduling_options: dict,
@@ -639,6 +708,24 @@ class JobShop(Job, Shop):
 
         part_id_to_task_seq = self.create_part_id_to_task_seq(croom_processed_orders)
         M = self.create_machines(machine_dict)
+                
+        # Use the timecard data to remove completed jobs from J, and store partially completed ones in custom_tasks_dict
+        #timecards = timecards[['Job ID', 'Operation', 'Work Centre ID', 'Process ID']]       
+            if job_id not in J:
+                # TODO: How should we deal with a job that is complete already?
+                # TODO: Do we want to output something if the job has passed final inspection but not been shipped?
+                # del J[job_id]
+                # custom_tasks_dict[job_id] = []
+                continue
+            else:
+                remaining_tasks = self.map_timecard_entry_to_task_list(work_process, J[job_id][0])
+                if remaining_tasks:
+                    custom_tasks_dict[job_id] = remaining_tasks
+                    logger.info(f"Job {job_id} is partially complete. Remaining tasks: {remaining_tasks}")
+                else:
+                    logger.info(f"Final process from timecard could not be identified. Job: {job_id} Work Centre/Process: {work_process.iloc[-1]}")
+                    
+                    
         dur = self.get_duration_matrix(
             J, part_id_to_task_seq, croom_processed_orders, croom_task_durations
         )
@@ -649,6 +736,7 @@ class JobShop(Job, Shop):
             "M": M,
             "dur": dur,
             "task_to_machines": task_to_machines,
+            "custom_tasks_dict": custom_tasks_dict
         }
 
         return input_repr_dict
@@ -2128,7 +2216,6 @@ class GeneticAlgorithmScheduler:
         cemented_arbors: Dict[str, str],
         arbor_quantities: Dict[str, int],
         HAAS_starting_part_ids: Dict[str, str],
-        custom_tasks_dict: Dict[int, List[int]],
     ) -> Tuple[Any, deque]:
         """
         Runs the genetic algorithm by initializing the population, evaluating it, and selecting the best schedule.
@@ -2156,7 +2243,7 @@ class GeneticAlgorithmScheduler:
         self.n = scheduling_options["n"]
         self.n_e = scheduling_options["n_e"]
         self.n_c = scheduling_options["n_c"]
-        self.custom_tasks = custom_tasks_dict
+        self.custom_tasks = input_repr_dict["custom_tasks_dict"]
         self.start_date = scheduling_options["start_date"]
         self.working_minutes_per_day = scheduling_options["working_minutes_per_day"]
         self.total_minutes_per_day = scheduling_options["total_minutes_per_day"]
