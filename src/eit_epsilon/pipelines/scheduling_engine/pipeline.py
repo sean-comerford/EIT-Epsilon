@@ -32,7 +32,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             node(
                 func=jobshop.build_ga_representation,
                 inputs=[
-                    "croom_processed_backtest_orders",
+                    "croom_processed_orders",
                     "croom_task_durations",
                     "params:task_to_machines",
                     "params:scheduling_options",
@@ -44,7 +44,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             node(
                 func=jobshop.build_changeover_compatibility,
                 inputs=[
-                    "croom_processed_backtest_orders",
+                    "croom_processed_orders",
                     "params:size_categories_op2_cr",
                     "params:size_categories_op2_ps",
                 ],
@@ -73,7 +73,7 @@ def create_pipeline(**kwargs) -> Pipeline:
                     "params:cemented_arbors",
                     "params:arbor_quantities",
                     "params:HAAS_starting_part_ids",
-                    "custom_tasks_dict",
+                    "params:custom_tasks_dict",
                 ],
                 outputs=["best_schedule", "best_scores"],
                 name="genetic_algorithm",
@@ -81,7 +81,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             node(
                 func=reformat_output,
                 inputs=[
-                    "croom_processed_backtest_orders",
+                    "croom_processed_orders",
                     "best_schedule",
                     "params:column_mapping_reformat",
                     "params:machine_dict",
@@ -124,7 +124,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             ),
             node(
                 func=order_to_id,
-                inputs=["mapping_dict_read", "final_schedule", "croom_processed_backtest_orders"],
+                inputs=["mapping_dict_read", "final_schedule", "croom_processed_orders"],
                 outputs=["mapping_dict_write", "final_schedule_with_id"],
                 name="order_to_id",
             ),

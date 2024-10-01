@@ -1003,7 +1003,7 @@ class GeneticAlgorithmScheduler:
             # Use arbor_dict to map from part id to arbor
             # TODO: The same arbor still does not mean no changeover required, since we need the same part ID
             for m, starting_part_id in self.HAAS_starting_part_ids.items():
-                if self.arbor_dict[starting_part_id] == arbor and random.random() < 0.7:
+                if self.arbor_dict[starting_part_id] == arbor and random.random() < 0.9:
                     arbor_to_machines[arbor].append(m)
                     num_machines_to_assign -= 1
                     if num_machines_to_assign == 0:
@@ -1165,6 +1165,13 @@ class GeneticAlgorithmScheduler:
             for machine in compat_task_0
             if product_m[machine] == 0 or product_m[machine] == part_id
         ]
+
+        if random.random() < 0.4:
+            preferred_machines = preferred_machines + [
+                machine
+                for machine in compat_task_0
+                if product_m[machine] in self.compatibility_dict[part_id]
+            ]
 
         # Extract the appropriate arbor from custom part ID
         arbor = self.arbor_dict[part_id]
@@ -1502,16 +1509,19 @@ class GeneticAlgorithmScheduler:
 
         # Based on the random number we either randomly shuffle or apply some sorting logic
         random.shuffle(J_temp)
-        if random_roll < 0.3:
-            pass  # Already shuffled
-        elif random_roll < 0.6:
+        if random_roll < 0.0:
+            pass
+        elif random_roll < 0.5:
             # The original shuffle determines the relative order of products with the same part ID
             J_temp.sort(
                 key=lambda x: self.J[x][0][::-1], reverse=random.choice([True, False])
             )  # Sort on the part ID
-        elif random_roll < 0.7:
-            J_temp.sort(key=lambda x: self.J[x][1], reverse=True)  # Sort on the due time
-        elif random_roll < 0.9:
+        elif random_roll < 0.8:
+            # The original shuffle determines the relative order of products with the same part ID
+            J_temp.sort(
+                key=lambda x: self.J[x][0], reverse=random.choice([True, False])
+            )  # Sort on the part ID
+        elif random_roll < 1.0:
             J_temp.sort(
                 key=lambda x: (self.J[x][0][::-1], self.J[x][1]), reverse=random.choice([True, False])
             )
@@ -1546,7 +1556,7 @@ class GeneticAlgorithmScheduler:
                     # Select the machine based on availability or randomly
                     m = (
                         min(preferred_machines, key=lambda x: avail_m.get(x))
-                        if random_roll < 0.5
+                        if random_roll < 0.8
                         else random.choice(preferred_machines)
                     )
 
@@ -1751,7 +1761,7 @@ class GeneticAlgorithmScheduler:
                             (self.J[job_id][1] - (start_time + job_task_dur)),
                             1.02,
                         )
-                        * (50 if task_id in [1, 30] else 1)
+                        * (20 if task_id in [1, 30] else 1)
                         * (self.urgent_multiplier if job_id in self.urgent_orders else 1)
                         + (
                             # Fixed size bonus for completing the job on time (only applies if the final task is

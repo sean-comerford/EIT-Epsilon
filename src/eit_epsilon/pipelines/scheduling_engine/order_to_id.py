@@ -25,29 +25,29 @@ def project_context(config_loader):
 def order_to_id(project_context):
     # Step 1: Load the mapping dictionary from the file or start with an empty one
     try:
-        mapping_dict = project_context.catalog.load("mapping_dict")
+        mapping_dict = project_context.catalog.load("mapping_dict_read")
     except (DatasetError, FileNotFoundError):
         mapping_dict = {}
 
     # Step 2: Load final schedule
-    schedule = project_context.catalog.load("final_schedule")
+    schedule = project_context.catalog.load("manual_order_to_id_run")
 
     # Step 3: Remove unused keys from the dictionary
-    valid_orders = set(schedule["Order"])
+    valid_orders = set(schedule["Job ID"])
     updated_mapping_dict = {k: v for k, v in mapping_dict.items() if k in valid_orders}
 
     # Step 4: Find unused numbers between 1 and 250
     unused_numbers = set(np.arange(1, 251)) - set(updated_mapping_dict.values())
 
     # Step 5: Assign new IDs to new orders
-    for order in schedule["Order"]:
+    for order in schedule["Job ID"]:
         if order not in updated_mapping_dict:
             new_id = unused_numbers.pop()  # Assign a new unique ID from the unused set
             updated_mapping_dict[order] = new_id  # Map the order to the new ID
 
     # Step 6: Update the schedule DataFrame with the IDs
     def find_mapping(row):
-        id_value = updated_mapping_dict.get(row["Order"], None)
+        id_value = updated_mapping_dict.get(row["Job ID"], None)
         row["ID"] = id_value
         return row
 
@@ -58,8 +58,8 @@ def order_to_id(project_context):
     print(schedule)
 
     # Step 7: Save the updated mapping dictionary and schedule back to the catalog
-    project_context.catalog.save("mapping_dict", updated_mapping_dict)
-    project_context.catalog.save("final_schedule", schedule)
+    project_context.catalog.save("mapping_dict_write", updated_mapping_dict)
+    project_context.catalog.save("manual_order_to_id_run", schedule)
 
 
 def split_and_save_schedule(project_context):
@@ -95,7 +95,7 @@ def main():
     loader = config_loader()
     context = project_context(loader)
     order_to_id(context)
-    split_and_save_schedule(context)
+    # split_and_save_schedule(context)
 
 
 if __name__ == "__main__":

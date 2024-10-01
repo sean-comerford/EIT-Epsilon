@@ -133,6 +133,16 @@ mapping_dict_write:
   type: pickle.PickleDataset
   filepath: data/05_model_input/mapping_dict.pkl
 
+manual_order_to_id_run:
+  type: pandas.ExcelDataset
+  filepath: data/01_raw/Jobs_with_ID.xlsx
+  save_args:
+    engine: openpyxl
+    sheet_name: Sheet1
+  load_args:
+    engine: openpyxl
+    sheet_name: Sheet1
+
 ctd_mapping:
   type: pandas.ExcelDataset
   filepath: data/08_reporting/ctd_mapping.xlsx
