@@ -606,6 +606,18 @@ class JobShop(Job, Shop):
 
     @staticmethod
     def map_timecard_entry_to_task_list(work_process, part_id):
+        """ Takes a dataframe of the tasks that have been completed for a particular job 
+        and determines which tasks are remaining on the job.
+        Each row in the dataframe is the Work Centre ID concatenated with the Process ID, for completed task
+        e.g. 1st row: INSPE_GRINS, 2nd row: MECWS_CLEN, 3rd row ROS1_ROS1 etc.
+        
+        Args:
+            work_process (str): A dataframe of the work centre ID concatenated with the process ID 
+            part_id (str): The part ID of the job. 
+
+        Returns:
+            List[int]: A list of the tasks that are remaining on a job e.g. [41, 42, 43, 44]                                 
+        """
         work_process.drop_duplicates(inplace=True)
         last = work_process.iloc[-1]
         
@@ -720,37 +732,24 @@ class JobShop(Job, Shop):
         if J_op_2:
             J.update(J_op_2)
 
-
         M = self.create_machines(machine_dict)     
-                
+
         # Use the timecard data to remove completed jobs from J, and store partially completed ones in custom_tasks_dict
-        #timecards = timecards[['Job ID', 'Operation', 'Work Centre ID', 'Process ID']]       
-        
-        num_jobs_original = len(J)
-        
+        num_jobs_original = len(J)        
         custom_tasks_dict = {}
         for job_id in timecards['Job ID'].unique():
             if job_id not in J:
                 # The job is in the time card, but not the list of open orders
                 continue
             
-            rows = timecards.loc[timecards['Job ID'] == job_id].sort_values(by='Operation')            
-            
-            # For testing: randomly set some jobs to be partially completed
-            # if random.random() < 0.7:
-            #     r = random.randint(2, 4)
-            #     rows = rows.iloc[:-4]
-            
+            rows = timecards.loc[timecards['Job ID'] == job_id].sort_values(by='Operation')           
+                        
             work_process = rows['Work Centre ID'] + '_' + rows['Process ID']
             if work_process.iloc[-1] in ['INSPE_FINSP', 'SHIP_FINAL']:
-                # TODO: How should we deal with a job that is complete already?
                 # TODO: Do we want to output something if the job has passed final inspection but not been shipped?
-                
-                #if random.random() < 0.5:           
                 logger.info(f"Job {job_id} completed. Removing from list.")
                 del J[job_id]
                 croom_processed_orders = croom_processed_orders.loc[croom_processed_orders["Job ID"] != job_id]
-
                 continue
             else:
                 remaining_tasks = self.map_timecard_entry_to_task_list(work_process, J[job_id][0])
