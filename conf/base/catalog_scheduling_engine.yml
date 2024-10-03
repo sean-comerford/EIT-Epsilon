@@ -14,6 +14,12 @@ croom_open_orders:
   load_args:
     engine: openpyxl
     sheet_name: Data Week 11
+jobs_not_booked_in:
+  type: pandas.ExcelDataset
+  filepath: data/01_raw/Jobs_not_booked_in.xlsx
+  load_args:
+    engine: openpyxl
+    sheet_name: Sheet1
 
 timecards: # To determine which jobs are finished or partly finished
   type: pandas.ExcelDataset

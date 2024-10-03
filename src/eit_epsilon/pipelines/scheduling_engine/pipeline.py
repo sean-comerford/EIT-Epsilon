@@ -25,7 +25,9 @@ def create_pipeline(**kwargs) -> Pipeline:
         [
             node(
                 func=jobshop.preprocess_orders,
-                inputs="croom_open_orders",
+                inputs=["croom_open_orders",
+                       "jobs_not_booked_in",
+                       ],
                 outputs="croom_processed_orders",
                 name="preprocess_orders",
             ),

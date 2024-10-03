@@ -426,7 +426,7 @@ class JobShop(Job, Shop):
     def __init__(self):
         self.input_repr_dict = None
 
-    def preprocess_orders(self, croom_open_orders: pd.DataFrame) -> pd.DataFrame:
+    def preprocess_orders(self, croom_open_orders: pd.DataFrame, jobs_not_booked_in: pd.DataFrame) -> pd.DataFrame:
         """
         Preprocesses the open orders by filtering, extracting information, and performing various checks.
 
@@ -446,6 +446,10 @@ class JobShop(Job, Shop):
         Returns:
             pd.DataFrame: The preprocessed orders.
         """
+        # Get only the rows from jobs_not_booked_in that aren't already in open orders, and add them
+        df_diff = jobs_not_booked_in[~jobs_not_booked_in['Job ID'].isin(croom_open_orders['Job ID'])]        
+        croom_open_orders = pd.concat([croom_open_orders, df_diff])
+        
         in_scope_data_op1 = self.filter_in_scope(croom_open_orders).pipe(self.extract_info)
         in_scope_data_op2 = self.filter_in_scope(croom_open_orders, operation="OP 2").pipe(
             self.extract_info
@@ -737,9 +741,21 @@ class JobShop(Job, Shop):
         # Use the timecard data to remove completed jobs from J, and store partially completed ones in custom_tasks_dict
         num_jobs_original = len(J)        
         custom_tasks_dict = {}
-        for job_id in timecards['Job ID'].unique():
-            if job_id not in J:
-                # The job is in the time card, but not the list of open orders
+        
+        timecard_job_ids = timecards['Job ID'].unique()
+        jobs_not_booked_in = pd.DataFrame()
+        # TODO: Remove any rows where the Good Qty is 0 and there is an end time as this was just a test
+        for job_id in list(J.keys()):           
+            
+            if job_id not in timecard_job_ids:
+                # The job isn't in the timecard data i.e. it hasn't been booked in
+                # Save the job so it can be included the next time the algorithm is run
+                logger.info(f"Job {job_id} not in timecard data (hasn't been booked in). Removing from list and storing.")
+                entries = croom_processed_orders.loc[croom_processed_orders["Job ID"] == job_id]
+                jobs_not_booked_in = pd.concat([jobs_not_booked_in, entries])                
+                
+                del J[job_id]
+                croom_processed_orders = croom_processed_orders.loc[croom_processed_orders["Job ID"] != job_id]
                 continue
             
             rows = timecards.loc[timecards['Job ID'] == job_id].sort_values(by='Operation')           
@@ -761,6 +777,8 @@ class JobShop(Job, Shop):
                     
         
         logger.info(f"Number of jobs before/after timecard data: {num_jobs_original}/{len(J)}")
+        logger.info(f"Number of jobs not booked in: {len(jobs_not_booked_in.index)}")
+        jobs_not_booked_in.to_excel("data/01_raw/Jobs_not_booked_in.xlsx", index=False)
         
         part_id_to_task_seq = self.create_part_id_to_task_seq(croom_processed_orders)
                     
