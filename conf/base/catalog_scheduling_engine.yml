@@ -27,7 +27,7 @@ timecards: # To determine which jobs are finished or partly finished
   load_args:
     engine: openpyxl
     sheet_name: Sheet1
-    usecols: ['Job ID', 'Operation', 'Work Centre ID', 'Process ID']
+    usecols: ['Job ID', 'Operation', 'Work Centre ID', 'Process ID', 'Good Qty', 'Act End Time']
 
 order_forecast:
   type: pandas.ExcelDataset

@@ -442,6 +442,7 @@ class JobShop(Job, Shop):
 
         Args:
             croom_open_orders (pd.DataFrame): The open orders.
+            jobs_not_booked_in (pd.DataFrame): Jobs that were previously in open orders but not in the time card.
 
         Returns:
             pd.DataFrame: The preprocessed orders.
@@ -689,7 +690,7 @@ class JobShop(Job, Shop):
                 start = 15
             elif last == 'MANP_OPT': # Manual Prep & Touch-up
                 start = 16
-            elif last == 'FPI-FPI':
+            elif last == 'FPI_FPI':
                 start = 17
             elif last == 'ROS3_ROS3': # Nutshell drag
                 start = 18
@@ -713,9 +714,14 @@ class JobShop(Job, Shop):
     ) -> Dict[str, any]:
         """
         Builds the GA input data.
+        Use the timecard data to:
+            1. Remove completed tasks from J and croom_processed_orders.
+            2. Store the remaining tasks for partially completed ones in custom_tasks_dict.
+            3. Remove non-booked in jobs from J and croom_processed_orders, and store in Jobs_not_booked_in.xlsx
 
         Args:
             croom_processed_orders (pd.DataFrame): The processed orders.
+            timecards (pd.DataFrame): Timecard data (contains info about completed/partially completed jobs).
             croom_task_durations (pd.DataFrame): The task durations.
             task_to_machines (Dict[int, List[int]]): The task to machines dictionary.
             scheduling_options (dict): The scheduling options.
@@ -738,13 +744,15 @@ class JobShop(Job, Shop):
 
         M = self.create_machines(machine_dict)     
 
-        # Use the timecard data to remove completed jobs from J, and store partially completed ones in custom_tasks_dict
+        # Process the timecards data
+        # Remove any rows where the Good Qty is 0 or less and there is an end time, as this was just a test
+        timecards = timecards[~((timecards['Good Qty'] <= 0) & (~timecards['Act End Time'].isna()))]        
+        
         num_jobs_original = len(J)        
         custom_tasks_dict = {}
         
         timecard_job_ids = timecards['Job ID'].unique()
         jobs_not_booked_in = pd.DataFrame()
-        # TODO: Remove any rows where the Good Qty is 0 and there is an end time as this was just a test
         for job_id in list(J.keys()):           
             
             if job_id not in timecard_job_ids:
@@ -761,8 +769,8 @@ class JobShop(Job, Shop):
             rows = timecards.loc[timecards['Job ID'] == job_id].sort_values(by='Operation')           
                         
             work_process = rows['Work Centre ID'] + '_' + rows['Process ID']
+            
             if work_process.iloc[-1] in ['INSPE_FINSP', 'SHIP_FINAL']:
-                # TODO: Do we want to output something if the job has passed final inspection but not been shipped?
                 logger.info(f"Job {job_id} completed. Removing from list.")
                 del J[job_id]
                 croom_processed_orders = croom_processed_orders.loc[croom_processed_orders["Job ID"] != job_id]
