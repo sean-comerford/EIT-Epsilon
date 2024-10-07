@@ -1003,7 +1003,7 @@ class GeneticAlgorithmScheduler:
             # Use arbor_dict to map from part id to arbor
             # TODO: The same arbor still does not mean no changeover required, since we need the same part ID
             for m, starting_part_id in self.HAAS_starting_part_ids.items():
-                if self.arbor_dict[starting_part_id] == arbor and random.random() < 0.9:
+                if self.arbor_dict[starting_part_id] == arbor:
                     arbor_to_machines[arbor].append(m)
                     num_machines_to_assign -= 1
                     if num_machines_to_assign == 0:
@@ -1761,7 +1761,7 @@ class GeneticAlgorithmScheduler:
                             (self.J[job_id][1] - (start_time + job_task_dur)),
                             1.02,
                         )
-                        * (20 if task_id in [1, 30] else 1)
+                        * (60 if task_id in [1, 30] else 1)
                         * (self.urgent_multiplier if job_id in self.urgent_orders else 1)
                         + (
                             # Fixed size bonus for completing the job on time (only applies if the final task is
@@ -2626,11 +2626,9 @@ def order_to_id(
     Returns:
         Tuple[Dict[str, int], pd.DataFrame]: The updated mapping dictionary and the schedule DataFrame with IDs.
     """
-    # Extract the order of jobs from `croom_processed_orders`
-    job_order = croom_processed_orders["Job ID"].tolist()
 
     # Sort the `schedule` DataFrame based on the order of jobs
-    schedule["Order"] = pd.Categorical(schedule["Order"], categories=job_order, ordered=True)
+    # schedule["Order"] = pd.Categorical(schedule["Order"], categories=job_order, ordered=True)
     schedule = schedule.sort_values("Order")
 
     # Identify valid orders present in the schedule
@@ -2656,6 +2654,9 @@ def order_to_id(
 
     # Apply the mapping function row-wise to the schedule DataFrame
     schedule = schedule.apply(find_mapping, axis=1)
+
+    # Create a new category for cemented
+    schedule["operation"] = np.where(schedule["Cementless"] == "CTD", "Primary", schedule["operation"])
 
     return updated_mapping_dict, schedule
 
@@ -2745,6 +2746,10 @@ def output_schedule_per_machine(
 
     # Keep only relevant columns for the operators
     for key in schedules:
-        schedules[key] = schedules[key][["Order", "ID", "Machine", "task"]]
+        schedules[key] = schedules[key][
+            ["ID", "Order", "Machine", "task", "Start_time", "Custom Part ID"]
+        ]
+        schedules[key].rename(columns={"Order": "Job Number", "task": "Task"}, inplace=True)
+        schedules[key]["Completed"] = ""
 
     return schedules

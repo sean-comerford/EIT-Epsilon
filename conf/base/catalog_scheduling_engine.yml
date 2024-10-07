@@ -10,10 +10,10 @@ orders:
 
 croom_open_orders:
   type: pandas.ExcelDataset
-  filepath: data/01_raw/Week 11 open orders.xlsm
+  filepath: data/01_raw/Jobs_with_ID_new.xlsx
   load_args:
     engine: openpyxl
-    sheet_name: Data Week 11
+    sheet_name: Sheet1
 
 order_forecast:
   type: pandas.ExcelDataset
@@ -135,7 +135,7 @@ mapping_dict_write:
 
 manual_order_to_id_run:
   type: pandas.ExcelDataset
-  filepath: data/01_raw/Jobs_with_ID.xlsx
+  filepath: data/01_raw/Jobs_with_ID_new.xlsx
   save_args:
     engine: openpyxl
     sheet_name: Sheet1
@@ -267,7 +267,7 @@ gantt_chart_json:
       x_start: Start_time
       x_end: End_time
       y: Machine
-      color: Order
+      color: Custom Part ID
       title: Production Schedule
       hover_name: Order
       hover_data: ['Due_date', 'task', 'Custom Part ID', 'Production Qty']
@@ -290,8 +290,6 @@ gantt_chart_json:
             'FPI Inspect-3', 'FPI Inspect-2', 'FPI Inspect-1', 'Post-Plastic Inspect-4', 'Post-Plastic Inspect-3',
             'Post-Plastic Inspect-2', 'Post-Plastic Inspect-1', 'Plastic Drag (Ghost)', 'Plastic Drag', 'Wash-2 (Ghost)',
             'Wash-2', 'Ceramic Drag (Ghost)', 'Ceramic Drag', 'Final Wash-1 (Ghost)', 'Final Wash-1',
-            'Optional touch-up Inspect-6', 'Optional touch-up Inspect-5', 'Optional touch-up Inspect-4',
-            'Optional touch-up Inspect-3', 'Optional touch-up Inspect-2', 'Optional touch-up Inspect-1',
             'Manual Prep & Touch-up-6', 'Manual Prep & Touch-up-5', 'Manual Prep & Touch-up-4',
             'Manual Prep & Touch-up-3', 'Manual Prep & Touch-up-2', 'Manual Prep & Touch-up-1', 'Wash-1 (Ghost)',
             'Wash-1', 'Post-HAAS Inspect-2', 'Post-HAAS Inspect-1', 'HAAS-6', 'HAAS-5', 'HAAS-4', 'HAAS-3', 'HAAS-2',
