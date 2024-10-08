@@ -10,10 +10,25 @@ orders:
 
 croom_open_orders:
   type: pandas.ExcelDataset
-  filepath: data/01_raw/Week 11 open orders.xlsm
+  filepath: data/01_raw/jobs_jul_2024.xlsm
   load_args:
     engine: openpyxl
-    sheet_name: Data Week 11
+    sheet_name: Sheet1
+
+jobs_not_booked_in:
+  type: pandas.ExcelDataset
+  filepath: data/01_raw/Jobs_not_booked_in.xlsx
+  load_args:
+    engine: openpyxl
+    sheet_name: Sheet1
+
+timecards: # To determine which jobs are finished or partly finished
+  type: pandas.ExcelDataset
+  filepath: data/01_raw/timecards_jul_2024.xlsx
+  load_args:
+    engine: openpyxl
+    sheet_name: Sheet1
+    usecols: ['Job ID', 'Operation', 'Work Centre ID', 'Process ID', 'Good Qty', 'Act End Time']
 
 order_forecast:
   type: pandas.ExcelDataset
@@ -257,10 +272,10 @@ gantt_chart_json:
       x_start: Start_time
       x_end: End_time
       y: Machine
-      color: Order
+      color: Custom Part ID
       title: Production Schedule
       hover_name: Order
-      hover_data: ['Due_date', 'task', 'Custom Part ID', 'Production Qty']
+      hover_data: ['Prod Due Date', 'task', 'Custom Part ID', 'Production Qty']
       template: simple_white
       color_discrete_sequence: ['rgb(41, 24, 107)', 'rgb(42, 35, 160)', 'rgb(15, 71, 153)',
                                 'rgb(18, 95, 142)', 'rgb(38, 116, 137)', 'rgb(53, 136, 136)',

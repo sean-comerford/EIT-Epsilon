@@ -201,51 +201,64 @@ arbor_quantities: {
     '800.6000.23.00': 1
 }
 
-# Custom tasks for given job IDs
-custom_tasks_dict: {
-#  4421811: [2, 3, 4, 5, 6, 7],
-#  4421904: [20],
-#  4421815: [2, 3, 4, 5, 6, 7],
-#  4421902: [13, 14, 15, 16, 17, 18, 19, 20],
-#  4421929: [18, 19, 20],
-#  4421926: [16, 17, 18, 19, 20],
-#  4421924: [13, 14, 15, 16, 17, 18, 19, 20],
-#  4421912: [18, 19, 20],
-#  4421908: [19, 20],
-#  4421925: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
-#  4421919: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
-#  4421930: [16, 17, 18, 19, 20],
-#  4421918: [16, 17, 18, 19, 20],
-#  4421819: [7],
-#  4421915: [16, 17, 18, 19, 20],
-#  4421806: [3, 4, 5, 6, 7],
-#  4421814: [2, 3, 4, 5, 6, 7],
-#  4421823: [2, 3, 4, 5, 6, 7],
-#  4421804: [3, 4, 5, 6, 7],
-#  4421813: [7],
-#  4421913: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
-#  4421923: [11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
-#  4421914: [17, 18, 19, 20],
-#  4421903: [17, 18, 19, 20],
-#  4421905: [15, 16, 17, 18, 19, 20],
-#  4421824: [2, 3, 4, 5, 6, 7],
-#  4421816: [2, 3, 4, 5, 6, 7],
-#  4421920: [16, 17, 18, 19, 20],
-#  4421907: [17, 18, 19, 20],
-#  4421901: [17, 18, 19, 20],
-#  4421803: [2, 3, 4, 5, 6, 7],
-#  4421808: [7],
-#  4421802: [7],
-#  4421822: [2, 3, 4, 5, 6, 7],
-#  4421917: [17, 18, 19, 20],
-#  # 4421801: [1, 2, 3, 4, 5, 6, 7],
-#  # 4421812: [1, 2, 3, 4, 5, 6, 7],
-#  # 4421809: [1, 2, 3, 4, 5, 6, 7],
-#  4421817: [3, 4, 5, 6, 7],
+timecard_ctd_mapping: {
+    'HAAS1_HAAS': 31,
+    'HAAS2_HAAS': 31,
+    'HAAS3_HAAS': 31,
+    'HAAS4_HAAS': 31,
+    'HAAS5_HAAS': 31,
+    'HAAS6_HAAS': 31,
+    'INSPE_GRINS': 32,
+    'MECWS_CLEN,INSPE_GRINS': 33,
+    'MECWM_CLEN,INSPE_GRINS': 33,
+    'ROS1_ROS1': 34,
+    'MECWS_CLEN,ROS1_ROS1': 35,
+    'MECWM_CLEN,ROS1_ROS1': 35,
+    'BBLAS_BLAST': 35,
+    'MANP_PREP': 37,
+    'ROS2_ROS2': 38,
+    'MECWS_CLEN,ROS2_ROS2': 39,
+    'MECWM_CLEN,ROS2_ROS2': 39,
+    'INSPE_PLAIN': 40,
+    'MANP_OPT': 41,
+    'ROS3_ROS3': 43,
+    'RATES_SURFA': 43,
+    'MANP_POL': 44
+}
+
+timecard_op1_mapping: {
+    'HAAS1_HAAS': 2,
+    'HAAS2_HAAS': 2,
+    'HAAS3_HAAS': 2,
+    'HAAS4_HAAS': 2,
+    'HAAS5_HAAS': 2,
+    'HAAS6_HAAS': 2,
+    'INSPE_GRINS': 3,
+    'MECWS_CLEN,INSPE_GRINS': 4,
+    'MECWM_CLEN,INSPE_GRINS': 4,
+    'MANP_POLIS': 5,
+    'MECWS_CLEN,INSPE_P': 7,
+    'MECWM_CLEN,INSPE_P': 7
+}
+
+timecard_op2_mapping: {
+    'ROS1_ROS1': 11,
+    'MECWS_CLEN,ROS1_ROS1': 12,
+    'MECWM_CLEN,ROS1_ROS1': 12,
+    'ROS2_ROS2': 13,
+    'MECWS_CLEN,ROS2_ROS2': 14,
+    'MECWM_CLEN,ROS2_ROS2': 14,
+    'INSPE_PLAIN': 15,
+    'MANP_OPT': 16,
+    'FPI_FPI': 17,
+    'ROS3_ROS3': 18,
+    'RATES_SURFA': 18,
+    'MANP_POL': 19,
+    'MECWM_FCLEN': 20
 }
 
 scheduling_options: {
-  start_date: "2024-03-13T06:30",  # Starting date used to calculate difference with due date
+  start_date: "2024-07-01T06:30",  # Starting date used to calculate difference with due date
   change_over_time_op1: 180,  # Minutes required to do a changeover on the HAAS machines
   change_over_time_op2: 15,  # Minutes required to do a changeover on the non-Drag OP 2 machines
   change_over_machines_op1: [1, 2, 3, 4, 5, 6], # Machines that require a changeover for OP1 (key in machine dict above)
@@ -254,8 +267,8 @@ scheduling_options: {
   non_manual_task_machines: [1, 3, 6, 10, 11, 12, 13, 17, 30, 32, 33, 34, 37, 38, 42], # Non-manual tasks (can go past EOD)
   non_slack_machines: [37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50],  # Machines that cannot use slack time
   task_time_buffer: 5,  # Number of extra minutes to keep between tasks as a buffer (switching time)
-  n: 7000,  # Number of random schedules to generate
-  n_e: 0.05,  # Proportion of best schedules to automatically pass on to the next generation (e.g.: 10%)
+  n: 350,  # Number of random schedules to generate
+  n_e: 0.07,  # Proportion of best schedules to automatically pass on to the next generation (e.g.: 10%)
   n_c: 0.15,  # Proportion of children to generate in the offspring function
   working_minutes_per_day: 480,  # Number of working minutes per day (8 hours * 60 minutes)
   total_minutes_per_day: 1440,  # Number of minutes in exactly 24 hours
