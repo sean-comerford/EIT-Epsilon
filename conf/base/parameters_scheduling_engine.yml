@@ -4,7 +4,7 @@ task_to_machines: {
   2: [7, 8],  # Post-HAAS Inspection
   3: [9],  # First Wash
   4: [11, 12, 13, 14, 15, 16],  # Manual Prep & Touch-up
-  5: [17, 18, 19, 20, 21, 22],  # Optional touch-up inspection
+  5: [11, 12, 13, 14, 15, 16],  # Optional touch-up inspection
   6: [23],  # Final Wash
   7: [25, 26],  # Final inspection
 
@@ -13,7 +13,7 @@ task_to_machines: {
   11: [29],  # Wash 2
   12: [31],  # Plastic drag
   13: [29],  # Wash 2
-  14: [33, 34, 35, 36],  # Post-Plastic Inspection
+  14: [33, 34, 35],  # Post-Plastic Inspection
   15: [11, 12, 13, 14, 15, 16],  # Manual Prep & Touch-up
   16: [37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50],  # FPI-Inspect
   17: [51],  # Nutshell drag
@@ -28,12 +28,12 @@ task_to_machines: {
   33: [27],  # Ceramic drag
   34: [29],  # Wash 2
   35: [11, 12, 13, 14, 15, 16],  # Plastic prep (Blast included)
-  36: [33, 34, 35, 36],  # Post-Plastic Inspection
+  36: [33, 34, 35],  # Post-Plastic Inspection
   37: [31],  # Plastic drag
   38: [29],  # Wash 2
-  39: [33, 34, 35, 36],  # Post-Plastic Inspection
+  39: [33, 34, 35],  # Post-Plastic Inspection
   40: [11, 12, 13, 14, 15, 16],  # Manual Prep & Touch-up
-  41: [17, 18, 19, 20, 21, 22],  # Optional touch-up inspection
+  41: [11, 12, 13, 14, 15, 16],  # Optional touch-up inspection
   42: [51],  # Nutshell drag
   43: [53, 54],  # Polishing
   44: [25, 26],  # Final inspection
@@ -139,12 +139,12 @@ ghost_machine_dict: {
 
 # Specifies which parts the HAAS machines are already set up for (i.e. from a previous job)
 HAAS_starting_part_ids: {
-   1: 'RIGHT-CR-8-CLS-OP1',
-   2: 'LEFT-CR-7-CLS-OP1',
-   3: 'RIGHT-CR-6-CLS-OP1',
-   4: 'LEFT-CR-8-CLS-OP1',
-   5: 'LEFT-PS-5N-CTD-OP1',
-   6: 'RIGHT-CR-5N-CTD-OP1',
+   1: 'LEFT-CR-5N-CLS-OP1',
+   2: 'LEFT-CR-6-CLS-OP1',
+   3: 'RIGHT-CR-8-CLS-OP1',
+   4: 'LEFT-PS-4N-CTD-OP1',
+   5: 'RIGHT-PS-5N-CTD-OP1',
+   6: 'LEFT-PS-9-CTD-OP1',
 }
 
 cemented_arbors: {
@@ -200,6 +200,7 @@ arbor_quantities: {
     '800.6001.14.00': 1,
     '800.6000.23.00': 1
 }
+
 
 timecard_ctd_mapping: {
     'HAAS1_HAAS': 31,
@@ -259,6 +260,9 @@ timecard_op2_mapping: {
 
 scheduling_options: {
   start_date: "2024-07-01T06:30",  # Starting date used to calculate difference with due date
+
+scheduling_options: {
+  start_date: "2024-10-03T06:30",  # Starting date used to calculate difference with due datet
   change_over_time_op1: 180,  # Minutes required to do a changeover on the HAAS machines
   change_over_time_op2: 15,  # Minutes required to do a changeover on the non-Drag OP 2 machines
   change_over_machines_op1: [1, 2, 3, 4, 5, 6], # Machines that require a changeover for OP1 (key in machine dict above)
