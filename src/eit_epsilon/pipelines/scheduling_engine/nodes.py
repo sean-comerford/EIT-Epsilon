@@ -2889,10 +2889,12 @@ def output_schedule_per_machine(
 
     # Keep only relevant columns for the operators
     for key in schedules:
-        schedules[key] = schedules[key][
-            ["ID", "Order", "Machine", "task", "Start_time", "Custom Part ID"]
-        ]
+        schedules[key] = (
+            schedules[key]
+            .loc[:, ["ID", "Order", "Machine", "task", "Start_time", "Custom Part ID"]]
+            .copy()
+        )  # Create an explicit copy
         schedules[key].rename(columns={"Order": "Job Number", "task": "Task"}, inplace=True)
-        schedules[key]["Completed"] = ""
+        schedules[key].loc[:, "Completed"] = ""  # Use loc to assign the new value
 
     return schedules
