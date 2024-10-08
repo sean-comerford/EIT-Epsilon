@@ -49,14 +49,12 @@ class Job:
                     data["Part Description"].str.contains("OP 1")
                     | data["Part Description"].str.contains("ATT ")
                 )
-                & (~data["On Hold?"])
                 & (~data["Part Description"].str.contains("OP 2"))
             ]
 
         elif operation == "OP 2":
             in_scope_data = data[
                 (data["Part Description"].str.contains("OP 2"))
-                & (~data["On Hold?"])
                 & (~data["Part Description"].str.contains("OP 1"))
             ]
 
@@ -218,6 +216,76 @@ class Job:
                 result[row["Custom Part ID"]] = list(range(30, 45))
 
         return result
+
+    @staticmethod
+    def get_remaining_tasks(
+        work_process: pd.DataFrame,
+        part_id: str,
+        timecard_ctd_mapping: Dict[str, int],
+        timecard_op1_mapping: Dict[str, int],
+        timecard_op2_mapping: Dict[str, int],
+    ) -> Optional[List[int]]:
+        """
+        Determines the remaining tasks for a given part based on the work process and part ID.
+
+        Args:
+            work_process (pd.DataFrame): The DataFrame containing the work process steps.
+            part_id (str): The ID of the part being processed.
+            timecard_ctd_mapping (Dict[str, int]): Mapping for CTD parts.
+            timecard_op1_mapping (Dict[str, int]): Mapping for OP1 parts.
+            timecard_op2_mapping (Dict[str, int]): Mapping for OP2 parts.
+
+        Returns:
+            Optional[List[int]]: A list of remaining task IDs, or None if the part is not recognized or if the last task is 'INSPE_RECIE'.
+        """
+        # Remove duplicate entries in the work process
+        work_process = work_process.drop_duplicates()
+
+        # Get the last and previous tasks in the work process
+        last = work_process.iloc[-1]
+        prev = work_process.iloc[-2] if len(work_process) > 1 else None
+
+        def get_mapping(mapping: Dict[str, int], last_task: str, prev_task: Optional[str]) -> int:
+            """
+            Retrieves the mapping value based on the last and previous tasks.
+
+            Args:
+                mapping (Dict[str, int]): The mapping dictionary.
+                last_task (str): The last task.
+                prev_task (Optional[str]): The previous task, if any.
+
+            Returns:
+                int: The mapped value, or -1 if not found.
+            """
+            key = last_task
+            if prev_task is not None:
+                key = f"{last_task},{prev_task}"
+            return mapping.get(key, mapping.get(last_task, -1))
+
+        # Return None if none of the physical tasks have been completed yet (item is only received)
+        if last == "INSPE_RECIE":
+            return None
+
+        # Determine the end task ID and start task ID based on the part ID
+        if "CTD" in part_id:
+            end = 44
+            start = get_mapping(timecard_ctd_mapping, last, prev)
+        elif "OP1" in part_id:
+            end = 7
+            start = get_mapping(timecard_op1_mapping, last, prev)
+        elif "OP2" in part_id:
+            end = 20
+            start = get_mapping(timecard_op2_mapping, last, prev)
+        else:
+            logger.warning(f"Part ID {part_id} not recognized")
+            return None
+
+        # Check if start was defined
+        if start == -1:
+            logger.warning(f"Starting task is undefined: {work_process}")
+
+        # Return the list of remaining tasks if start is valid, otherwise return None
+        return list(range(start, end + 1))
 
 
 class Shop:
@@ -401,7 +469,7 @@ class Shop:
         total_minutes = scheduling_options["total_minutes_per_day"]
 
         due = deque()
-        for due_date in in_scope_orders["Due Date "]:
+        for due_date in in_scope_orders["Prod Due Date"]:
             if pd.Timestamp(base_date) > due_date:
                 working_days = -len(pd.bdate_range(due_date, base_date)) * total_minutes
             else:
@@ -426,7 +494,9 @@ class JobShop(Job, Shop):
     def __init__(self):
         self.input_repr_dict = None
 
-    def preprocess_orders(self, croom_open_orders: pd.DataFrame, jobs_not_booked_in: pd.DataFrame) -> pd.DataFrame:
+    def preprocess_orders(
+        self, croom_open_orders: pd.DataFrame, jobs_not_booked_in: pd.DataFrame
+    ) -> pd.DataFrame:
         """
         Preprocesses the open orders by filtering, extracting information, and performing various checks.
 
@@ -447,10 +517,7 @@ class JobShop(Job, Shop):
         Returns:
             pd.DataFrame: The preprocessed orders.
         """
-        # Get only the rows from jobs_not_booked_in that aren't already in open orders, and add them
-        df_diff = jobs_not_booked_in[~jobs_not_booked_in['Job ID'].isin(croom_open_orders['Job ID'])]        
-        croom_open_orders = pd.concat([croom_open_orders, df_diff])
-        
+
         in_scope_data_op1 = self.filter_in_scope(croom_open_orders).pipe(self.extract_info)
         in_scope_data_op2 = self.filter_in_scope(croom_open_orders, operation="OP 2").pipe(
             self.extract_info
@@ -507,12 +574,6 @@ class JobShop(Job, Shop):
             assert any(
                 substring in row["Part Description"] for substring in valid_substrings
             ), f"Invalid product value found for job {row['Job ID']}: {row['Part Description']}."
-
-        # Check no products on hold
-        for index, row in in_scope_data.iterrows():
-            assert not row[
-                "On Hold?"
-            ], f"On Hold? is not False for job {row['Job ID']}: {row['On Hold?']}."
 
         return in_scope_data
 
@@ -609,100 +670,6 @@ class JobShop(Job, Shop):
 
         return combined_compatibility_dict
 
-    @staticmethod
-    def map_timecard_entry_to_task_list(work_process, part_id):
-        """ Takes a dataframe of the tasks that have been completed for a particular job 
-        and determines which tasks are remaining on the job.
-        Each row in the dataframe is the Work Centre ID concatenated with the Process ID, for completed task
-        e.g. 1st row: INSPE_GRINS, 2nd row: MECWS_CLEN, 3rd row ROS1_ROS1 etc.
-        
-        Args:
-            work_process (str): A dataframe of the work centre ID concatenated with the process ID 
-            part_id (str): The part ID of the job. 
-
-        Returns:
-            List[int]: A list of the tasks that are remaining on a job e.g. [41, 42, 43, 44]                                 
-        """
-        work_process.drop_duplicates(inplace=True)
-        last = work_process.iloc[-1]
-        
-        if len(work_process) > 1:
-            prev = work_process.iloc[-2]
-            
-        start = -1
-        
-        if 'CTD' in part_id:
-            end = 44
-            
-            if last.endswith('HAAS'): 
-                start = 31
-            elif last == 'INSPE_GRINS':
-                start = 32
-            elif last == 'MECWS_CLEN' and prev == 'INSPE_GRINS': # First wash
-                start = 33 
-            elif last == 'ROS1_ROS1': # Ceramic drag
-                start = 34
-            elif last == 'MECWS_CLEN' and prev == 'ROS1_ROS1': # First wash 2
-                start = 35          
-            elif last == 'BBLAS_BLAST':
-                pass # TODO: Blast complete but not prep. What should we do here?
-            elif last == 'MANP_PREP': # Blast & plastic prep
-                start = 37
-            elif last == 'ROS2_ROS2': # Plastic drag
-                start = 38
-            elif last == 'MECWS_CLEN' and prev == 'ROS2_ROS2': # Second wash 2
-                start = 39
-            elif last == 'INSPE_PLAIN': # Post-Plastic Inpection
-                start = 40
-            elif last == 'MANP_OPT': # Manual Prep & Touch-up
-                start = 41
-            elif last == 'ROS3_ROS3': # Nutshell drag
-                start = 43
-            elif last == 'MANP_POL': # Polishing
-                start = 44
-
-        elif 'OP1' in part_id:
-            end = 7
-            
-            if last.endswith('HAAS'): 
-                start = 2
-            elif last == 'INSPE_GRINS':
-                start = 3
-            elif last == 'MECWS_CLEN' and prev == 'INSPE_GRINS': # First wash
-                start = 4
-            elif last == 'MANP_POLIS': # Manual prep & touch-up
-                start = 5 # Next task is Optional touch-up inspection
-            elif last == 'MECWS_CLEN' and prev == 'INSPE_P INS': # Final wash
-                start = 7            
-
-        elif 'OP2' in part_id:
-            end = 20
-            
-            if last == 'ROS1_ROS1': # Ceramic drag
-                start = 11
-            elif last == 'MECWS_CLEN' and prev == 'ROS1_ROS1': # First wash 2
-                start = 12
-            elif last == 'ROS2_ROS2': # Plastic drag
-                start = 13
-            elif last == 'MECWS_CLEN' and prev == 'ROS2_ROS2': # Second wash 2
-                start = 14
-            elif last == 'INSPE_PLAIN': # Post-Plastic Inpection
-                start = 15
-            elif last == 'MANP_OPT': # Manual Prep & Touch-up
-                start = 16
-            elif last == 'FPI_FPI':
-                start = 17
-            elif last == 'ROS3_ROS3': # Nutshell drag
-                start = 18
-            elif last == 'MANP_POL': # Polishing
-                start = 19
-            elif last == 'MECWM_FCLEN': # Polishing
-                start = 20
-
-        if start == -1: return None
-        
-        return list(range(start, end + 1))
-
     def build_ga_representation(
         self,
         croom_processed_orders: pd.DataFrame,
@@ -711,13 +678,16 @@ class JobShop(Job, Shop):
         task_to_machines: Dict[int, List[int]],
         scheduling_options: dict,
         machine_dict: Dict[int, str],
+        timecard_ctd_mapping: Dict[str, int],
+        timecard_op1_mapping: Dict[str, int],
+        timecard_op2_mapping: Dict[str, int],
     ) -> Dict[str, any]:
         """
         Builds the GA input data.
         Use the timecard data to:
             1. Remove completed tasks from J and croom_processed_orders.
             2. Store the remaining tasks for partially completed ones in custom_tasks_dict.
-            3. Remove non-booked in jobs from J and croom_processed_orders, and store in Jobs_not_booked_in.xlsx
+            3. Remove non-booked in jobs from J and croom_processed_orders, and store in Jobs_not_booked_in.xlsx.
 
         Args:
             croom_processed_orders (pd.DataFrame): The processed orders.
@@ -726,73 +696,95 @@ class JobShop(Job, Shop):
             task_to_machines (Dict[int, List[int]]): The task to machines dictionary.
             scheduling_options (dict): The scheduling options.
             machine_dict (Dict[int, str]): The machine dictionary.
+            timecard_ctd_mapping (Dict[str, int]): Mapping for CTD parts.
+            timecard_op1_mapping (Dict[str, int]): Mapping for OP1 parts.
+            timecard_op2_mapping (Dict[str, int]): Mapping for OP2 parts.
 
         Returns:
-            Dict[str, any]: The GA representation.
+            Dict[str, any]: The GA representation containing:
+                - "J": Jobs dictionary.
+                - "part_to_tasks": Mapping from part ID to task sequence.
+                - "M": List of machines.
+                - "dur": Duration matrix.
+                - "task_to_machines": Task to machines dictionary.
+                - "custom_tasks_dict": Remaining tasks for partially completed jobs.
         """
+        # Debug statement
+        logger.info(f"Original length of processed orders: {len(croom_processed_orders)}")
+
+        # Process the timecards data
+        # Remove any rows where the Good Qty is 0 or less and there is an end time, as this was just a test
+        timecards = timecards[~((timecards["Good Qty"] <= 0) & (~timecards["Act End Time"].isna()))]
+
+        # Only keep the entries in processed orders that are in the timecards data (otherwise they are not booked in)
+        booked_in_jobs = croom_processed_orders[
+            croom_processed_orders["Job ID"].isin(timecards["Job ID"])
+        ]
 
         # Debug statement
-        logger.info(f"Number of input jobs: {len(croom_processed_orders)}")
+        logger.info(
+            f"Length of processed orders after removing non-booked in jobs: {len(booked_in_jobs)}"
+        )
+
+        # Create timecards combined ID
+        timecards = timecards.assign(
+            Combined_ID=timecards["Work Centre ID"] + "_" + timecards["Process ID"]
+        )
+
+        # Sort the timecards data so the final completed operation can easily be extracted
+        timecards = timecards.sort_values(by="Operation", inplace=False)
+
+        # Identify completed jobs
+        completed_jobs = (
+            timecards.groupby("Job ID")
+            .apply(lambda x: x.iloc[-1]["Combined_ID"])
+            .loc[lambda x: x.isin(["INSPE_FINSP", "SHIP_FINAL"])]
+            .index.tolist()
+        )
+
+        # Filter out completed jobs
+        remaining_jobs = booked_in_jobs[~booked_in_jobs["Job ID"].isin(completed_jobs)]
+
+        # Debug statement
+        logger.info(f"Length of processed orders after completed jobs: {len(remaining_jobs)}")
+
+        # Apply the function to determine remaining tasks and store the results in a separate Series
+        remaining_tasks = remaining_jobs.apply(
+            lambda row: self.get_remaining_tasks(
+                timecards[timecards["Job ID"] == row["Job ID"]]["Combined_ID"],
+                row["Custom Part ID"],
+                timecard_ctd_mapping,
+                timecard_op1_mapping,
+                timecard_op2_mapping,
+            ),
+            axis=1,
+        )
+
+        # Filter out jobs where remaining tasks could not be identified
+        remaining_jobs_with_tasks = remaining_jobs[remaining_tasks.notna()]
+
+        # Combine the remaining jobs DataFrame with the remaining tasks Series
+        remaining_jobs_with_tasks = remaining_jobs_with_tasks.assign(
+            Remaining_Tasks=remaining_tasks[remaining_tasks.notna()]
+        )
+
+        # Convert to dictionary
+        custom_tasks_dict = remaining_jobs_with_tasks.set_index("Job ID")["Remaining_Tasks"].to_dict()
 
         # Create jobs for Operation 1 and Operation 2 separately
-        J = self.create_jobs(croom_processed_orders, scheduling_options)
-        J_op_2 = self.create_jobs(croom_processed_orders, scheduling_options, operation="OP 2")
+        J = self.create_jobs(remaining_jobs, scheduling_options)
+        J_op_2 = self.create_jobs(remaining_jobs, scheduling_options, operation="OP 2")
 
         # Combine jobs from both operations (Operation 1 and Operation 2) into one list of jobs (J)
         if J_op_2:
             J.update(J_op_2)
 
-        M = self.create_machines(machine_dict)     
+        # Create the machine list
+        M = self.create_machines(machine_dict)
 
-        # Process the timecards data
-        # Remove any rows where the Good Qty is 0 or less and there is an end time, as this was just a test
-        timecards = timecards[~((timecards['Good Qty'] <= 0) & (~timecards['Act End Time'].isna()))]        
-        
-        num_jobs_original = len(J)        
-        custom_tasks_dict = {}
-        
-        timecard_job_ids = timecards['Job ID'].unique()
-        jobs_not_booked_in = pd.DataFrame()
-        for job_id in list(J.keys()):           
-            
-            if job_id not in timecard_job_ids:
-                # The job isn't in the timecard data i.e. it hasn't been booked in
-                # Save the job so it can be included the next time the algorithm is run
-                logger.info(f"Job {job_id} not in timecard data (hasn't been booked in). Removing from list and storing.")
-                entries = croom_processed_orders.loc[croom_processed_orders["Job ID"] == job_id]
-                jobs_not_booked_in = pd.concat([jobs_not_booked_in, entries])                
-                
-                del J[job_id]
-                croom_processed_orders = croom_processed_orders.loc[croom_processed_orders["Job ID"] != job_id]
-                continue
-            
-            rows = timecards.loc[timecards['Job ID'] == job_id].sort_values(by='Operation')           
-                        
-            work_process = rows['Work Centre ID'] + '_' + rows['Process ID']
-            
-            if work_process.iloc[-1] in ['INSPE_FINSP', 'SHIP_FINAL']:
-                logger.info(f"Job {job_id} completed. Removing from list.")
-                del J[job_id]
-                croom_processed_orders = croom_processed_orders.loc[croom_processed_orders["Job ID"] != job_id]
-                continue
-            else:
-                remaining_tasks = self.map_timecard_entry_to_task_list(work_process, J[job_id][0])
-                if remaining_tasks:
-                    custom_tasks_dict[job_id] = remaining_tasks
-                    logger.info(f"Job {job_id} is partially complete. Remaining tasks: {remaining_tasks}")
-                else:
-                    logger.info(f"Final process from timecard could not be identified. Job: {job_id} Work Centre/Process: {work_process.iloc[-1]}")
-                    
-        
-        logger.info(f"Number of jobs before/after timecard data: {num_jobs_original}/{len(J)}")
-        logger.info(f"Number of jobs not booked in: {len(jobs_not_booked_in.index)}")
-        jobs_not_booked_in.to_excel("data/01_raw/Jobs_not_booked_in.xlsx", index=False)
-        
-        part_id_to_task_seq = self.create_part_id_to_task_seq(croom_processed_orders)
-                    
-        dur = self.get_duration_matrix(
-            J, part_id_to_task_seq, croom_processed_orders, croom_task_durations
-        )
+        part_id_to_task_seq = self.create_part_id_to_task_seq(remaining_jobs)
+
+        dur = self.get_duration_matrix(J, part_id_to_task_seq, remaining_jobs, croom_task_durations)
 
         input_repr_dict = {
             "J": J,
@@ -800,7 +792,7 @@ class JobShop(Job, Shop):
             "M": M,
             "dur": dur,
             "task_to_machines": task_to_machines,
-            "custom_tasks_dict": custom_tasks_dict
+            "custom_tasks_dict": custom_tasks_dict,
         }
 
         return input_repr_dict
@@ -1153,9 +1145,8 @@ class GeneticAlgorithmScheduler:
             # If this arbor is already on a machine from the very beginning,
             # then with a certain probability use that machine
             # Use arbor_dict to map from part id to arbor
-            # TODO: The same arbor still does not mean no changeover required, since we need the same part ID
             for m, starting_part_id in self.HAAS_starting_part_ids.items():
-                if self.arbor_dict[starting_part_id] == arbor and random.random() < 0.7:
+                if self.arbor_dict[starting_part_id] == arbor:
                     arbor_to_machines[arbor].append(m)
                     num_machines_to_assign -= 1
                     if num_machines_to_assign == 0:
@@ -2293,7 +2284,6 @@ class GeneticAlgorithmScheduler:
             cemented_arbors (Dict[str, str]): Dictionary containing the cemented arbor information.
             arbor_quantities (Dict[str, int]): Dictionary containing the arbor quantities.
             HAAS_starting_part_ids (Dict[str, str]): Dictionary containing the starting part IDs for HAAS machines.
-            custom_tasks_dict (Dict[int, List[int]]): Dictionary containing custom tasks for specific jobs.
 
         Returns:
             Tuple[Any, deque]: The best schedule with the highest score and the
@@ -2334,6 +2324,9 @@ class GeneticAlgorithmScheduler:
             self.working_minutes_per_day,
         )
         self.changeover_slack = self.populate_changeover_slack()
+
+        # Debug statement
+        logger.info(f"Total number of jobs: {len(self.J)}")
 
         # Debug statement
         logger.info(f"Number of partial jobs: {len(self.custom_tasks)}")
@@ -2560,7 +2553,7 @@ def create_start_end_time(
     base_date = datetime.strptime(scheduling_options["start_date"], "%Y-%m-%dT%H:%M")
 
     # Sort by start time ascending
-    croom_reformatted_orders.sort_values("Start_time", inplace=True)   
+    croom_reformatted_orders.sort_values("Start_time", inplace=True)
 
     # Could be that there are no changeovers at all required
     if not changeovers.empty:
@@ -2654,9 +2647,7 @@ def create_start_end_time(
                 previous_end_time = machine_schedule.iloc[i - 1]["End_time"]
                 current_start_time = machine_schedule.iloc[i]["Start_time"]
                 time_diff = current_start_time - previous_end_time
-                if time_diff < timedelta(
-                    minutes=15
-                ):  # TODO: Load from params after merging with test branch
+                if time_diff < timedelta(minutes=scheduling_options["drag_machine_setup_time"]):
                     logger.warning(
                         f"The time between tasks on {machine} is less than 15 minutes: {time_diff}"
                     )
@@ -2681,7 +2672,7 @@ def calculate_kpi(schedule: pd.DataFrame) -> pd.DataFrame:
         pd.DataFrame: A DataFrame containing the calculated KPIs (OTIF and average lead time).
     """
     # Ensure 'Due_date', 'End_time', and 'Order_date' are in datetime format
-    schedule["Due_date"] = pd.to_datetime(schedule["Due_date"])
+    schedule["Prod Due Date"] = pd.to_datetime(schedule["Prod Due Date"])
     schedule["End_time"] = pd.to_datetime(schedule["End_time"])
     schedule["Order_date"] = pd.to_datetime(schedule["Order_date"])
 
@@ -2692,7 +2683,7 @@ def calculate_kpi(schedule: pd.DataFrame) -> pd.DataFrame:
     max_tasks = max_tasks.merge(schedule, on=["Order", "task"], how="left")
 
     # Compare 'Due_date' with 'End_time'
-    on_time_jobs = max_tasks[max_tasks["End_time"] <= max_tasks["Due_date"]]
+    on_time_jobs = max_tasks[max_tasks["End_time"] <= max_tasks["Prod Due Date"]]
 
     # Calculate the percentage of jobs finished on time
     percentage_on_time = len(on_time_jobs) / len(max_tasks) * 100
