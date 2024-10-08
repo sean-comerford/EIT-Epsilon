@@ -1509,7 +1509,7 @@ class GeneticAlgorithmScheduler:
 
         # Based on the random number we either randomly shuffle or apply some sorting logic
         random.shuffle(J_temp)
-        if random_roll < 0.0:
+        if random_roll < 0.0:  # Currently disabled
             pass
         elif random_roll < 0.5:
             # The original shuffle determines the relative order of products with the same part ID
