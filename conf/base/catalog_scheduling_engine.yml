@@ -320,7 +320,7 @@ gantt_chart_json:
             'Manual Prep & Touch-up-6', 'Manual Prep & Touch-up-5', 'Manual Prep & Touch-up-4',
             'Manual Prep & Touch-up-3', 'Manual Prep & Touch-up-2', 'Manual Prep & Touch-up-1', 'Wash-1 (Ghost)',
             'Wash-1', 'Post-HAAS Inspect-2', 'Post-HAAS Inspect-1', 'HAAS-6', 'HAAS-5', 'HAAS-4', 'HAAS-3', 'HAAS-2',
-            'HAAS-1'
+            'HAAS-1', 'Load or Unload HAAS'
           ]
 
       title: Production Schedule for Operation 1 & 2
