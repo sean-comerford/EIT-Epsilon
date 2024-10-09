@@ -274,7 +274,7 @@ op_mix_chart_json:
     fig:
       x: week_start
       y: ['CLS_Op1', 'CLS_Op2', 'Primary']
-      title: Completed Jobs by Op Type
+      title: Completed Jobs by Operation Type
       barmode: 'stack'
       text_auto: True
     layout:

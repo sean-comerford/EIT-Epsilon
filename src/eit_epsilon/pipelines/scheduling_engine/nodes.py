@@ -2640,7 +2640,7 @@ def save_charts_to_html(gantt_chart: plotly.graph_objs.Figure, op_chart: plotly.
     filepath = Path(os.getcwd()) / "data/08_reporting/gantt_chart.html"
     plotly.offline.plot(gantt_chart, filename=str(filepath))
     
-    filepath = Path(os.getcwd()) / "data/08_reporting/op_type_chart.html"
+    filepath = Path(os.getcwd()) / "data/08_reporting/op_mix_chart.html"
     plotly.offline.plot(op_chart, filename=str(filepath))
 
 

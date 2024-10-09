@@ -125,7 +125,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             ),
             node(
                 func=save_charts_to_html,
-                inputs=["gantt_chart_json", "op_type_chart_json"],
+                inputs=["gantt_chart_json", "op_mix_chart_json"],
                 outputs=None,
                 name="save_chart_to_html",
             ),
