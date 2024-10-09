@@ -2600,7 +2600,37 @@ def create_chart(
     return schedule
 
 
-def save_chart_to_html(gantt_chart: plotly.graph_objs.Figure) -> None:
+def create_op_mix(schedule: pd.DataFrame):
+    """ Determine the breakdown of the operation types for the completed jobs, by week
+
+    Args:
+        schedule (pd.DataFrame): The schedule data.
+
+    Returns:    
+        op_mix_excel (pandas.ExcelDataset): The operation types by week.
+        op_mix_chart_json (plotly.graph_objs.Figure): The stacked bar chart to be saved.
+    """
+    # Get only jobs that have been completed
+    schedule = schedule[schedule['task'].isin([7, 20, 44])]
+    
+    schedule["End_time"] = pd.to_datetime(schedule["End_time"])
+
+    # Get the date of the start of the week
+    schedule['week_start'] = schedule['End_time'].dt.date - pd.to_timedelta(schedule['End_time'].dt.weekday, unit='D')
+
+    schedule.loc[schedule['Cementless'] == 'CTD', 'operation'] = 'Primary'
+
+    # Get op type by week
+    result = schedule.groupby('week_start').agg(
+        CLS_Op1=('operation', lambda x: (x == 'OP1').sum()),
+        CLS_Op2=('operation', lambda x: (x == 'OP2').sum()),
+        Primary=('operation', lambda x: (x == 'Primary').sum())
+    ).reset_index()
+
+    return [result, result]
+
+
+def save_charts_to_html(gantt_chart: plotly.graph_objs.Figure, op_chart: plotly.graph_objs.Figure) -> None:
     """
     Saves the Gantt chart to an HTML file.
 
@@ -2609,6 +2639,9 @@ def save_chart_to_html(gantt_chart: plotly.graph_objs.Figure) -> None:
     """
     filepath = Path(os.getcwd()) / "data/08_reporting/gantt_chart.html"
     plotly.offline.plot(gantt_chart, filename=str(filepath))
+    
+    filepath = Path(os.getcwd()) / "data/08_reporting/op_type_chart.html"
+    plotly.offline.plot(op_chart, filename=str(filepath))
 
 
 def order_to_id(

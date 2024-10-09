@@ -258,6 +258,32 @@ machine_schedules:
   save_args:
     engine: openpyxl
 
+op_mix_excel:
+  type: pandas.ExcelDataset
+  filepath: data/08_reporting/operation_mix_by_week.xlsx
+  load_args:
+    engine: openpyxl
+  save_args:
+    engine: openpyxl
+
+op_mix_chart_json:
+  type: plotly.PlotlyDataset
+  filepath: data/08_reporting/op_mix_chart.json
+  plotly_args:
+    type: bar
+    fig:
+      x: week_start
+      y: ['CLS_Op1', 'CLS_Op2', 'Primary']
+      title: Completed Jobs by Op Type
+      barmode: 'stack'
+      text_auto: True
+    layout:
+      xaxis_title: Week Starting
+      yaxis_title: Number of Completed Jobs
+      xaxis_type: category
+      legend:
+        title: Type
+
 gantt_chart_json:
   type: plotly.PlotlyDataset
   filepath: data/08_reporting/gantt_chart.json

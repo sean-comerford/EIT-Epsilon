@@ -3,7 +3,8 @@ from kedro.pipeline import Pipeline, node
 from .nodes import (
     JobShop,
     create_chart,
-    save_chart_to_html,
+    create_op_mix,
+    save_charts_to_html,
     reformat_output,
     identify_changeovers,
     GeneticAlgorithmScheduler,
@@ -109,7 +110,7 @@ def create_pipeline(**kwargs) -> Pipeline:
                 inputs="final_schedule",
                 outputs="kpi_results",
                 name="calculate_kpi",
-            ),
+            ),           
             node(
                 func=create_chart,
                 inputs=["final_schedule", "params:visualization_options"],
@@ -117,8 +118,14 @@ def create_pipeline(**kwargs) -> Pipeline:
                 name="schedule_chart",
             ),
             node(
-                func=save_chart_to_html,
-                inputs="gantt_chart_json",
+                func=create_op_mix,
+                inputs="final_schedule",
+                outputs=["op_mix_excel", "op_mix_chart_json"],
+                name="schedule_op_chart",
+            ),
+            node(
+                func=save_charts_to_html,
+                inputs=["gantt_chart_json", "op_type_chart_json"],
                 outputs=None,
                 name="save_chart_to_html",
             ),
