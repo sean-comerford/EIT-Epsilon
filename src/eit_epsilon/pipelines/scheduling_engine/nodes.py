@@ -1639,6 +1639,7 @@ class GeneticAlgorithmScheduler:
         """
         # Initialize machine availability, slack times, and product assignments
         avail_m = {m: 0 for m in self.M}
+        # load_quantity_m = {m: 0 for m in self.change_over_machines_op1}
         slack_m = {m: deque() for m in self.M}
         changeover_slack = self.changeover_slack.copy()
         P_j = deque()
@@ -1708,10 +1709,6 @@ class GeneticAlgorithmScheduler:
             for task_id in task_list:
                 random_roll = random.random()
                 slack_time_used = False
-
-                # TODO: Remove; temp
-                if task_id in [0, 2, 30, 32]:
-                    pass
 
                 if task_id in [1, 31]:  # Task 1, 31 corresponds to HAAS machines
                     compat_task_0 = self.task_to_machines[task_id]
@@ -2449,14 +2446,16 @@ def reorder_jobs_by_starting_time(croom_processed_orders: pd.DataFrame) -> pd.Da
     grouped = croom_processed_orders.groupby(["part_id", "Prod Due Date"])
 
     def reorder_group(group: pd.DataFrame) -> pd.DataFrame:
-        # Find the minimum task number to identify the earliest task in the group
-        min_task = group["task"].min()
+        # Filter tasks to include only HAAS & Ceramic Drag
+        filtered_tasks = group[group["task"].isin([1, 20, 31])]
+        # Find the minimum task in the filtered list
+        min_task = filtered_tasks["task"].min()
 
         # Sort the group by 'Start_time' to ensure the earliest tasks come first
         group = group.sort_values(by="Start_time")
 
         # Find the earliest 'Start_time' for each order by filtering on the minimum task number
-        earliest_start_time = group[group["task"] == min_task]["Order"].tolist()
+        earliest_start_time = group[group["task"] == min_task]["ID"].tolist()
 
         # Sort the orders based on their earliest start times
         ordered_orders = sorted(earliest_start_time)

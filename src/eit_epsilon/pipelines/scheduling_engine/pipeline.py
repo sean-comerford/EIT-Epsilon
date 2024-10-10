@@ -111,26 +111,26 @@ def create_pipeline(**kwargs) -> Pipeline:
                 name="create_start_end_time",
             ),
             node(
-                func=reorder_jobs_by_starting_time,
-                inputs="final_schedule",
-                outputs="final_schedule_reordered",
-                name="reorder_jobs_by_starting_time",
-            ),
-            node(
                 func=calculate_kpi,
-                inputs="final_schedule_reordered",
+                inputs="final_schedule",
                 outputs="kpi_results",
                 name="calculate_kpi",
             ),
             node(
                 func=order_to_id,
-                inputs=["mapping_dict_read", "final_schedule_reordered", "croom_processed_orders"],
+                inputs=["mapping_dict_read", "final_schedule", "croom_processed_orders"],
                 outputs=["mapping_dict_write", "final_schedule_with_id"],
                 name="order_to_id",
             ),
             node(
+                func=reorder_jobs_by_starting_time,
+                inputs="final_schedule_with_id",
+                outputs="final_schedule_reordered",
+                name="reorder_jobs_by_starting_time",
+            ),
+            node(
                 func=create_chart,
-                inputs=["final_schedule_with_id", "params:visualization_options"],
+                inputs=["final_schedule_reordered", "params:visualization_options"],
                 outputs="gantt_chart_json",
                 name="schedule_chart",
             ),
@@ -142,7 +142,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             ),
             node(
                 func=split_and_save_schedule,
-                inputs="final_schedule_with_id",
+                inputs="final_schedule_reordered",
                 outputs=[
                     "ctd_mapping",
                     "op1_mapping",
@@ -152,7 +152,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             ),
             node(
                 func=output_schedule_per_machine,
-                inputs=["final_schedule_with_id", "params:task_to_names"],
+                inputs=["final_schedule_reordered", "params:task_to_names"],
                 outputs="machine_schedules",
                 name="output_schedule_per_machine",
             ),
