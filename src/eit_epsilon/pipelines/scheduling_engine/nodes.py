@@ -1639,7 +1639,7 @@ class GeneticAlgorithmScheduler:
         """
         # Initialize machine availability, slack times, and product assignments
         avail_m = {m: 0 for m in self.M}
-        # load_quantity_m = {m: 0 for m in self.change_over_machines_op1}
+        # TODO: load_quantity_m = {m: 0 for m in self.change_over_machines_op1}
         slack_m = {m: deque() for m in self.M}
         changeover_slack = self.changeover_slack.copy()
         P_j = deque()
@@ -1711,19 +1711,7 @@ class GeneticAlgorithmScheduler:
                 slack_time_used = False
 
                 if task_id in [1, 31]:  # Task 1, 31 corresponds to HAAS machines
-                    compat_task_0 = self.task_to_machines[task_id]
-
-                    # Find preferred machines; machines that require no changeover
-                    preferred_machines = self.get_preferred_machines(
-                        compat_task_0, product_m, job_id, fixture_to_machine_assignment
-                    )
-
-                    # Select the machine based on availability or randomly
-                    m = (
-                        min(preferred_machines, key=lambda x: avail_m.get(x))
-                        if random_roll < 0.8
-                        else random.choice(preferred_machines)
-                    )
+                    m = P_j[-1][2]  # Machine is determined by the loading task
 
                     # Task 10 is the first task of OP2, hence no previous task duration
                     previous_task_start = P_j[-1][3] if P_j else 0
@@ -1794,6 +1782,33 @@ class GeneticAlgorithmScheduler:
                 # Add task to schedule
                 task_tuple = (job_id, task_id, m, start, self.dur[(job_id, task_id)], 0, part_id)
                 P_j.append(task_tuple)
+
+                # TODO: Experiment
+                if task_id in [0, 30]:  # Loading tasks for HAAS
+                    compat_task_0 = self.task_to_machines[task_id + 1]
+
+                    # Find preferred machines; machines that require no changeover
+                    preferred_machines = self.get_preferred_machines(
+                        compat_task_0, product_m, job_id, fixture_to_machine_assignment
+                    )
+
+                    # Select the machine based on availability or randomly
+                    haas_m = (
+                        min(preferred_machines, key=lambda x: avail_m.get(x))
+                        if random_roll < 0.8
+                        else random.choice(preferred_machines)
+                    )
+
+                    machine_task_tuple = (
+                        job_id,
+                        task_id,
+                        haas_m,
+                        start,
+                        self.dur[(job_id, task_id)],
+                        0,
+                        part_id,
+                    )
+                    P_j.append(machine_task_tuple)
 
                 # Count after-hours starts for HAAS machines
                 after_hours_starts = 0
@@ -2467,7 +2482,7 @@ def reorder_jobs_by_starting_time(croom_processed_orders: pd.DataFrame) -> pd.Da
         }
 
         # Apply the mapping to reorder the 'Order' column
-        group["Order"] = group["Order"].map(order_map)
+        group["ID"] = group["ID"].map(order_map)
 
         return group
 
