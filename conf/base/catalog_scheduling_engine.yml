@@ -328,9 +328,29 @@ gantt_chart_json:
         xanchor: center
         x: 1.1
 
-op_mix_chart_json:
+op_mix_by_date_chart_json:
   type: plotly.PlotlyDataset
-  filepath: data/08_reporting/op_mix_chart.json
+  filepath: data/08_reporting/op_mix_by_date_chart.json
+  plotly_args:
+    type: bar
+    fig:
+      x: date
+      y: ['CLS_Op1', 'CLS_Op2', 'Primary']
+      title: Completed Jobs per Day by Operation Type
+      barmode: 'stack'
+      text_auto: True
+    layout:
+      xaxis_title: Date
+      yaxis_title: Number of Completed Jobs
+      xaxis_type: category
+      uniformtext_minsize: 10
+      uniformtext_mode: 'hide'
+      legend:
+        title: Type
+
+op_mix_by_week_chart_json:
+  type: plotly.PlotlyDataset
+  filepath: data/08_reporting/op_mix_by_week_chart.json
   plotly_args:
     type: bar
     fig:
@@ -343,10 +363,12 @@ op_mix_chart_json:
       xaxis_title: Week Starting
       yaxis_title: Number of Completed Jobs
       xaxis_type: category
+      uniformtext_minsize: 10
+      uniformtext_mode: 'hide'
       legend:
         title: Type
 
-part_mix_chart_json:
+part_mix_by_week_chart_json:
   type: plotly.PlotlyDataset
   filepath: data/08_reporting/part_mix_chart.json
   plotly_args:

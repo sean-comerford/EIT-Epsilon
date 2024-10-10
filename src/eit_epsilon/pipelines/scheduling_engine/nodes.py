@@ -16,6 +16,7 @@ from collections import defaultdict, Counter
 from concurrent.futures import ProcessPoolExecutor
 from collections import deque
 from pathlib import Path
+import webbrowser
 
 # Instantiate logger
 logger = logging.getLogger(__name__)
@@ -2614,6 +2615,7 @@ def create_op_mix(schedule: pd.DataFrame):
     schedule = schedule[schedule['task'].isin([7, 20, 44])]
     
     schedule["End_time"] = pd.to_datetime(schedule["End_time"])
+    schedule['date']= schedule['End_time'].dt.date
 
     # Get the date of the start of the week
     schedule['week_start'] = pd.to_datetime(schedule['End_time'].dt.date) - pd.to_timedelta(schedule['End_time'].dt.weekday, unit='D')
@@ -2621,21 +2623,28 @@ def create_op_mix(schedule: pd.DataFrame):
 
     schedule.loc[schedule['Cementless'] == 'CTD', 'operation'] = 'Primary'
 
+    op_mix_by_date = schedule.groupby('date').agg(
+        CLS_Op1=('operation', lambda x: (x == 'OP1').sum()),
+        CLS_Op2=('operation', lambda x: (x == 'OP2').sum()),
+        Primary=('operation', lambda x: (x == 'Primary').sum())
+    ).reset_index()    
+
     # Get op type by week
-    op_mix = schedule.groupby('week_start').agg(
+    op_mix_by_week = schedule.groupby('week_start').agg(
         CLS_Op1=('operation', lambda x: (x == 'OP1').sum()),
         CLS_Op2=('operation', lambda x: (x == 'OP2').sum()),
         Primary=('operation', lambda x: (x == 'Primary').sum())
     ).reset_index()
     
-    part_mix = schedule.groupby(['week_start', 'part_id']).size().reset_index(name='Count')
-    part_mix.sort_values(by=['week_start', 'Count'], ascending=[True, False], inplace=True)
+    part_mix_by_week = schedule.groupby(['week_start', 'part_id']).size().reset_index(name='Count')
+    part_mix_by_week.sort_values(by=['week_start', 'Count'], ascending=[True, False], inplace=True)
 
-    # Results outputted twice as there is one for the excel file, and one for the graph
-    return [op_mix, op_mix, part_mix, part_mix]
+    # Results are output twice as there is one for the excel file, and one for the graph
+    return [op_mix_by_date, op_mix_by_date, op_mix_by_week, op_mix_by_week, part_mix_by_week, part_mix_by_week]
 
 
-def save_charts_to_html(gantt_chart: plotly.graph_objs.Figure, op_mix_chart: plotly.graph_objs.Figure, part_mix_chart: plotly.graph_objs.Figure) -> None:
+def save_charts_to_html(gantt_chart: plotly.graph_objs.Figure, op_mix_by_date_chart: plotly.graph_objs.Figure,
+                        op_mix_by_week_chart: plotly.graph_objs.Figure, part_mix_by_week_chart: plotly.graph_objs.Figure) -> None:
     """
     Saves the Gantt chart to an HTML file.
 
@@ -2644,16 +2653,12 @@ def save_charts_to_html(gantt_chart: plotly.graph_objs.Figure, op_mix_chart: plo
     """
     filepath = Path(os.getcwd()) / "data/08_reporting/gantt_chart.html"
     plotly.offline.plot(gantt_chart, filename=str(filepath))   
-
-    filepath = Path(os.getcwd()) / "data/08_reporting/op_mix_chart.html"
-    plotly.offline.plot(op_mix_chart, filename=str(filepath))
     
-    filepath = Path(os.getcwd()) / "data/08_reporting/part_mix_chart.html"
-    plotly.offline.plot(part_mix_chart, filename=str(filepath))
-    
-    # with open("data/08_reporting/op_mix_chart.html", 'w') as f:
-    #     f.write(op_chart.to_html(full_html=False, include_plotlyjs='cdn'))
-    #     f.write(op_chart.to_html(full_html=False, include_plotlyjs='cdn'))
+    with open("data/08_reporting/mix_charts.html", 'w', encoding="utf-8") as f:
+        f.write(op_mix_by_date_chart.to_html())
+        f.write(op_mix_by_week_chart.to_html())
+        f.write(part_mix_by_week_chart.to_html())
+    webbrowser.open(Path(os.getcwd()) / "data/08_reporting/mix_charts.html", new=2)
 
 
 def order_to_id(

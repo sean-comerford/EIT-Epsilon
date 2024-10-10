@@ -120,12 +120,14 @@ def create_pipeline(**kwargs) -> Pipeline:
             node(
                 func=create_op_mix,
                 inputs="final_schedule",
-                outputs=["op_mix_excel", "op_mix_chart_json", "part_mix_excel", "part_mix_chart_json"],
+                outputs=["op_mix_by_date_excel", "op_mix_by_date_chart_json",
+                         "op_mix_by_week_excel", "op_mix_by_week_chart_json",
+                         "part_mix_by_week_excel", "part_mix_by_week_chart_json"],
                 name="schedule_op_chart",
             ),
             node(
                 func=save_charts_to_html,
-                inputs=["gantt_chart_json", "op_mix_chart_json", "part_mix_chart_json"],
+                inputs=["gantt_chart_json", "op_mix_by_date_chart_json", "op_mix_by_week_chart_json", "part_mix_by_week_chart_json"],
                 outputs=None,
                 name="save_chart_to_html",
             ),
