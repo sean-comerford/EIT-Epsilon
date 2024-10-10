@@ -208,28 +208,28 @@ arbor_quantities: {
 
 
 timecard_ctd_mapping: {
-    'HAAS1_HAAS': 31,
-    'HAAS2_HAAS': 31,
-    'HAAS3_HAAS': 31,
-    'HAAS4_HAAS': 31,
-    'HAAS5_HAAS': 31,
-    'HAAS6_HAAS': 31,
-    'INSPE_GRINS': 32,
-    'MECWS_CLEN,INSPE_GRINS': 33,
-    'MECWM_CLEN,INSPE_GRINS': 33,
-    'ROS1_ROS1': 34,
-    'MECWS_CLEN,ROS1_ROS1': 35,
-    'MECWM_CLEN,ROS1_ROS1': 35,
-    'BBLAS_BLAST': 35,
-    'MANP_PREP': 37,
-    'ROS2_ROS2': 38,
-    'MECWS_CLEN,ROS2_ROS2': 39,
-    'MECWM_CLEN,ROS2_ROS2': 39,
-    'INSPE_PLAIN': 40,
-    'MANP_OPT': 41,
-    'ROS3_ROS3': 43,
-    'RATES_SURFA': 43,
-    'MANP_POL': 44
+    'HAAS1_HAAS': 32,
+    'HAAS2_HAAS': 32,
+    'HAAS3_HAAS': 32,
+    'HAAS4_HAAS': 32,
+    'HAAS5_HAAS': 32,
+    'HAAS6_HAAS': 32,
+    'INSPE_GRINS': 34,
+    'MECWS_CLEN,INSPE_GRINS': 35,
+    'MECWM_CLEN,INSPE_GRINS': 35,
+    'ROS1_ROS1': 36,
+    'MECWS_CLEN,ROS1_ROS1': 37,
+    'MECWM_CLEN,ROS1_ROS1': 37,
+    'BBLAS_BLAST': 37,
+    'MANP_PREP': 39,
+    'ROS2_ROS2': 40,
+    'MECWS_CLEN,ROS2_ROS2': 41,
+    'MECWM_CLEN,ROS2_ROS2': 41,
+    'INSPE_PLAIN': 42,
+    'MANP_OPT': 43,
+    'ROS3_ROS3': 45,
+    'RATES_SURFA': 45,
+    'MANP_POL': 46
 }
 
 timecard_op1_mapping: {
@@ -239,12 +239,12 @@ timecard_op1_mapping: {
     'HAAS4_HAAS': 2,
     'HAAS5_HAAS': 2,
     'HAAS6_HAAS': 2,
-    'INSPE_GRINS': 3,
-    'MECWS_CLEN,INSPE_GRINS': 4,
-    'MECWM_CLEN,INSPE_GRINS': 4,
-    'MANP_POLIS': 5,
-    'MECWS_CLEN,INSPE_P': 7,
-    'MECWM_CLEN,INSPE_P': 7
+    'INSPE_GRINS': 4,
+    'MECWS_CLEN,INSPE_GRINS': 5,
+    'MECWM_CLEN,INSPE_GRINS': 5,
+    'MANP_POLIS': 6,
+    'MECWS_CLEN,INSPE_P': 8,
+    'MECWM_CLEN,INSPE_P': 8
 }
 
 timecard_op2_mapping: {

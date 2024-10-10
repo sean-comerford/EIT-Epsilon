@@ -206,14 +206,15 @@ class Job:
         if len(unique_task_types) != len(unique_custom_part_ids):
             logger.info("Combination of part/description/cementless is not unique")
 
+        # TODO: Can we automate this?
         result = {}
         for _, row in unique_task_types.iterrows():
             if "OP 1" in row["Part Description"]:
-                result[row["Custom Part ID"]] = list(range(1, 8))
+                result[row["Custom Part ID"]] = list(range(0, 9))
             elif "OP 2" in row["Part Description"]:
                 result[row["Custom Part ID"]] = list(range(10, 21))
             else:
-                result[row["Custom Part ID"]] = list(range(30, 45))
+                result[row["Custom Part ID"]] = list(range(30, 47))
 
         return result
 
@@ -746,7 +747,7 @@ class JobShop(Job, Shop):
         remaining_jobs = booked_in_jobs[~booked_in_jobs["Job ID"].isin(completed_jobs)]
 
         # Debug statement
-        logger.info(f"Length of processed orders after completed jobs: {len(remaining_jobs)}")
+        logger.info(f"Length of processed orders after removing completed jobs: {len(remaining_jobs)}")
 
         # Apply the function to determine remaining tasks and store the results in a separate Series
         remaining_tasks = remaining_jobs.apply(
@@ -933,7 +934,7 @@ class GeneticAlgorithmScheduler:
                 # Push to Monday morning
                 start += self.total_minutes_per_day
             elif weekday == 5:  # Saturday
-                if task not in [1, 30]:  # If not task type 1, push to Monday
+                if task not in [1, 31]:  # If not task type 1, push to Monday
                     start += self.total_minutes_per_day * 2
                 else:
                     break  # Task type 1 can stay on Saturday
@@ -970,7 +971,7 @@ class GeneticAlgorithmScheduler:
         # Start date
         starting_date = datetime.fromisoformat(self.start_date)
 
-        if task_id in [1, 30]:  # Task 1, 30 corresponds to HAAS machines
+        if task_id in [1, 31]:  # Task 1, 31 corresponds to HAAS machines
             if (
                 after_hours_starts < 3
             ):  # Message from Bryan: 3 batches (36 parts total) can be preloaded in HAAS
@@ -1650,29 +1651,49 @@ class GeneticAlgorithmScheduler:
         random_roll = random.random()
         fixture_to_machine_assignment = self.assign_arbors_to_machines(arbor_frequencies)
 
-        # Based on the random number we either randomly shuffle or apply some sorting logic
+        # Function to extract size from part ID
+        def extract_size(custom_part_id: str):
+            parts = custom_part_id.split("-")
+            size = parts[2]
+            return size
+
+        # Start with a random shuffle
         random.shuffle(J_temp)
-        if random_roll < 0.0:  # Currently disabled
-            pass
-        elif random_roll < 0.5:
+
+        # Pick one to three random sizes to bring to the front later
+        random_sizes = [str(random.randint(1, 9)) for _ in range(random.randint(1, 3))]
+
+        if random_roll < 0.3:
             # The original shuffle determines the relative order of products with the same part ID
             J_temp.sort(
                 key=lambda x: self.J[x][0][::-1], reverse=random.choice([True, False])
-            )  # Sort on the part ID
-        elif random_roll < 0.8:
+            )  # Sort on the reversed part ID
+
+            # One to three random sizes are brought to the front of the sorting
+            # This ensures our order is not always: (1, 2, .., 9) or (9, 8, .., 1)
+            J_temp.sort(key=lambda item: extract_size(self.J[item][0]) not in random_sizes)
+        elif random_roll < 0.5:
             # The original shuffle determines the relative order of products with the same part ID
             J_temp.sort(
                 key=lambda x: self.J[x][0], reverse=random.choice([True, False])
             )  # Sort on the part ID
-        elif random_roll < 1.0:
-            J_temp.sort(
-                key=lambda x: (self.J[x][0][::-1], self.J[x][1]), reverse=random.choice([True, False])
-            )
+
+            # One to three random sizes are brought to the front of the sorting
+            J_temp.sort(key=lambda item: extract_size(self.J[item][0]) not in random_sizes)
         else:
-            # Shuffle and then bring urgent orders to the front
-            for job in self.urgent_orders:
-                J_temp.remove(job)
-                J_temp.append(job)
+            J_temp.sort(key=lambda x: self.J[x][1])  # Sort by due date (always ascending order)
+            J_temp.sort(
+                key=lambda x: self.J[x][0][::-1], reverse=random.choice([True, False])
+            )  # Sort by the first key with random order
+
+            # One to three random sizes are brought to the front of the sorting
+            J_temp.sort(key=lambda item: extract_size(self.J[item][0]) not in random_sizes)
+
+        # Bring urgent orders to front
+        random.shuffle(self.urgent_orders)
+        for job in self.urgent_orders:
+            J_temp.remove(job)
+            J_temp.append(job)
 
         # Iterate over the jobs and their tasks
         while J_temp:
@@ -1688,7 +1709,11 @@ class GeneticAlgorithmScheduler:
                 random_roll = random.random()
                 slack_time_used = False
 
-                if task_id in [1, 30]:  # Task 1, 30 corresponds to HAAS machines
+                # TODO: Remove; temp
+                if task_id in [0, 2, 30, 32]:
+                    pass
+
+                if task_id in [1, 31]:  # Task 1, 31 corresponds to HAAS machines
                     compat_task_0 = self.task_to_machines[task_id]
 
                     # Find preferred machines; machines that require no changeover
@@ -1703,18 +1728,22 @@ class GeneticAlgorithmScheduler:
                         else random.choice(preferred_machines)
                     )
 
+                    # Task 10 is the first task of OP2, hence no previous task duration
+                    previous_task_start = P_j[-1][3] if P_j else 0
+                    previous_task_dur = P_j[-1][4] if P_j else 0
+
                     # If a changeover is needed, loop over all possible (unused) changeover times to find the first
                     # one later than avail_m[m]; use this to determine the start time
                     start = (
-                        avail_m[m]
+                        max(avail_m[m], previous_task_start + previous_task_dur)
                         if product_m.get(m) in [0, part_id]
                         else min(
                             [
                                 slack_time + self.change_over_time_op1
                                 for slack_time in changeover_slack
-                                if slack_time >= avail_m[m]
+                                if slack_time >= max(avail_m[m], previous_task_start + previous_task_dur)
                             ],
-                            default=avail_m[m],
+                            default=max(avail_m[m], previous_task_start + previous_task_dur),
                         )
                     )
 
@@ -1747,9 +1776,10 @@ class GeneticAlgorithmScheduler:
                         previous_task_start = 0
                         previous_task_dur = 0
                     else:
-                        # Task 10 is the first task of OP2, hence no previous task duration
-                        previous_task_start = P_j[-1][3] if P_j and task_id not in [10] else 0
-                        previous_task_dur = P_j[-1][4] if P_j and task_id not in [10] else 0
+                        # Task 0, 10 and 30 are the first tasks of OP1, OP2 and Primary respectively,
+                        # hence no previous task duration
+                        previous_task_start = P_j[-1][3] if P_j and task_id not in [0, 10, 30] else 0
+                        previous_task_dur = P_j[-1][4] if P_j and task_id not in [0, 10, 30] else 0
 
                     # Apply slack logic to determine the start time
                     start, slack_time_used, m = self.slack_logic(
@@ -1904,14 +1934,14 @@ class GeneticAlgorithmScheduler:
                             (self.J[job_id][1] - (start_time + job_task_dur)),
                             1.02,
                         )
-                        * (60 if task_id in [1, 30] else 1)
+                        * (60 if task_id in [1, 31] else 1)
                         * (self.urgent_multiplier if job_id in self.urgent_orders else 1)
                         + (
                             # Fixed size bonus for completing the job on time (only applies if the final task is
                             # completed on time)
                             on_time_bonus
                             if (self.J[job_id][1] - (start_time + job_task_dur)) > 0
-                            and task_id in [7, 20, 44]
+                            and task_id in [8, 20, 46]
                             else 0
                         )
                     )
@@ -1925,7 +1955,7 @@ class GeneticAlgorithmScheduler:
                         _,
                     ) in schedule
                     # Only consider the completion time of the final task and HAAS machines
-                    if task_id in [7, 20, 44] or task_id in [1, 30]
+                    if task_id in [8, 20, 46] or task_id in [1, 31]
                 )
             )
             # Evaluate each schedule in the population
@@ -1988,7 +2018,7 @@ class GeneticAlgorithmScheduler:
                 _, task_id, m, _, _, task_idx, _ = task_entry
                 slack_time_used = False
 
-                if task_id in [1, 30]:
+                if task_id in [1, 31]:
                     # Start time is the time that the machine comes available if no changeover is required
                     # else, the changeover time is added, and an optional waiting time if we need to wait
                     # for another changeover to finish first (only one changeover can happen concurrently)

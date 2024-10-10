@@ -123,8 +123,14 @@ def create_pipeline(**kwargs) -> Pipeline:
                 name="calculate_kpi",
             ),
             node(
+                func=order_to_id,
+                inputs=["mapping_dict_read", "final_schedule_reordered", "croom_processed_orders"],
+                outputs=["mapping_dict_write", "final_schedule_with_id"],
+                name="order_to_id",
+            ),
+            node(
                 func=create_chart,
-                inputs=["final_schedule_reordered", "params:visualization_options"],
+                inputs=["final_schedule_with_id", "params:visualization_options"],
                 outputs="gantt_chart_json",
                 name="schedule_chart",
             ),
@@ -133,12 +139,6 @@ def create_pipeline(**kwargs) -> Pipeline:
                 inputs="gantt_chart_json",
                 outputs=None,
                 name="save_chart_to_html",
-            ),
-            node(
-                func=order_to_id,
-                inputs=["mapping_dict_read", "final_schedule", "croom_processed_orders"],
-                outputs=["mapping_dict_write", "final_schedule_with_id"],
-                name="order_to_id",
             ),
             node(
                 func=split_and_save_schedule,

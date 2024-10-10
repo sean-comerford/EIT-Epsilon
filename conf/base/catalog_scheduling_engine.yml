@@ -296,7 +296,7 @@ gantt_chart_json:
       y: Machine
       color: Custom Part ID
       title: Production Schedule
-      hover_name: Order
+      hover_name: ID
       hover_data: ['Prod Due Date', 'task', 'Custom Part ID', 'Production Qty']
       template: simple_white
       color_discrete_sequence: ['rgb(41, 24, 107)', 'rgb(42, 35, 160)', 'rgb(15, 71, 153)',
