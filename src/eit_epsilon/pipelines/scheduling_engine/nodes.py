@@ -2616,21 +2616,26 @@ def create_op_mix(schedule: pd.DataFrame):
     schedule["End_time"] = pd.to_datetime(schedule["End_time"])
 
     # Get the date of the start of the week
-    schedule['week_start'] = schedule['End_time'].dt.date - pd.to_timedelta(schedule['End_time'].dt.weekday, unit='D')
+    schedule['week_start'] = pd.to_datetime(schedule['End_time'].dt.date) - pd.to_timedelta(schedule['End_time'].dt.weekday, unit='D')
+    schedule['week_start'] = schedule['week_start'].dt.date
 
     schedule.loc[schedule['Cementless'] == 'CTD', 'operation'] = 'Primary'
 
     # Get op type by week
-    result = schedule.groupby('week_start').agg(
+    op_mix = schedule.groupby('week_start').agg(
         CLS_Op1=('operation', lambda x: (x == 'OP1').sum()),
         CLS_Op2=('operation', lambda x: (x == 'OP2').sum()),
         Primary=('operation', lambda x: (x == 'Primary').sum())
     ).reset_index()
+    
+    part_mix = schedule.groupby(['week_start', 'part_id']).size().reset_index(name='Count')
+    part_mix.sort_values(by=['week_start', 'Count'], ascending=[True, False], inplace=True)
 
-    return [result, result]
+    # Results outputted twice as there is one for the excel file, and one for the graph
+    return [op_mix, op_mix, part_mix, part_mix]
 
 
-def save_charts_to_html(gantt_chart: plotly.graph_objs.Figure, op_chart: plotly.graph_objs.Figure) -> None:
+def save_charts_to_html(gantt_chart: plotly.graph_objs.Figure, op_mix_chart: plotly.graph_objs.Figure, part_mix_chart: plotly.graph_objs.Figure) -> None:
     """
     Saves the Gantt chart to an HTML file.
 
@@ -2638,10 +2643,17 @@ def save_charts_to_html(gantt_chart: plotly.graph_objs.Figure, op_chart: plotly.
         gantt_chart (plotly.graph_objs.Figure): The Gantt chart to be saved.
     """
     filepath = Path(os.getcwd()) / "data/08_reporting/gantt_chart.html"
-    plotly.offline.plot(gantt_chart, filename=str(filepath))
-    
+    plotly.offline.plot(gantt_chart, filename=str(filepath))   
+
     filepath = Path(os.getcwd()) / "data/08_reporting/op_mix_chart.html"
-    plotly.offline.plot(op_chart, filename=str(filepath))
+    plotly.offline.plot(op_mix_chart, filename=str(filepath))
+    
+    filepath = Path(os.getcwd()) / "data/08_reporting/part_mix_chart.html"
+    plotly.offline.plot(part_mix_chart, filename=str(filepath))
+    
+    # with open("data/08_reporting/op_mix_chart.html", 'w') as f:
+    #     f.write(op_chart.to_html(full_html=False, include_plotlyjs='cdn'))
+    #     f.write(op_chart.to_html(full_html=False, include_plotlyjs='cdn'))
 
 
 def order_to_id(
