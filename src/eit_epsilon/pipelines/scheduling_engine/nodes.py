@@ -2601,8 +2601,10 @@ def create_chart(
     return schedule
 
 
-def create_op_mix(schedule: pd.DataFrame):
-    """ Determine the breakdown of the operation types for the completed jobs, by week
+def create_mix_charts(schedule: pd.DataFrame):
+    """ Determine the breakdown of the completed jobs by:
+        - Operation type by day and by week
+        - Part id by week
 
     Args:
         schedule (pd.DataFrame): The schedule data.
@@ -2646,10 +2648,11 @@ def create_op_mix(schedule: pd.DataFrame):
 def save_charts_to_html(gantt_chart: plotly.graph_objs.Figure, op_mix_by_date_chart: plotly.graph_objs.Figure,
                         op_mix_by_week_chart: plotly.graph_objs.Figure, part_mix_by_week_chart: plotly.graph_objs.Figure) -> None:
     """
-    Saves the Gantt chart to an HTML file.
+    Saves the Gantt chart and mix charts to HTML files.
 
     Args:
         gantt_chart (plotly.graph_objs.Figure): The Gantt chart to be saved.
+        op_mix_by_date_chart (plotly.graph_objs.Figure): Chart of completed jobs by operation, by day
     """
     filepath = Path(os.getcwd()) / "data/08_reporting/gantt_chart.html"
     plotly.offline.plot(gantt_chart, filename=str(filepath))   

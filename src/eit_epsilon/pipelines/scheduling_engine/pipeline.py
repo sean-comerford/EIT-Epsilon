@@ -3,7 +3,7 @@ from kedro.pipeline import Pipeline, node
 from .nodes import (
     JobShop,
     create_chart,
-    create_op_mix,
+    create_mix_charts,
     save_charts_to_html,
     reformat_output,
     identify_changeovers,
@@ -118,7 +118,7 @@ def create_pipeline(**kwargs) -> Pipeline:
                 name="schedule_chart",
             ),
             node(
-                func=create_op_mix,
+                func=create_mix_charts,
                 inputs="final_schedule",
                 outputs=["op_mix_by_date_excel", "op_mix_by_date_chart_json",
                          "op_mix_by_week_excel", "op_mix_by_week_chart_json",
