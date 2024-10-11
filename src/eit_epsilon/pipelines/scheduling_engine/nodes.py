@@ -2580,7 +2580,7 @@ def calculate_kpi(schedule: pd.DataFrame) -> pd.DataFrame:
 
 
 def create_chart(
-    schedule: pd.DataFrame, parameters: Dict[str, Union[str, Dict[str, str]]]
+    schedule: pd.DataFrame, parameters: Dict[str, Union[str, Dict[str, str]]], scheduling_options
 ) -> pd.DataFrame:
     """
     Creates a Gantt chart based on the schedule and parameters.
@@ -2592,6 +2592,9 @@ def create_chart(
     Returns:
         pd.DataFrame: The updated schedule data with additional columns for the chart.
     """
+  
+    schedule['IsUrgent'] = schedule.apply(lambda row: True if row['job_id'] in scheduling_options['urgent_orders'] else False, axis=1)    
+    
     if not is_string_dtype(schedule[[parameters["column_mapping"]["Resource"]]]):
         schedule[parameters["column_mapping"]["Resource"]] = schedule[
             parameters["column_mapping"]["Resource"]

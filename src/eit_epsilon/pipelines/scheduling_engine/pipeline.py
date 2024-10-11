@@ -113,7 +113,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             ),           
             node(
                 func=create_chart,
-                inputs=["final_schedule", "params:visualization_options"],
+                inputs=["final_schedule", "params:visualization_options", "params:scheduling_options"],
                 outputs="gantt_chart_json",
                 name="schedule_chart",
             ),

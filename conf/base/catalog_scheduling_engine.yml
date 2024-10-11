@@ -284,6 +284,7 @@ gantt_chart_json:
       x_end: End_time
       y: Machine
       color: Custom Part ID
+      pattern_shape: IsUrgent
       title: Production Schedule
       hover_name: Order
       hover_data: ['Due_date', 'task', 'Custom Part ID', 'Production Qty']
