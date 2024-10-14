@@ -286,6 +286,10 @@ machine_schedules:
     engine: openpyxl
 
 op_mix_excel:
+  save_args:
+    engine: openpyxl
+
+op_mix_by_week_excel:
   type: pandas.ExcelDataset
   filepath: data/08_reporting/operation_mix_by_week.xlsx
   load_args:
@@ -293,7 +297,7 @@ op_mix_excel:
   save_args:
     engine: openpyxl
 
-part_mix_excel:
+part_mix_by_week_excel:
   type: pandas.ExcelDataset
   filepath: data/08_reporting/part_mix_by_week.xlsx
   load_args:
