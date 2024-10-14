@@ -210,11 +210,11 @@ class Job:
         result = {}
         for _, row in unique_task_types.iterrows():
             if "OP 1" in row["Part Description"]:
-                result[row["Custom Part ID"]] = list(range(0, 9))
+                result[row["Custom Part ID"]] = list(range(-1, 9))
             elif "OP 2" in row["Part Description"]:
                 result[row["Custom Part ID"]] = list(range(10, 21))
             else:
-                result[row["Custom Part ID"]] = list(range(30, 47))
+                result[row["Custom Part ID"]] = list(range(29, 47))
 
         return result
 
@@ -918,7 +918,9 @@ class GeneticAlgorithmScheduler:
 
         # Adjust if start time is outside of working hours
         if start >= current_day_start + self.working_minutes_per_day:
-            if task in [17, 42]:
+            if task in [1, 31]:  # HAAS machines can run after hours
+                pass
+            elif task in [17, 44]:  # Nutshell drag can only start one hour later
                 start = current_day_start + self.total_minutes_per_day + 60
             else:
                 start = current_day_start + self.total_minutes_per_day
@@ -934,7 +936,7 @@ class GeneticAlgorithmScheduler:
                 # Push to Monday morning
                 start += self.total_minutes_per_day
             elif weekday == 5:  # Saturday
-                if task not in [1, 31]:  # If not task type 1, push to Monday
+                if task not in [1, 31]:  # If not HAAS machines
                     start += self.total_minutes_per_day * 2
                 else:
                     break  # Task type 1 can stay on Saturday
@@ -1393,6 +1395,7 @@ class GeneticAlgorithmScheduler:
     def slack_logic(
         self,
         m: int,
+        haas_m: int,
         avail_m: Dict[int, int],
         slack_m: Dict[Any, deque],
         slack_time_used: bool,
@@ -1413,6 +1416,7 @@ class GeneticAlgorithmScheduler:
 
         Args:
             m (int): The machine identifier.
+            haas_m (int): The HAAS machine identifier.
             avail_m (Dict[int, int]): Dictionary mapping machine IDs to their available times.
             slack_m (Dict[int, List]): Dictionary mapping machine IDs to their slack windows (tuples of start and end times).
             slack_time_used (bool): Flag indicating whether slack time has been used.
@@ -1449,11 +1453,18 @@ class GeneticAlgorithmScheduler:
         # Initialize start variable
         start = None
 
+        # Initialize haas_avail to 0 (immediately available)
+        haas_avail = 0
+
+        # If m == 0, update haas_avail to be the actual availability of that HAAS machine
+        if m == 0:
+            haas_avail = avail_m[haas_m]
+
         # Define previous task finish
         previous_task_finish = previous_task_start + previous_task_dur
 
         # If the previous task is completed later than the new machine comes available
-        if previous_task_finish > avail_m[m]:
+        if previous_task_finish >= avail_m[m]:
             # Start time is the completion of the previous task of the job in question
             start = self.adjust_start_time(
                 previous_task_finish + changeover_duration + self.task_time_buffer
@@ -1510,7 +1521,7 @@ class GeneticAlgorithmScheduler:
                 for unused_time in slack_m[m]:
                     # If the unused time + duration of task is less than the end of the slack window
                     if (
-                        max(unused_time[0], previous_task_finish)
+                        max(unused_time[0], previous_task_finish, haas_avail)
                         + changeover_duration
                         + current_task_dur
                         + self.task_time_buffer
@@ -1519,7 +1530,7 @@ class GeneticAlgorithmScheduler:
                         # previous task of the job is completed
                         # Task can only start once changeover is completed
                         start = (
-                            max(unused_time[0], previous_task_finish)
+                            max(unused_time[0], previous_task_finish, haas_avail)
                             + changeover_duration
                             + self.task_time_buffer
                         )
@@ -1581,7 +1592,7 @@ class GeneticAlgorithmScheduler:
 
             # If slack time is not used, start when the machine becomes available
             if not slack_time_used:
-                start = self.adjust_start_time(avail_m[m] + changeover_duration)
+                start = self.adjust_start_time(max(avail_m[m], haas_avail) + changeover_duration)
 
                 # Check if nutshell warmup time is applicable
                 start = self.nutshell_warmup(m, start)
@@ -1639,9 +1650,9 @@ class GeneticAlgorithmScheduler:
         """
         # Initialize machine availability, slack times, and product assignments
         avail_m = {m: 0 for m in self.M}
-        # TODO: load_quantity_m = {m: 0 for m in self.change_over_machines_op1}
         slack_m = {m: deque() for m in self.M}
-        changeover_slack = self.changeover_slack.copy()
+        haas_pick_m = {}  # Will be filled with (job_id: haas_m) pairs
+        haas_m = 99
         P_j = deque()
 
         # Set up the previous parts that were on the HAAS machines. 0 means no previous part
@@ -1710,36 +1721,45 @@ class GeneticAlgorithmScheduler:
                 random_roll = random.random()
                 slack_time_used = False
 
-                if task_id in [1, 31]:  # Task 1, 31 corresponds to HAAS machines
-                    m = P_j[-1][2]  # Machine is determined by the loading task
+                # Pre-pick the HAAS machine and check if a changeover is needed
+                if task_id in [-1, 29]:  # -1, 29 are changeover tasks
+                    compat_task_0 = self.task_to_machines[task_id + 2]  # HAAS comes two tasks later
 
-                    # Task 10 is the first task of OP2, hence no previous task duration
+                    # Find preferred machines; machines that require no changeover
+                    preferred_machines = self.get_preferred_machines(
+                        compat_task_0, product_m, job_id, fixture_to_machine_assignment
+                    )
+
+                    # Select the machine based on availability or randomly
+                    haas_m = (
+                        min(preferred_machines, key=lambda x: avail_m.get(x))
+                        if random_roll < 0.8
+                        else random.choice(preferred_machines)
+                    )
+
+                    # Add the HAAS machine to the dictionary
+                    haas_pick_m[job_id] = haas_m
+
+                    # If the product ID is 0, or the same as Part ID, a changeover is not needed
+                    if product_m.get(haas_m) in [0, part_id]:
+                        # Schedule changeover on dummy machine and move on
+                        # Add task to schedule
+                        task_tuple = (job_id, task_id, 99, 0, 0, 0, part_id)
+                        P_j.append(task_tuple)
+
+                        continue
+
+                if task_id in [1, 31]:  # Task 1, 31 corresponds to HAAS machines
+                    # Extract pre-picked machine
+                    m = haas_pick_m[job_id]
+
+                    # Check previous task start and duration
                     previous_task_start = P_j[-1][3] if P_j else 0
                     previous_task_dur = P_j[-1][4] if P_j else 0
 
                     # If a changeover is needed, loop over all possible (unused) changeover times to find the first
                     # one later than avail_m[m]; use this to determine the start time
-                    start = (
-                        max(avail_m[m], previous_task_start + previous_task_dur)
-                        if product_m.get(m) in [0, part_id]
-                        else min(
-                            [
-                                slack_time + self.change_over_time_op1
-                                for slack_time in changeover_slack
-                                if slack_time >= max(avail_m[m], previous_task_start + previous_task_dur)
-                            ],
-                            default=max(avail_m[m], previous_task_start + previous_task_dur),
-                        )
-                    )
-
-                    # Remove the used changeover time from the list of possible changeover start times (for HAAS)
-                    changeover_slack = deque(
-                        [
-                            slack_time
-                            for slack_time in changeover_slack
-                            if slack_time < avail_m[m] or slack_time != start - self.change_over_time_op1
-                        ]
-                    )
+                    start = max(avail_m[m], previous_task_start + previous_task_dur)
 
                 else:
                     # For other tasks, pick the earliest available machine
@@ -1761,14 +1781,15 @@ class GeneticAlgorithmScheduler:
                         previous_task_start = 0
                         previous_task_dur = 0
                     else:
-                        # Task 0, 10 and 30 are the first tasks of OP1, OP2 and Primary respectively,
+                        # Task -1, 10 and 29 are the first tasks of OP1, OP2 and Primary respectively,
                         # hence no previous task duration
-                        previous_task_start = P_j[-1][3] if P_j and task_id not in [0, 10, 30] else 0
-                        previous_task_dur = P_j[-1][4] if P_j and task_id not in [0, 10, 30] else 0
+                        previous_task_start = P_j[-1][3] if P_j and task_id not in [-1, 10, 29] else 0
+                        previous_task_dur = P_j[-1][4] if P_j and task_id not in [-1, 10, 29] else 0
 
                     # Apply slack logic to determine the start time
                     start, slack_time_used, m = self.slack_logic(
                         m,
+                        haas_m,
                         avail_m,
                         slack_m,
                         slack_time_used,
@@ -1779,36 +1800,12 @@ class GeneticAlgorithmScheduler:
                         changeover_duration,
                     )
 
+                # if task_id in [-1, 0, 2, 29, 30, 32]:
+                #     logger.warning(f"task = {task_id}, start = {start}, slack_time_used = {slack_time_used},\n m = {m}, haas_m = {haas_m}, avail_m[haas_m] = {avail_m[haas_m]}, avail_m[0] = {avail_m[0]},\n slack_m[0] = {slack_m[0]}, previous_task_finish = {previous_task_dur + previous_task_start}\n")
+
                 # Add task to schedule
                 task_tuple = (job_id, task_id, m, start, self.dur[(job_id, task_id)], 0, part_id)
                 P_j.append(task_tuple)
-
-                # TODO: Experiment
-                if task_id in [0, 30]:  # Loading tasks for HAAS
-                    compat_task_0 = self.task_to_machines[task_id + 1]
-
-                    # Find preferred machines; machines that require no changeover
-                    preferred_machines = self.get_preferred_machines(
-                        compat_task_0, product_m, job_id, fixture_to_machine_assignment
-                    )
-
-                    # Select the machine based on availability or randomly
-                    haas_m = (
-                        min(preferred_machines, key=lambda x: avail_m.get(x))
-                        if random_roll < 0.8
-                        else random.choice(preferred_machines)
-                    )
-
-                    machine_task_tuple = (
-                        job_id,
-                        task_id,
-                        haas_m,
-                        start,
-                        self.dur[(job_id, task_id)],
-                        0,
-                        part_id,
-                    )
-                    P_j.append(machine_task_tuple)
 
                 # Count after-hours starts for HAAS machines
                 after_hours_starts = 0
@@ -2010,6 +2007,7 @@ class GeneticAlgorithmScheduler:
         slack_m = {m: deque() for m in self.M}
         product_m = {m: 0 for m in self.M}
         changeover_finish_time = deque([0])
+        haas_m = 99
 
         # Count arbor frequencies
         arbor_frequencies = self.count_arbor_frequencies()
@@ -2078,6 +2076,7 @@ class GeneticAlgorithmScheduler:
 
                     start, slack_time_used, m = self.slack_logic(
                         m,
+                        haas_m,
                         avail_m,
                         slack_m,
                         slack_time_used,
@@ -2982,7 +2981,7 @@ def output_schedule_per_machine(
     # Keep only relevant columns for the operators
     for key in schedules:
         schedules[key] = (
-            schedules[key]
+            schedules.get(key)
             .loc[:, ["ID", "Order", "Machine", "task", "Start_time", "Custom Part ID"]]
             .copy()
         )  # Create an explicit copy

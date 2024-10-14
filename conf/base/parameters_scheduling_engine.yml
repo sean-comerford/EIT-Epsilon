@@ -1,5 +1,6 @@
 task_to_machines: {
   # Cementless OP1
+  -1: [0],  # Changeover --> either 180 minutes or 0 minutes
   0: [0],  # Load/Unload HAAS
   1: [1, 2, 3, 4, 5, 6],  # HAAS
   2: [0],  # Load/Unload HAAS
@@ -24,6 +25,7 @@ task_to_machines: {
   20: [25, 26],  # Final inspection
 
   # Cemented (All)
+  29: [0],  # Changeover --> either 180 minutes or 0 minutes
   30: [0],  # Load/Unload HAAS
   31: [4, 5, 6],  # HAAS (only cemented)
   32: [0],  # Load/Unload HAAS
@@ -124,7 +126,8 @@ machine_dict: {
   51: 'Nutshell Drag',
   52: 'Nutshell Drag (Ghost)',
   53: 'Polishing-1',
-  54: 'Polishing-2'
+  54: 'Polishing-2',
+  99: 'Dummy Changeover'
 }
 
 ghost_machine_dict: {
@@ -208,12 +211,12 @@ arbor_quantities: {
 
 
 timecard_ctd_mapping: {
-    'HAAS1_HAAS': 32,
-    'HAAS2_HAAS': 32,
-    'HAAS3_HAAS': 32,
-    'HAAS4_HAAS': 32,
-    'HAAS5_HAAS': 32,
-    'HAAS6_HAAS': 32,
+    'HAAS1_HAAS': 33,
+    'HAAS2_HAAS': 33,
+    'HAAS3_HAAS': 33,
+    'HAAS4_HAAS': 33,
+    'HAAS5_HAAS': 33,
+    'HAAS6_HAAS': 33,
     'INSPE_GRINS': 34,
     'MECWS_CLEN,INSPE_GRINS': 35,
     'MECWM_CLEN,INSPE_GRINS': 35,
@@ -233,12 +236,12 @@ timecard_ctd_mapping: {
 }
 
 timecard_op1_mapping: {
-    'HAAS1_HAAS': 2,
-    'HAAS2_HAAS': 2,
-    'HAAS3_HAAS': 2,
-    'HAAS4_HAAS': 2,
-    'HAAS5_HAAS': 2,
-    'HAAS6_HAAS': 2,
+    'HAAS1_HAAS': 3,
+    'HAAS2_HAAS': 3,
+    'HAAS3_HAAS': 3,
+    'HAAS4_HAAS': 3,
+    'HAAS5_HAAS': 3,
+    'HAAS6_HAAS': 3,
     'INSPE_GRINS': 4,
     'MECWS_CLEN,INSPE_GRINS': 5,
     'MECWM_CLEN,INSPE_GRINS': 5,
@@ -273,13 +276,13 @@ scheduling_options: {
   non_manual_task_machines: [1, 3, 6, 10, 11, 12, 13, 17, 30, 32, 33, 34, 37, 38, 42], # Non-manual tasks (can go past EOD)
   non_slack_machines: [37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50],  # Machines that cannot use slack time
   task_time_buffer: 5,  # Number of extra minutes to keep between tasks as a buffer (switching time)
-  n: 500,  # Number of random schedules to generate
+  n: 1000,  # Number of random schedules to generate
   n_e: 0.06,  # Proportion of best schedules to automatically pass on to the next generation (e.g.: 10%)
   n_c: 0.15,  # Proportion of children to generate in the offspring function
   working_minutes_per_day: 480,  # Number of working minutes per day (8 hours * 60 minutes)
   total_minutes_per_day: 1440,  # Number of minutes in exactly 24 hours
   drag_machine_setup_time: 15,  # Time it takes to set up a new batch on the drag machines
-  max_iterations: 10,  # Maximum number of iterations/generations to run the algorithm
+  max_iterations: 20,  # Maximum number of iterations/generations to run the algorithm
   time_budget: 0,  # Maximum runtime for the algorithm in seconds - 0 means no limit; max_iterations will be used
   offspring_frequency: 7,  # Enable offspring every X generations (E.g.: a value of 2 means every other generation)
   urgent_multiplier: 3,  # Multiplier for (due_date - completion_time) for urgent_orders
@@ -306,6 +309,7 @@ visualization_options: {
 }
 
 task_to_names: {
+  -1: 'Changeover',
   0: 'Load HAAS',
   1: 'HAAS',
   2: 'Unload HAAS',
@@ -326,6 +330,7 @@ task_to_names: {
   18: 'Polishing',
   19: 'Final Wash',
   20: 'Final inspection',
+  29: 'Changeover',
   30: 'Load HAAS',
   31: 'HAAS (only cemented)',
   32: 'Unload HAAS',

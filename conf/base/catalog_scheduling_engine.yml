@@ -294,7 +294,7 @@ gantt_chart_json:
       x_start: Start_time
       x_end: End_time
       y: Machine
-      color: task
+      color: Custom Part ID
       title: Production Schedule
       hover_name: ID
       hover_data: ['Prod Due Date', 'task', 'Custom Part ID', 'Production Qty']
@@ -329,7 +329,7 @@ gantt_chart_json:
       title_font_size: 32
       font_size: 14
       width: 1800
-      height: 1500
+      height: 1000
       showlegend: True
       legend:
         orientation: v
