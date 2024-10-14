@@ -2804,8 +2804,12 @@ def create_mix_charts(schedule: pd.DataFrame):
         schedule (pd.DataFrame): The schedule data.
 
     Returns:    
-        op_mix_excel (pandas.ExcelDataset): The operation types by week.
-        op_mix_chart_json (plotly.graph_objs.Figure): The stacked bar chart to be saved.
+        op_mix_by_date_excel (pandas.ExcelDatase): Completed jobs by date in excel format.
+        op_mix_by_date_chart_json (plotly.graph_objs.Figure): Completed jobs by date bar chart.
+        op_mix_by_week_excel (pandas.ExcelDatase): Completed jobs by week in excel format.
+        op_mix_by_week_chart_json (plotly.graph_objs.Figure): Completed jobs by week bar chart.
+        part_mix_by_week_excel (pandas.ExcelDatase): Completed jobs by part id in excel format.
+        part_mix_by_week_chart_json (plotly.graph_objs.Figure): Completed jobs by part id bar chart.
     """
     # Get only jobs that have been completed
     schedule = schedule[schedule['task'].isin([7, 20, 44])]
@@ -2846,12 +2850,14 @@ def save_charts_to_html(gantt_chart: plotly.graph_objs.Figure, op_mix_by_date_ch
 
     Args:
         gantt_chart (plotly.graph_objs.Figure): The Gantt chart to be saved.
-        op_mix_by_date_chart (plotly.graph_objs.Figure): Chart of completed jobs by operation, by day
+        op_mix_by_date_chart (plotly.graph_objs.Figure): Bar chart of completed jobs by operation, by day.
+        op_mix_by_week_chart (plotly.graph_objs.Figure): Bar chart of completed jobs by operation, by week.
+        part_mix_by_week_chart (plotly.graph_objs.Figure): Bar chart of completed jobs by custom part ID, by week.
     """
     filepath = Path(os.getcwd()) / "data/08_reporting/gantt_chart.html"
     plotly.offline.plot(gantt_chart, filename=str(filepath))   
     
-    with open("data/08_reporting/mix_charts.html", 'w', encoding="utf-8") as f:
+    with open(Path(os.getcwd()) / "data/08_reporting/mix_charts.html", 'w', encoding="utf-8") as f:
         f.write(op_mix_by_date_chart.to_html())
         f.write(op_mix_by_week_chart.to_html())
         f.write(part_mix_by_week_chart.to_html())
