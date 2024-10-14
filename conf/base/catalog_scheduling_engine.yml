@@ -257,6 +257,16 @@ final_schedule:
     engine: openpyxl
     sheet_name: Schedule
 
+final_schedule_reordered:
+  type: pandas.ExcelDataset
+  filepath: data/08_reporting/final_schedule_reordered.xlsx
+  save_args:
+    engine: openpyxl
+    sheet_name: Schedule
+  load_args:
+    engine: openpyxl
+    sheet_name: Schedule
+
 final_schedule_with_id:
   type: pandas.ExcelDataset
   filepath: data/08_reporting/final_schedule_with_id.xlsx

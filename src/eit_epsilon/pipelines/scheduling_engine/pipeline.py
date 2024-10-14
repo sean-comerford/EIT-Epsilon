@@ -12,6 +12,7 @@ from .nodes import (
     order_to_id,
     split_and_save_schedule,
     output_schedule_per_machine,
+    reorder_jobs_by_starting_time,
 )
 
 
@@ -27,7 +28,6 @@ def create_pipeline(**kwargs) -> Pipeline:
                 func=jobshop.preprocess_orders,
                 inputs=[
                     "croom_open_orders",
-                    "jobs_not_booked_in",
                 ],
                 outputs="croom_processed_orders",
                 name="preprocess_orders",
@@ -111,14 +111,20 @@ def create_pipeline(**kwargs) -> Pipeline:
                 name="create_start_end_time",
             ),
             node(
-                func=calculate_kpi,
+                func=reorder_jobs_by_starting_time,
                 inputs="final_schedule",
+                outputs="final_schedule_reordered",
+                name="reorder_jobs_by_starting_time",
+            ),
+            node(
+                func=calculate_kpi,
+                inputs="final_schedule_reordered",
                 outputs="kpi_results",
                 name="calculate_kpi",
             ),
             node(
                 func=create_chart,
-                inputs=["final_schedule", "params:visualization_options"],
+                inputs=["final_schedule_reordered", "params:visualization_options"],
                 outputs="gantt_chart_json",
                 name="schedule_chart",
             ),

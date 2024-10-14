@@ -495,7 +495,8 @@ class JobShop(Job, Shop):
         self.input_repr_dict = None
 
     def preprocess_orders(
-        self, croom_open_orders: pd.DataFrame, jobs_not_booked_in: pd.DataFrame
+        self,
+        croom_open_orders: pd.DataFrame,
     ) -> pd.DataFrame:
         """
         Preprocesses the open orders by filtering, extracting information, and performing various checks.
@@ -512,7 +513,6 @@ class JobShop(Job, Shop):
 
         Args:
             croom_open_orders (pd.DataFrame): The open orders.
-            jobs_not_booked_in (pd.DataFrame): Jobs that were previously in open orders but not in the time card.
 
         Returns:
             pd.DataFrame: The preprocessed orders.
@@ -2400,6 +2400,54 @@ class GeneticAlgorithmScheduler:
         return self.best_schedule, best_scores
 
 
+def reorder_jobs_by_starting_time(croom_processed_orders: pd.DataFrame) -> pd.DataFrame:
+    """
+    Reorders jobs by their starting time within each group of 'part_id' and 'Prod Due Date'.
+    The smallest job_id gets the earliest starting time, while ensuring each Order retains the same tasks as before.
+
+    The purpose of this is to ensure a fixed order for identical jobs (same part ID and due date) when re-running
+    the algorithm on a daily basis. This avoids operators having to arbitrarily switch boxes around.
+
+    Args:
+        croom_processed_orders (pd.DataFrame): DataFrame containing the processed orders with columns 'part_id',
+                                               'Prod Due Date', 'task', 'Start_time', and 'Order'.
+
+    Returns:
+        pd.DataFrame: DataFrame with reordered Orders based on starting time.
+    """
+    # Group by 'part_id' and 'Prod Due Date'
+    grouped = croom_processed_orders.groupby(["part_id", "Prod Due Date"])
+
+    def reorder_group(group: pd.DataFrame) -> pd.DataFrame:
+        # Find the minimum task number to identify the earliest task in the group
+        min_task = group["task"].min()
+
+        # Sort the group by 'Start_time' to ensure the earliest tasks come first
+        group = group.sort_values(by="Start_time")
+
+        # Find the earliest 'Start_time' for each order by filtering on the minimum task number
+        earliest_start_time = group[group["task"] == min_task]["Order"].tolist()
+
+        # Sort the orders based on their earliest start times
+        ordered_orders = sorted(earliest_start_time)
+
+        # Create a mapping from the original order to the new order based on sorted start times
+        order_map = {
+            original_order: new_order
+            for new_order, original_order in zip(ordered_orders, earliest_start_time)
+        }
+
+        # Apply the mapping to reorder the 'Order' column
+        group["Order"] = group["Order"].map(order_map)
+
+        return group
+
+    # Apply the reorder function to each group and reset the index to flatten the DataFrame
+    reordered_df = grouped.apply(reorder_group).reset_index(drop=True)
+
+    return reordered_df
+
+
 def reformat_output(
     croom_processed_orders: pd.DataFrame,
     best_schedule: Dict[str, any],
@@ -2428,8 +2476,8 @@ def reformat_output(
     )
 
     # Round the starting time and duration
-    schedule_df["starting_time"] = schedule_df["starting_time"].round(5)
-    schedule_df["duration"] = schedule_df["duration"].round(5)
+    schedule_df["starting_time"] = schedule_df["starting_time"].round(1)
+    schedule_df["duration"] = schedule_df["duration"].round(1)
 
     # Reset and drop index
     croom_processed_orders.reset_index(inplace=True, drop=True)
@@ -2451,15 +2499,15 @@ def reformat_output(
     )
 
     # Rename columns
-    croom_processed_orders = croom_processed_orders.rename(columns=column_mapping_reformat)
+    croom_reordered = croom_processed_orders.rename(columns=column_mapping_reformat)
 
     # Use the index as the job index
-    croom_processed_orders["Job"] = croom_processed_orders.index
+    croom_reordered["Job"] = croom_reordered.index
 
     # Apply machine name mapping
-    croom_processed_orders["Machine"] = croom_processed_orders["Machine"].map(machine_dict)
+    croom_reordered["Machine"] = croom_reordered["Machine"].map(machine_dict)
 
-    return croom_processed_orders
+    return croom_reordered
 
 
 def identify_changeovers(df: pd.DataFrame, scheduling_options: Dict[str, Any]) -> pd.DataFrame:
