@@ -1551,7 +1551,7 @@ class GeneticAlgorithmScheduler:
                         slack_window_upd = self.slack_window_check(
                             (
                                 (
-                                    max(unused_time[0], previous_task_finish)
+                                    max(unused_time[0], previous_task_finish, haas_avail)
                                     + changeover_duration
                                     + current_task_dur
                                     + self.task_time_buffer
@@ -1574,17 +1574,25 @@ class GeneticAlgorithmScheduler:
                         # e.g. original slack = (100, 150), task planned now takes (110, 130), new slack = (100, 110)
                         # We subtract changeover_duration, because even though the task actually starts later,
                         # the changeover_duration cannot be used for a different task
-                        if start == (previous_task_finish + changeover_duration + self.task_time_buffer):
+                        if start == (
+                            max(previous_task_finish, haas_avail)
+                            + changeover_duration
+                            + self.task_time_buffer
+                        ):
                             slack_window_upd = self.slack_window_check(
-                                (unused_time[0], previous_task_finish), m
+                                (unused_time[0], max(previous_task_finish, haas_avail)), m
                             )
 
                             # Do not append slack windows smaller than a few minutes
                             if (
                                 slack_window_upd
+                                and m not in self.non_slack_machines
                                 and slack_window_upd[1] - slack_window_upd[0] >= self.task_time_buffer
                             ):
                                 slack_m[m].append(slack_window_upd)
+
+                        # Reorder slack_m[m] to ensure that the slack windows are sorted by start time
+                        slack_m[m] = deque(sorted(slack_m[m], key=lambda x: x[0]))
 
                         slack_time_used = True
                         # break the loop if a suitable start time has been found in the slack
@@ -1774,6 +1782,10 @@ class GeneticAlgorithmScheduler:
                             changeover_duration = self.drag_machine_setup_time
                         else:
                             changeover_duration = self.change_over_time_op2
+
+                    # Find the corresponding HAAS machines for loading/unloading tasks
+                    if task_id in [0, 2, 30, 32]:
+                        haas_m = haas_pick_m[job_id]
 
                     # For partial jobs (some tasks are already completed prior to scheduling),
                     # we should not consider previous task duration for the first task to be planned
