@@ -13,6 +13,7 @@ from .nodes import (
     order_to_id,
     split_and_save_schedule,
     output_schedule_per_machine,
+    reorder_jobs_by_starting_time,
 )
 
 
@@ -26,7 +27,9 @@ def create_pipeline(**kwargs) -> Pipeline:
         [
             node(
                 func=jobshop.preprocess_orders,
-                inputs="croom_open_orders",
+                inputs=[
+                    "croom_open_orders",
+                ],
                 outputs="croom_processed_orders",
                 name="preprocess_orders",
             ),
@@ -34,10 +37,14 @@ def create_pipeline(**kwargs) -> Pipeline:
                 func=jobshop.build_ga_representation,
                 inputs=[
                     "croom_processed_orders",
+                    "timecards",
                     "croom_task_durations",
                     "params:task_to_machines",
                     "params:scheduling_options",
                     "params:machine_dict",
+                    "params:timecard_ctd_mapping",
+                    "params:timecard_op1_mapping",
+                    "params:timecard_op2_mapping",
                 ],
                 outputs="input_repr_dict",
                 name="build_ga_representation",
@@ -74,7 +81,6 @@ def create_pipeline(**kwargs) -> Pipeline:
                     "params:cemented_arbors",
                     "params:arbor_quantities",
                     "params:HAAS_starting_part_ids",
-                    "params:custom_tasks_dict",
                 ],
                 outputs=["best_schedule", "best_scores"],
                 name="genetic_algorithm",
@@ -106,8 +112,14 @@ def create_pipeline(**kwargs) -> Pipeline:
                 name="create_start_end_time",
             ),
             node(
-                func=calculate_kpi,
+                func=reorder_jobs_by_starting_time,
                 inputs="final_schedule",
+                outputs="final_schedule_reordered",
+                name="reorder_jobs_by_starting_time",
+            ),
+            node(
+                func=calculate_kpi,
+                inputs="final_schedule_reordered",
                 outputs="kpi_results",
                 name="calculate_kpi",
             ),           

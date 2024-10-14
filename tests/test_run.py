@@ -124,20 +124,16 @@ class TestOutputSchedule:
                     f"{task_start_time}."
                 )
 
-    def test_start_and_end_machines_present(self, project_context):
+    def test_end_times_machines_present(self, project_context):
         """
         Test that for every unique order number in the final_schedule DataFrame,
-        at least one row has a task 0, 1, or 10 (starting machines: HAAS or Ceramic Drag),
-        and at least one row has a task 7 or 19 (Final inspection for OP1 and OP2 respectively).
+        at least one row has a task 7 or 20, 44 (Final inspection for OP1 and OP2 respectively).
         """
         final_schedule = project_context.catalog.load("final_schedule")
         unique_orders = final_schedule["Order"].unique()
 
         for order in unique_orders:
             order_rows = final_schedule[final_schedule["Order"] == order]
-
-            has_initial_task = order_rows["task"].isin([1, 10, 30]).any()
-            assert has_initial_task, f"Order {order} does not have any task 0, 1, or 10."
 
             has_final_task = order_rows["task"].isin([7, 20, 44]).any()
             assert has_final_task, f"Order {order} does not have any task 7 or 19."
