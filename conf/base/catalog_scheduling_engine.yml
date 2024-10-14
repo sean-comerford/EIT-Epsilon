@@ -285,7 +285,11 @@ machine_schedules:
   save_args:
     engine: openpyxl
 
-op_mix_excel:
+op_mix_by_date_excel:
+  type: pandas.ExcelDataset
+  filepath: data/08_reporting/operation_mix_by_date.xlsx
+  load_args:
+    engine: openpyxl
   save_args:
     engine: openpyxl
 
