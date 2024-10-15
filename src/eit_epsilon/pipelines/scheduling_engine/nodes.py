@@ -935,10 +935,11 @@ class GeneticAlgorithmScheduler:
                 # Push to Monday morning
                 start += self.total_minutes_per_day
             elif weekday == 5:  # Saturday
-                if task not in [1, 31]:  # If not HAAS machines
+                # Changeovers are not allowed on Saturdays, but loading/unloading is
+                if task not in [0, 1, 2, 30, 31, 32]:  # If not HAAS machines
                     start += self.total_minutes_per_day * 2
                 else:
-                    break  # Task type 1 can stay on Saturday
+                    break  # HAAS tasks can run on Saturday
             else:
                 break  # It's a weekday, no adjustment needed
 
@@ -1280,7 +1281,7 @@ class GeneticAlgorithmScheduler:
     def get_preferred_machines(
         self,
         compat_task_0: List[int],
-        product_m: Dict[int, int],
+        product_m: Dict[int, str],
         job_id: int,
         fixture_to_machine_assignment: Dict[str, List[int]],
     ) -> List[int]:
@@ -1290,7 +1291,7 @@ class GeneticAlgorithmScheduler:
 
         Args:
             compat_task_0 (List[int]): A list of machines that can process the task.
-            product_m (Dict[int, int]): A dictionary mapping machines to product IDs.
+            product_m (Dict[int, str]): A dictionary mapping machines to product IDs.
             job_id (int): The ID-number of the job.
             fixture_to_machine_assignment (Dict[str, List[int]]): A dictionary mapping fixtures to machines.
 
@@ -1643,22 +1644,109 @@ class GeneticAlgorithmScheduler:
     def generate_individual(
         self, arbor_frequencies: Counter
     ) -> Deque[Tuple[int, int, int, float, float, int, str]]:
+        """
+        Generates an individual production schedule by assigning jobs to machines based on specific rules.
+
+        This function performs the following steps:
+        1. Initializes machine availability, slack times, and product assignments.
+        2. Prepares the job list with random shuffling and sorting.
+        3. Processes jobs either in groups (of two or three) or individually, depending on certain conditions.
+        4. Schedules tasks for each job, updating machine availability and product assignments.
+
+        Args:
+            arbor_frequencies (Counter): A counter of arbor frequencies used to assign fixtures to machines.
+
+        Returns:
+            Deque[Tuple[int, int, int, float, float, int, str]]: A deque containing scheduled tasks.
+        """
         # Initialize machine availability, slack times, and product assignments
+        avail_m, slack_m, haas_pick_m, product_m, P_j = self.initialize_resources()
+
+        # Prepare the job list with random shuffling and sorting
+        J_temp = self.prepare_job_list()
+
+        # Determine the fixture to machine assignment
+        fixture_to_machine_assignment = self.assign_arbors_to_machines(arbor_frequencies)
+
+        # Main loop to process jobs
+        while J_temp:
+            # Decide whether to schedule a group of jobs or a single job
+            schedule_group, num_jobs_to_schedule = self.should_schedule_group(J_temp, avail_m)
+
+            if schedule_group:
+                # Schedule a group of jobs together
+                current_jobs = [J_temp.pop() for _ in range(num_jobs_to_schedule)]
+                self.schedule_jobs(
+                    current_jobs,
+                    avail_m,
+                    slack_m,
+                    haas_pick_m,
+                    product_m,
+                    P_j,
+                    fixture_to_machine_assignment,  # Pass the correct parameter
+                    group=True,
+                )
+            else:
+                # Schedule one job at a time
+                job_id = J_temp.pop()
+                self.schedule_jobs(
+                    [job_id],
+                    avail_m,
+                    slack_m,
+                    haas_pick_m,
+                    product_m,
+                    P_j,
+                    fixture_to_machine_assignment,  # Pass the correct parameter
+                    group=False,
+                )
+
+        return P_j
+
+    def initialize_resources(
+        self,
+    ) -> Tuple[Dict[int, float], Dict[int, deque], Dict[int, int], Dict[int, str], Deque]:
+        """
+        Initializes machine availability, slack times, HAAS machine assignments, and product assignments.
+
+        Returns:
+            Tuple containing:
+            - avail_m (Dict[int, float]): Machine availability times.
+            - slack_m (Dict[int, deque]): Slack times for machines.
+            - haas_pick_m (Dict[int, int]): HAAS machine assignments for jobs.
+            - product_m (Dict[int, str]): Current product assigned to each machine.
+            - P_j (Deque): The production schedule to be filled.
+        """
         avail_m = {m: 0 for m in self.M}
         slack_m = {m: deque() for m in self.M}
         haas_pick_m = {}  # Will be filled with (job_id: haas_m) pairs
         P_j = deque()
 
-        # Set up the previous parts that were on the HAAS machines. 0 means no previous part
+        # Initialize the previous parts that were on the HAAS machines. 0 means no previous part
         product_m = {m: self.HAAS_starting_part_ids.get(m, 0) for m in self.M}
 
-        # Create a temporary list of job IDs and determine the fixture to machine assignment
+        return avail_m, slack_m, haas_pick_m, product_m, P_j
+
+    def prepare_job_list(self) -> List[int]:
+        """
+        Prepares the job list by shuffling and sorting based on random criteria and urgent orders.
+
+        This function performs the following steps:
+        1. Converts the job dictionary keys to a list.
+        2. Generates a random number to decide the sorting strategy.
+        3. Defines a helper function to extract the size from a custom part ID.
+        4. Randomly shuffles the job list.
+        5. Selects one to three random sizes to prioritize.
+        6. Sorts the job list based on the random number and part IDs or due dates.
+        7. Brings urgent orders to the front of the list.
+
+        Returns:
+            List[int]: A list of job IDs ready for scheduling.
+        """
         J_temp = list(self.J.keys())
         random_roll = random.random()
-        fixture_to_machine_assignment = self.assign_arbors_to_machines(arbor_frequencies)
 
         # Function to extract size from part ID
-        def extract_size(custom_part_id: str):
+        def extract_size(custom_part_id: str) -> str:
             parts = custom_part_id.split("-")
             size = parts[2]
             return size
@@ -1669,377 +1757,278 @@ class GeneticAlgorithmScheduler:
         # Pick one to three random sizes to bring to the front later
         random_sizes = [str(random.randint(1, 9)) for _ in range(random.randint(1, 3))]
 
+        # Random sorting based on part IDs and sizes
         if random_roll < 0.3:
-            # The original shuffle determines the relative order of products with the same part ID
-            J_temp.sort(
-                key=lambda x: self.J[x][0][::-1], reverse=random.choice([True, False])
-            )  # Sort on the reversed part ID
-
-            # One to three random sizes are brought to the front of the sorting
+            J_temp.sort(key=lambda x: self.J[x][0][::-1], reverse=random.choice([True, False]))
             J_temp.sort(key=lambda item: extract_size(self.J[item][0]) not in random_sizes)
         elif random_roll < 0.5:
-            # The original shuffle determines the relative order of products with the same part ID
-            J_temp.sort(
-                key=lambda x: self.J[x][0], reverse=random.choice([True, False])
-            )  # Sort on the part ID
-
-            # One to three random sizes are brought to the front of the sorting
+            J_temp.sort(key=lambda x: self.J[x][0], reverse=random.choice([True, False]))
             J_temp.sort(key=lambda item: extract_size(self.J[item][0]) not in random_sizes)
         else:
-            J_temp.sort(key=lambda x: self.J[x][1])  # Sort by due date (always ascending order)
-            J_temp.sort(
-                key=lambda x: self.J[x][0][::-1], reverse=random.choice([True, False])
-            )  # Sort by the first key with random order
-
-            # One to three random sizes are brought to the front of the sorting
+            J_temp.sort(key=lambda x: self.J[x][1])  # Sort by due date
+            J_temp.sort(key=lambda x: self.J[x][0][::-1], reverse=random.choice([True, False]))
             J_temp.sort(key=lambda item: extract_size(self.J[item][0]) not in random_sizes)
 
-        # Bring urgent orders to front
+        # Bring urgent orders to the front
         random.shuffle(self.urgent_orders)
         for job in self.urgent_orders:
             if job in J_temp:
                 J_temp.remove(job)
                 J_temp.append(job)
 
-        # Main loop to process jobs
-        while J_temp:
-            # Decide whether to schedule a group of three jobs, two jobs, or one job
-            schedule_group = False
-            num_jobs_to_schedule = 1  # Default to scheduling one job
+        return J_temp
 
-            if len(J_temp) >= 3:
-                # Peek at the next three jobs (do not remove them yet)
-                next_jobs = J_temp[-3:]
-                part_ids = [self.J[job_id][0] for job_id in next_jobs]
-                # Check if all part_ids are the same and contain 'OP1'
-                if all(pid == part_ids[0] for pid in part_ids) and "OP1" in part_ids[0]:
-                    # Determine the required minimum time in day based on HAAS duration
-                    job_id = next_jobs[0]
-                    haas_processing_dur = self.dur.get((job_id, 1), self.dur.get((job_id, 31)))
+    def should_schedule_group(self, J_temp: List[int], avail_m: Dict[int, float]) -> Tuple[bool, int]:
+        """
+        Determines whether to schedule 1, 2 or 3 jobs at once depending on if the next 2 or 3 jobs
+        have the same part ID and if it is a suitable time of the day to schedule multiple jobs at once.
+        Early in the morning it may be preferable to schedule just one job, just before the end of the
+        day it is better to load up a lot of product on the HAAS which can then run overnight.
 
-                    # The minimum time in day to start planning batches depends on HAAS duration
-                    min_time_in_day = max(self.working_minutes_per_day - haas_processing_dur - 75, 0)
-                    # Get avail_m[0]
-                    avail_m0 = avail_m[0]
+        Args:
+            J_temp (List[int]): The list of remaining jobs to schedule.
+            avail_m (Dict[int, float]): Current machine availability times.
 
-                    # Compute time_in_day
-                    day_start = (avail_m0 // self.total_minutes_per_day) * self.total_minutes_per_day
-                    time_in_day = avail_m0 - day_start
+        Returns:
+            Tuple containing:
+            - schedule_group (bool): Whether to schedule a group of jobs.
+            - num_jobs_to_schedule (int): Number of jobs to schedule together.
+        """
+        schedule_group = False
+        num_jobs_to_schedule = 1  # Default to scheduling one job
 
-                    # Check if avail_m[0] is after min_time_in_day and before end of working day
-                    if min_time_in_day <= time_in_day < self.working_minutes_per_day:
-                        schedule_group = True
-                        num_jobs_to_schedule = 3
+        if len(J_temp) >= 3:
+            # Attempt to schedule three jobs
+            next_jobs = J_temp[-3:]
+            part_ids = [self.J[job_id][0] for job_id in next_jobs]
+            if all(pid == part_ids[0] for pid in part_ids) and "OP1" in part_ids[0]:
+                if self.check_time_window(avail_m[0], next_jobs[0]):
+                    schedule_group = True
+                    num_jobs_to_schedule = 3
 
-            if not schedule_group and len(J_temp) >= 2:
-                # Peek at the next two jobs
-                next_jobs = J_temp[-2:]
-                part_ids = [self.J[job_id][0] for job_id in next_jobs]
-                # Check if both part_ids are the same and contain 'OP1'
-                if part_ids[0] == part_ids[1] and "OP1" in part_ids[0]:
-                    # Determine the required minimum time in day based on HAAS duration
-                    job_id = next_jobs[0]
-                    haas_processing_dur = self.dur.get((job_id, 1), self.dur.get((job_id, 31)))
+        if not schedule_group and len(J_temp) >= 2:
+            # Attempt to schedule two jobs
+            next_jobs = J_temp[-2:]
+            part_ids = [self.J[job_id][0] for job_id in next_jobs]
+            if part_ids[0] == part_ids[1] and "OP1" in part_ids[0]:
+                if self.check_time_window(avail_m[0], next_jobs[0]):
+                    schedule_group = True
+                    num_jobs_to_schedule = 2
 
-                    # The minimum time in day to start planning batches depends on HAAS duration
-                    min_time_in_day = max(self.working_minutes_per_day - haas_processing_dur - 90, 0)
-                    # Get avail_m[0]
-                    avail_m0 = avail_m[0]
+        return schedule_group, num_jobs_to_schedule
 
-                    # Compute time_in_day
-                    day_start = (avail_m0 // self.total_minutes_per_day) * self.total_minutes_per_day
-                    time_in_day = avail_m0 - day_start
+    def check_time_window(self, avail_m0: float, job_id: int) -> bool:
+        """
+        Checks if the current time window is suitable for scheduling batches based on HAAS duration.
 
-                    # Check if avail_m[0] is after min_time_in_day and before end of working day
-                    if min_time_in_day <= time_in_day < self.working_minutes_per_day:
-                        schedule_group = True
-                        num_jobs_to_schedule = 2
+        Args:
+            avail_m0 (float): Current availability time of machine 0.
+            job_id (int): The job ID to consider for scheduling.
 
-            if schedule_group:
-                # Schedule the group of two or three jobs together
-                current_jobs = [J_temp.pop() for _ in range(num_jobs_to_schedule)]
-                # For each job, get task list
-                task_lists = {}
-                for job_id in current_jobs:
-                    part_id, _ = self.J[job_id]
-                    task_list = self.custom_tasks.get(job_id, self.part_to_tasks.get(part_id))
-                    task_lists[job_id] = task_list
+        Returns:
+            bool: True if the time window is suitable, False otherwise.
+        """
+        haas_processing_dur = self.dur.get((job_id, 1), self.dur.get((job_id, 31), 0))
 
-                # Find the maximum number of tasks among these jobs
-                max_tasks = max(len(task_list) for task_list in task_lists.values())
+        # The minimum time in day to start planning batches depends on HAAS duration
+        min_time_in_day = max(self.working_minutes_per_day - haas_processing_dur - 75, 0)
 
-                # Loop over task indices
-                for i in range(max_tasks):
-                    # For each job
-                    for job_id in current_jobs:
-                        task_list = task_lists[job_id]
-                        if i < len(task_list):
-                            task_id = task_list[i]
-                            part_id, _ = self.J[job_id]
-                            random_roll = random.random()
-                            slack_time_used = False
-                            haas_m = haas_pick_m.get(job_id, 99)
+        # Compute time within the current day
+        day_start = (avail_m0 // self.total_minutes_per_day) * self.total_minutes_per_day
+        time_in_day = avail_m0 - day_start
 
-                            # Pre-pick the HAAS machine
-                            if task_id in [-1, 29]:  # -1, 29 are changeover tasks
-                                compat_task_0 = self.task_to_machines[
-                                    task_id + 2
-                                ]  # HAAS comes two tasks later
+        # Check if the current time is within the acceptable window
+        return min_time_in_day <= time_in_day < self.working_minutes_per_day
 
-                                # Find preferred machines
-                                preferred_machines = self.get_preferred_machines(
-                                    compat_task_0, product_m, job_id, fixture_to_machine_assignment
-                                )
+    def schedule_jobs(
+        self,
+        job_ids: List[int],
+        avail_m: Dict[int, float],
+        slack_m: Dict[int, deque],
+        haas_pick_m: Dict[int, int],
+        product_m: Dict[int, str],
+        P_j: Deque,
+        fixture_to_machine_assignment: Dict,
+        group: bool,
+    ) -> None:
+        """
+        Schedules tasks for the given jobs, updating machine availability and product assignments.
 
-                                # Select the machine based on availability or randomly
-                                haas_m = (
-                                    min(preferred_machines, key=lambda x: avail_m.get(x))
-                                    if random_roll < 0.8
-                                    else random.choice(preferred_machines)
-                                )
+        This function performs the following steps:
+        1. For each job, retrieves the list of tasks to be scheduled.
+        2. Determines the maximum number of tasks among the given jobs.
+        3. Iterates over each task index up to the maximum number of tasks.
+        4. For each job, schedules the task if it exists at the current index.
+        5. Calls the `schedule_task` method to handle the actual scheduling of each task.
 
-                                # Add the HAAS machine to the dictionary
-                                haas_pick_m[job_id] = haas_m
+        Args:
+            job_ids (List[int]): List of job IDs to schedule.
+            avail_m (Dict[int, float]): Machine availability times.
+            slack_m (Dict[int, deque]): Slack times for machines.
+            haas_pick_m (Dict[int, int]): HAAS machine assignments for jobs.
+            product_m (Dict[int, str]): Current product assigned to each machine.
+            P_j (Deque): The production schedule being built.
+            fixture_to_machine_assignment (Dict): Fixture to machine assignments.
+            group (bool): Whether to schedule a group of jobs together.
+        """
+        # For each job, get task list
+        task_lists = {}
+        for job_id in job_ids:
+            part_id, _ = self.J[job_id]
+            task_list = self.custom_tasks.get(job_id, self.part_to_tasks.get(part_id))
+            task_lists[job_id] = task_list
 
-                                # Schedule changeover on dummy machine and move on
-                                if product_m.get(haas_m) in [0, part_id]:
-                                    task_tuple = (job_id, task_id, 99, 0, 0, 0, part_id)
-                                    P_j.append(task_tuple)
-                                    continue
+        # Find the maximum number of tasks among these jobs
+        max_tasks = max(len(task_list) for task_list in task_lists.values())
 
-                            if task_id in [1, 31]:  # Task 1, 31 corresponds to HAAS machines
-                                # Extract pre-picked machine
-                                m = haas_pick_m[job_id]
+        # Loop over task indices
+        for i in range(max_tasks):
+            # For each job
+            for job_id in job_ids:
+                task_list = task_lists[job_id]
+                if i < len(task_list):
+                    task_id = task_list[i]
+                    self.schedule_task(
+                        job_id,
+                        task_id,
+                        avail_m,
+                        slack_m,
+                        haas_pick_m,
+                        product_m,
+                        P_j,
+                        fixture_to_machine_assignment,
+                    )
 
-                                # Check previous task start and duration
-                                previous_task_start, previous_task_dur = self.find_previous_task(
-                                    P_j, job_id, task_id
-                                )
+    def schedule_task(
+        self,
+        job_id: int,
+        task_id: int,
+        avail_m: Dict[int, Union[int, float]],
+        slack_m: Dict[int, deque],
+        haas_pick_m: Dict[int, int],
+        product_m: Dict[int, str],
+        P_j: Deque,
+        fixture_to_machine_assignment: Dict,
+    ) -> None:
+        """
+        Schedules an individual task for a job, updating machine availability and product assignments.
 
-                                # Determine the start time
-                                start = max(avail_m[m], previous_task_start + previous_task_dur)
+        Args:
+            job_id (int): The job ID.
+            task_id (int): The task ID.
+            avail_m (Dict[int, float]): Machine availability times.
+            slack_m (Dict[int, deque]): Slack times for machines.
+            haas_pick_m (Dict[int, int]): HAAS machine assignments for jobs.
+            product_m (Dict[int, str]): Current product assigned to each machine.
+            P_j (Deque): The production schedule being built.
+            fixture_to_machine_assignment (Dict): Fixture to machine assignments.
 
-                            else:
-                                # For other tasks, pick the earliest available machine
-                                m = self.pick_early_machine(task_id, avail_m, random_roll)
+        The function operates as follows:
+            1. Extracts the part ID and initializes variables for random selection and slack time usage.
+            2. Handles changeover tasks by pre-picking the HAAS machine and scheduling the changeover on a dummy machine if no real changeover is needed.
+            3. For HAAS machining tasks, it determines the start time based on machine availability and previous task timing.
+            4. For other tasks, it picks the earliest available machine and handles changeover duration if needed.
+            5. Updates product assignments for HAAS machines and applies slack logic to determine the start time.
+            6. Adds the task to the production schedule and updates machine availability.
+            7. Counts after-hours starts for HAAS machines and enforces delays for certain machines if needed.
+            8. Updates the product assignment for the machine.
 
-                                # Initialize changeover duration as needed
-                                changeover_duration = 0
+        """
+        part_id, _ = self.J[job_id]
+        random_roll = random.random()
+        slack_time_used = False
+        haas_m = haas_pick_m.get(job_id, 99)
 
-                                # Dynamically define changeover time for Roslers (drag machines)
-                                if m in self.change_over_machines_op2:
-                                    if product_m.get(m) == 0 or product_m.get(m) == part_id:
-                                        changeover_duration = self.drag_machine_setup_time
-                                    else:
-                                        changeover_duration = self.change_over_time_op2
+        if task_id in [-1, 29]:  # Changeover tasks
+            # Pre-pick the HAAS machine
+            compat_task_0 = self.task_to_machines[task_id + 2]  # HAAS comes two tasks later
+            preferred_machines = self.get_preferred_machines(
+                compat_task_0,
+                product_m,
+                job_id,
+                fixture_to_machine_assignment,  # Use the correct parameter
+            )
+            haas_m = (
+                min(preferred_machines, key=lambda x: avail_m.get(x))
+                if random_roll < 0.8
+                else random.choice(preferred_machines)
+            )
+            haas_pick_m[job_id] = haas_m
 
-                                # For partial jobs (some tasks are already completed prior to scheduling),
-                                # we should not consider previous task duration for the first task to be planned
-                                if (
-                                    job_id in self.custom_tasks
-                                    and self.custom_tasks[job_id][0] == task_id
-                                ):
-                                    previous_task_start = 0
-                                    previous_task_dur = 0
-                                else:
-                                    # Find previous task start and duration
-                                    previous_task_start, previous_task_dur = self.find_previous_task(
-                                        P_j, job_id, task_id
-                                    )
+            # Schedule changeover on dummy machine and move on
+            if product_m.get(haas_m) in [0, part_id]:  # A real changeover is not needed
+                task_tuple = (job_id, task_id, 99, 0, 0, 0, part_id)
+                P_j.append(task_tuple)
+                return
 
-                                # Find the corresponding HAAS machines for loading/unloading tasks
-                                if task_id in [-1, 0, 2, 29, 30, 32]:
-                                    # Update the product assignment for the HAAS machine
-                                    product_m[haas_m] = part_id
+        if task_id in [1, 31]:  # HAAS machining tasks
+            m = haas_pick_m[job_id]
+            previous_task_start, previous_task_dur = self.find_previous_task(P_j, job_id, task_id)
+            start = max(avail_m[m], previous_task_start + previous_task_dur)  # No slack logic for HAAS
+        else:
+            # For other tasks, pick the earliest available machine
+            m = self.pick_early_machine(task_id, avail_m, random_roll)
 
-                                    # Take the maximum of previous task or avail_m[haas_m]
-                                    if avail_m[haas_m] > previous_task_start + previous_task_dur:
-                                        previous_task_start = avail_m[haas_m] - previous_task_dur
+            # Initialize changeover duration as needed
+            changeover_duration = 0
+            if m in self.change_over_machines_op2:
+                if product_m.get(m) == 0 or product_m.get(m) == part_id:
+                    changeover_duration = self.drag_machine_setup_time
+                else:
+                    changeover_duration = self.change_over_time_op2
 
-                                # Apply slack logic to determine the start time
-                                start, slack_time_used, m = self.slack_logic(
-                                    m,
-                                    haas_m,
-                                    avail_m,
-                                    slack_m,
-                                    slack_time_used,
-                                    previous_task_start,
-                                    previous_task_dur,
-                                    self.dur[(job_id, task_id)],
-                                    part_id,
-                                    changeover_duration,
-                                )
-
-                            # Add task to schedule
-                            task_tuple = (
-                                job_id,
-                                task_id,
-                                m,
-                                start,
-                                self.dur[(job_id, task_id)],
-                                0,
-                                part_id,
-                            )
-                            P_j.append(task_tuple)
-
-                            # Count after-hours starts for HAAS machines
-                            after_hours_starts = 0
-                            if m in self.change_over_machines_op1:
-                                after_hours_starts = self.count_after_hours_start(P_j, m, start)
-
-                            if m == 0:
-                                avail_m[haas_m] = self.find_avail_m(
-                                    start, job_id, task_id, after_hours_starts
-                                )
-
-                            # Update machine availability if slack time was not used
-                            if not slack_time_used:
-                                avail_m[m] = self.find_avail_m(
-                                    start, job_id, task_id, after_hours_starts
-                                )
-
-                                if m in self.non_slack_machines:
-                                    # In the FPI Inspect case, next task can only start ten minutes later
-                                    for machine in [
-                                        machine for machine in self.non_slack_machines if machine != m
-                                    ]:
-                                        avail_m[machine] = (
-                                            max(
-                                                avail_m[machine],
-                                                avail_m[m] - self.dur[(job_id, task_id)],
-                                            )
-                                            + 10
-                                        )
-
-                            # Update the product assignment for the machine
-                            product_m[m] = part_id
-
+            # Handle previous task timing
+            if job_id in self.custom_tasks and self.custom_tasks[job_id][0] == task_id:
+                previous_task_start = 0
+                previous_task_dur = 0
             else:
-                # Schedule one job at a time
-                job_id = J_temp.pop()
-                part_id, _ = self.J[job_id]
-                task_list = self.custom_tasks.get(job_id, self.part_to_tasks.get(part_id))
-                haas_m = haas_pick_m.get(job_id, 99)
+                previous_task_start, previous_task_dur = self.find_previous_task(P_j, job_id, task_id)
 
-                # Proceed to schedule tasks for this job
-                for task_id in task_list:
-                    random_roll = random.random()
-                    slack_time_used = False
+            # Update product assignment for HAAS machines
+            if task_id in [-1, 0, 2, 29, 30, 32]:
+                product_m[haas_m] = part_id
+                if avail_m[haas_m] > previous_task_start + previous_task_dur:
+                    previous_task_start = avail_m[haas_m] - previous_task_dur
 
-                    # Pre-pick the HAAS machine
-                    if task_id in [-1, 29]:  # -1, 29 are changeover tasks
-                        compat_task_0 = self.task_to_machines[task_id + 2]  # HAAS comes two tasks later
+            # Apply slack logic to determine the start time
+            start, slack_time_used, m = self.slack_logic(
+                m,
+                haas_m,
+                avail_m,
+                slack_m,
+                slack_time_used,
+                previous_task_start,
+                previous_task_dur,
+                self.dur[(job_id, task_id)],
+                part_id,
+                changeover_duration,
+            )
 
-                        # Find preferred machines
-                        preferred_machines = self.get_preferred_machines(
-                            compat_task_0, product_m, job_id, fixture_to_machine_assignment
-                        )
+        # Add task to schedule
+        task_tuple = (job_id, task_id, m, start, self.dur[(job_id, task_id)], 0, part_id)
+        P_j.append(task_tuple)
 
-                        # Select the machine based on availability or randomly
-                        haas_m = (
-                            min(preferred_machines, key=lambda x: avail_m.get(x))
-                            if random_roll < 0.8
-                            else random.choice(preferred_machines)
-                        )
+        # Count after-hours starts for HAAS machines
+        after_hours_starts = 0
+        if m in self.change_over_machines_op1:
+            after_hours_starts = self.count_after_hours_start(P_j, m, start)
 
-                        # Add the HAAS machine to the dictionary
-                        haas_pick_m[job_id] = haas_m
+        # HAAS machine must be turned off while labour on it is performed
+        if m == 0:
+            avail_m[haas_m] = self.find_avail_m(start, job_id, task_id, after_hours_starts)
 
-                        # Schedule changeover on dummy machine and move on
-                        if product_m.get(haas_m) in [0, part_id]:
-                            task_tuple = (job_id, task_id, 99, 0, 0, 0, part_id)
-                            P_j.append(task_tuple)
-                            continue
+        # Update machine availability if slack time was not used
+        if not slack_time_used:
+            avail_m[m] = self.find_avail_m(start, job_id, task_id, after_hours_starts)
+            if m in self.non_slack_machines:
+                # For certain machines, enforce a delay before the next task can start
+                for machine in [machine for machine in self.non_slack_machines if machine != m]:
+                    avail_m[machine] = (
+                        max(avail_m[machine], avail_m[m] - self.dur[(job_id, task_id)]) + 10
+                    )
 
-                    if task_id in [1, 31]:  # Task 1, 31 corresponds to HAAS machines
-                        # Extract pre-picked machine
-                        m = haas_pick_m[job_id]
-
-                        # Check previous task start and duration
-                        previous_task_start, previous_task_dur = self.find_previous_task(
-                            P_j, job_id, task_id
-                        )
-
-                        # Determine the start time
-                        start = max(avail_m[m], previous_task_start + previous_task_dur)
-
-                    else:
-                        # For other tasks, pick the earliest available machine
-                        m = self.pick_early_machine(task_id, avail_m, random_roll)
-
-                        # Initialize changeover duration as needed
-                        changeover_duration = 0
-
-                        # Dynamically define changeover time for Roslers (drag machines)
-                        if m in self.change_over_machines_op2:
-                            if product_m.get(m) == 0 or product_m.get(m) == part_id:
-                                changeover_duration = self.drag_machine_setup_time
-                            else:
-                                changeover_duration = self.change_over_time_op2
-
-                        # For partial jobs (some tasks are already completed prior to scheduling),
-                        # we should not consider previous task duration for the first task to be planned
-                        if job_id in self.custom_tasks and self.custom_tasks[job_id][0] == task_id:
-                            previous_task_start = 0
-                            previous_task_dur = 0
-                        else:
-                            # Find previous task start and duration
-                            previous_task_start, previous_task_dur = self.find_previous_task(
-                                P_j, job_id, task_id
-                            )
-
-                        # Find the corresponding HAAS machines for loading/unloading tasks
-                        if task_id in [-1, 0, 2, 29, 30, 32]:
-                            # Update the product assignment for the HAAS machine
-                            product_m[haas_m] = part_id
-
-                            # Take the maximum of previous task or avail_m[haas_m]
-                            if avail_m[haas_m] > previous_task_start + previous_task_dur:
-                                previous_task_start = avail_m[haas_m] - previous_task_dur
-
-                        # Apply slack logic to determine the start time
-                        start, slack_time_used, m = self.slack_logic(
-                            m,
-                            haas_m,
-                            avail_m,
-                            slack_m,
-                            slack_time_used,
-                            previous_task_start,
-                            previous_task_dur,
-                            self.dur[(job_id, task_id)],
-                            part_id,
-                            changeover_duration,
-                        )
-
-                    # Add task to schedule
-                    task_tuple = (job_id, task_id, m, start, self.dur[(job_id, task_id)], 0, part_id)
-                    P_j.append(task_tuple)
-
-                    # Count after-hours starts for HAAS machines
-                    after_hours_starts = 0
-                    if m in self.change_over_machines_op1:
-                        after_hours_starts = self.count_after_hours_start(P_j, m, start)
-
-                    if m == 0:
-                        avail_m[haas_m] = self.find_avail_m(start, job_id, task_id, after_hours_starts)
-
-                    # Update machine availability if slack time was not used
-                    if not slack_time_used:
-                        avail_m[m] = self.find_avail_m(start, job_id, task_id, after_hours_starts)
-
-                        if m in self.non_slack_machines:
-                            # In the FPI Inspect case, next task can only start ten minutes later
-                            for machine in [
-                                machine for machine in self.non_slack_machines if machine != m
-                            ]:
-                                avail_m[machine] = (
-                                    max(avail_m[machine], avail_m[m] - self.dur[(job_id, task_id)]) + 10
-                                )
-
-                    # Update the product assignment for the machine
-                    product_m[m] = part_id
-
-        return P_j
+        # Update the product assignment for the machine
+        product_m[m] = part_id
 
     def parallel_init_population(
         self, num_inds: int = None, arbor_frequencies: Counter = None, fill_inds: bool = False
@@ -2122,6 +2111,7 @@ class GeneticAlgorithmScheduler:
         best_scores: deque = None,
         display_scores: bool = True,
         on_time_bonus: int = 5000,
+        changeover_penalty: int = 10000,
     ):
         """
         Evaluates the population of schedules by calculating a score for each schedule based on the completion times
@@ -2134,7 +2124,8 @@ class GeneticAlgorithmScheduler:
         Args:
             best_scores (deque, optional): A deque to store the best scores of the population. Defaults to None.
             display_scores (bool, optional): If True, logs the best, median, and worst scores. Defaults to True.
-            on_time_bonus (int, optional): A fixed bonus added to the score for jobs completed on time. Defaults to 10000.
+            on_time_bonus (int, optional): A fixed bonus added to the score for jobs completed on time. Defaults to 5000.
+            changeover_penalty (int, optional): A penalty for every changeover made in the schedule. Defaults to 10000.
 
         Returns:
             None
@@ -2166,6 +2157,8 @@ class GeneticAlgorithmScheduler:
                             and task_id in [8, 20, 46]
                             else 0
                         )
+                        # Subtract points for every changeover that is made in the schedule (to minimize changeovers)
+                        - (changeover_penalty if task_id in [-1, 29] and start_time != 0 else 0)
                     )
                     for (
                         job_id,
@@ -2218,7 +2211,7 @@ class GeneticAlgorithmScheduler:
         P_prime_sorted = deque()
         avail_m = {m: 0 for m in self.M}
         slack_m = {m: deque() for m in self.M}
-        product_m = {m: 0 for m in self.M}
+        product_m = {m: self.HAAS_starting_part_ids.get(m, 0) for m in self.M}
         changeover_finish_time = deque([0])
         haas_m = 99
 
