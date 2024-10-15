@@ -710,7 +710,19 @@ class JobShop(Job, Shop):
                 - "custom_tasks_dict": Remaining tasks for partially completed jobs.
         """
         # Debug statement
-        logger.info(f"Original length of processed orders: {len(croom_processed_orders)}")
+        logger.info(f"Original length of processed orders: {len(croom_processed_orders)}")        
+
+        # Before the timecard data is modified, determine the last job that was processed on each HAAS machine
+        last_job_per_HAAS = timecards[timecards['Work Centre ID'].str.contains('HAAS\d')].filter(['Job ID','Work Centre ID','Act Start Time'], axis=1)
+        last_job_per_HAAS = last_job_per_HAAS.sort_values('Act Start Time').groupby('Work Centre ID').tail(1)       
+        
+        # From the last job that was processed on each HAAS machine, determine what the last part (and hence fixture) was. Then add to HAAS_starting_part_ids
+        job_to_part_ID = croom_processed_orders.groupby('Job ID').first().reset_index()
+        last_job_per_HAAS = last_job_per_HAAS.merge(job_to_part_ID[['Job ID', 'Custom Part ID']], left_on='Job ID', right_on='Job ID', how='inner').sort_values('Work Centre ID')      
+        HAAS_starting_part_ids = {int(row['Work Centre ID'][-1]): row['Custom Part ID'] for _, row in last_job_per_HAAS.iterrows()}        
+        logger.info(f"HAAS starting part IDs from timecard data: {HAAS_starting_part_ids}")
+        for i, machine_name in machine_dict.items():
+            if machine_name.startswith('HAAS') and i not in HAAS_starting_part_ids: logger.info(f"Starting fixture could not be determined for {machine_name}")
 
         # Process the timecards data
         # Remove any rows where the Good Qty is 0 or less and there is an end time, as this was just a test
