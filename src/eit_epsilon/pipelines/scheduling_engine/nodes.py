@@ -1703,34 +1703,61 @@ class GeneticAlgorithmScheduler:
 
         # Main loop to process jobs
         while J_temp:
-            # Decide whether to schedule a group of three jobs or one job
+            # Decide whether to schedule a group of three jobs, two jobs, or one job
             schedule_group = False
+            num_jobs_to_schedule = 1  # Default to scheduling one job
+
             if len(J_temp) >= 3:
                 # Peek at the next three jobs (do not remove them yet)
-                next_three_jobs = J_temp[-3:]
-                part_ids = [self.J[job_id][0] for job_id in next_three_jobs]
+                next_jobs = J_temp[-3:]
+                part_ids = [self.J[job_id][0] for job_id in next_jobs]
                 # Check if all part_ids are the same and contain 'OP1'
                 if all(pid == part_ids[0] for pid in part_ids) and "OP1" in part_ids[0]:
-                    part_id = part_ids[0]
-                    # Determine the required minimum time in day based on 'CTD' or 'CLS' in part_id
-                    if "CTD" in part_id:
-                        min_time_in_day = 70
-                    elif "CLS" in part_id:
-                        min_time_in_day = 220
-                    else:
-                        min_time_in_day = 0  # Default value if neither 'CTD' nor 'CLS' is in part_id
+                    # Determine the required minimum time in day based on HAAS duration
+                    job_id = next_jobs[0]
+                    haas_processing_dur = self.dur.get((job_id, 1), self.dur.get((job_id, 31)))
+
+                    # The minimum time in day to start planning batches depends on HAAS duration
+                    min_time_in_day = max(self.working_minutes_per_day - haas_processing_dur - 75, 0)
                     # Get avail_m[0]
                     avail_m0 = avail_m[0]
+
                     # Compute time_in_day
                     day_start = (avail_m0 // self.total_minutes_per_day) * self.total_minutes_per_day
                     time_in_day = avail_m0 - day_start
+
                     # Check if avail_m[0] is after min_time_in_day and before end of working day
                     if min_time_in_day <= time_in_day < self.working_minutes_per_day:
                         schedule_group = True
+                        num_jobs_to_schedule = 3
+
+            if not schedule_group and len(J_temp) >= 2:
+                # Peek at the next two jobs
+                next_jobs = J_temp[-2:]
+                part_ids = [self.J[job_id][0] for job_id in next_jobs]
+                # Check if both part_ids are the same and contain 'OP1'
+                if part_ids[0] == part_ids[1] and "OP1" in part_ids[0]:
+                    # Determine the required minimum time in day based on HAAS duration
+                    job_id = next_jobs[0]
+                    haas_processing_dur = self.dur.get((job_id, 1), self.dur.get((job_id, 31)))
+
+                    # The minimum time in day to start planning batches depends on HAAS duration
+                    min_time_in_day = max(self.working_minutes_per_day - haas_processing_dur - 90, 0)
+                    # Get avail_m[0]
+                    avail_m0 = avail_m[0]
+
+                    # Compute time_in_day
+                    day_start = (avail_m0 // self.total_minutes_per_day) * self.total_minutes_per_day
+                    time_in_day = avail_m0 - day_start
+
+                    # Check if avail_m[0] is after min_time_in_day and before end of working day
+                    if min_time_in_day <= time_in_day < self.working_minutes_per_day:
+                        schedule_group = True
+                        num_jobs_to_schedule = 2
 
             if schedule_group:
-                # Schedule the group of three jobs together
-                current_jobs = [J_temp.pop() for _ in range(3)]
+                # Schedule the group of two or three jobs together
+                current_jobs = [J_temp.pop() for _ in range(num_jobs_to_schedule)]
                 # For each job, get task list
                 task_lists = {}
                 for job_id in current_jobs:
