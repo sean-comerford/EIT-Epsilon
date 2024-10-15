@@ -118,7 +118,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             ),
             node(
                 func=order_to_id,
-                inputs=["mapping_dict_read", "final_schedule", "croom_processed_orders"],
+                inputs=["mapping_dict_read", "final_schedule"],
                 outputs=["mapping_dict_write", "final_schedule_with_id"],
                 name="order_to_id",
             ),
