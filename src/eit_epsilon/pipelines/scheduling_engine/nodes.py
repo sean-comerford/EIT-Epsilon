@@ -681,7 +681,7 @@ class JobShop(Job, Shop):
         timecard_ctd_mapping: Dict[str, int],
         timecard_op1_mapping: Dict[str, int],
         timecard_op2_mapping: Dict[str, int],
-    ) -> Dict[str, any]:
+    ) -> Union[Dict[str, any], Dict[int, str]]:
         """
         Builds the GA input data.
         Use the timecard data to:
@@ -708,6 +708,8 @@ class JobShop(Job, Shop):
                 - "dur": Duration matrix.
                 - "task_to_machines": Task to machines dictionary.
                 - "custom_tasks_dict": Remaining tasks for partially completed jobs.
+            HAAS_starting_part_ids (Dict[int, str]): A dictionary of part IDs that were already on the HAAS machines.
+            
         """
         # Debug statement
         logger.info(f"Original length of processed orders: {len(croom_processed_orders)}")        
@@ -807,7 +809,7 @@ class JobShop(Job, Shop):
             "custom_tasks_dict": custom_tasks_dict,
         }
 
-        return input_repr_dict
+        return input_repr_dict, HAAS_starting_part_ids
 
     @staticmethod
     def generate_arbor_mapping(
