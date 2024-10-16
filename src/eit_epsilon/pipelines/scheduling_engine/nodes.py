@@ -16,6 +16,7 @@ from collections import defaultdict, Counter
 from concurrent.futures import ProcessPoolExecutor
 from collections import deque
 from pathlib import Path
+import webbrowser
 
 # Instantiate logger
 logger = logging.getLogger(__name__)
@@ -2770,7 +2771,7 @@ def calculate_kpi(schedule: pd.DataFrame) -> pd.DataFrame:
 
 
 def create_chart(
-    schedule: pd.DataFrame, parameters: Dict[str, Union[str, Dict[str, str]]]
+    schedule: pd.DataFrame, parameters: Dict[str, Union[str, Dict[str, str]]], scheduling_options
 ) -> pd.DataFrame:
     """
     Creates a Gantt chart based on the schedule and parameters.
@@ -2782,6 +2783,9 @@ def create_chart(
     Returns:
         pd.DataFrame: The updated schedule data with additional columns for the chart.
     """
+  
+    schedule['IsUrgent'] = schedule.apply(lambda row: True if row['job_id'] in scheduling_options['urgent_orders'] else False, axis=1)    
+    
     if not is_string_dtype(schedule[[parameters["column_mapping"]["Resource"]]]):
         schedule[parameters["column_mapping"]["Resource"]] = schedule[
             parameters["column_mapping"]["Resource"]
@@ -2791,15 +2795,73 @@ def create_chart(
     return schedule
 
 
-def save_chart_to_html(gantt_chart: plotly.graph_objs.Figure) -> None:
+def create_mix_charts(schedule: pd.DataFrame):
+    """ Determine the breakdown of the completed jobs by:
+        - Operation type by day and by week
+        - Part id by week
+
+    Args:
+        schedule (pd.DataFrame): The schedule data.
+
+    Returns:    
+        op_mix_by_date_excel (pandas.ExcelDatase): Completed jobs by date in excel format.
+        op_mix_by_date_chart_json (plotly.graph_objs.Figure): Completed jobs by date bar chart.
+        op_mix_by_week_excel (pandas.ExcelDatase): Completed jobs by week in excel format.
+        op_mix_by_week_chart_json (plotly.graph_objs.Figure): Completed jobs by week bar chart.
+        part_mix_by_week_excel (pandas.ExcelDatase): Completed jobs by part id in excel format.
+        part_mix_by_week_chart_json (plotly.graph_objs.Figure): Completed jobs by part id bar chart.
     """
-    Saves the Gantt chart to an HTML file.
+    # Get only jobs that have been completed
+    schedule = schedule[schedule['task'].isin([7, 20, 44])]
+    
+    schedule["End_time"] = pd.to_datetime(schedule["End_time"])
+    schedule['date']= schedule['End_time'].dt.date
+
+    # Get the date of the start of the week
+    schedule['week_start'] = pd.to_datetime(schedule['End_time'].dt.date) - pd.to_timedelta(schedule['End_time'].dt.weekday, unit='D')
+    schedule['week_start'] = schedule['week_start'].dt.date
+
+    schedule.loc[schedule['Cementless'] == 'CTD', 'operation'] = 'Primary'
+
+    op_mix_by_date = schedule.groupby('date').agg(
+        CLS_Op1=('operation', lambda x: (x == 'OP1').sum()),
+        CLS_Op2=('operation', lambda x: (x == 'OP2').sum()),
+        Primary=('operation', lambda x: (x == 'Primary').sum())
+    ).reset_index()    
+
+    # Get op type by week
+    op_mix_by_week = schedule.groupby('week_start').agg(
+        CLS_Op1=('operation', lambda x: (x == 'OP1').sum()),
+        CLS_Op2=('operation', lambda x: (x == 'OP2').sum()),
+        Primary=('operation', lambda x: (x == 'Primary').sum())
+    ).reset_index()
+    
+    part_mix_by_week = schedule.groupby(['week_start', 'part_id']).size().reset_index(name='Count')
+    part_mix_by_week.sort_values(by=['week_start', 'Count'], ascending=[True, False], inplace=True)
+
+    # Results are output twice as there is one for the excel file, and one for the graph
+    return [op_mix_by_date, op_mix_by_date, op_mix_by_week, op_mix_by_week, part_mix_by_week, part_mix_by_week]
+
+
+def save_charts_to_html(gantt_chart: plotly.graph_objs.Figure, op_mix_by_date_chart: plotly.graph_objs.Figure,
+                        op_mix_by_week_chart: plotly.graph_objs.Figure, part_mix_by_week_chart: plotly.graph_objs.Figure) -> None:
+    """
+    Saves the Gantt chart and mix charts to HTML files.
 
     Args:
         gantt_chart (plotly.graph_objs.Figure): The Gantt chart to be saved.
+        op_mix_by_date_chart (plotly.graph_objs.Figure): Bar chart of completed jobs by operation, by day.
+        op_mix_by_week_chart (plotly.graph_objs.Figure): Bar chart of completed jobs by operation, by week.
+        part_mix_by_week_chart (plotly.graph_objs.Figure): Bar chart of completed jobs by custom part ID, by week.
     """
     filepath = Path(os.getcwd()) / "data/08_reporting/gantt_chart.html"
-    plotly.offline.plot(gantt_chart, filename=str(filepath))
+    plotly.offline.plot(gantt_chart, filename=str(filepath))   
+    
+    with open(Path(os.getcwd()) / "data/08_reporting/mix_charts.html", 'w', encoding="utf-8") as f:
+        f.write(op_mix_by_date_chart.to_html())
+        f.write(op_mix_by_week_chart.to_html())
+        f.write(part_mix_by_week_chart.to_html())
+    webbrowser.open(Path(os.getcwd()) / "data/08_reporting/mix_charts.html", new=2)
 
 
 def order_to_id(

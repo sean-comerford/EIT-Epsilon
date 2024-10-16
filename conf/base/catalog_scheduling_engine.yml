@@ -285,6 +285,30 @@ machine_schedules:
   save_args:
     engine: openpyxl
 
+op_mix_by_date_excel:
+  type: pandas.ExcelDataset
+  filepath: data/08_reporting/operation_mix_by_date.xlsx
+  load_args:
+    engine: openpyxl
+  save_args:
+    engine: openpyxl
+
+op_mix_by_week_excel:
+  type: pandas.ExcelDataset
+  filepath: data/08_reporting/operation_mix_by_week.xlsx
+  load_args:
+    engine: openpyxl
+  save_args:
+    engine: openpyxl
+
+part_mix_by_week_excel:
+  type: pandas.ExcelDataset
+  filepath: data/08_reporting/part_mix_by_week.xlsx
+  load_args:
+    engine: openpyxl
+  save_args:
+    engine: openpyxl
+
 gantt_chart_json:
   type: plotly.PlotlyDataset
   filepath: data/08_reporting/gantt_chart.json
@@ -295,6 +319,7 @@ gantt_chart_json:
       x_end: End_time
       y: Machine
       color: Custom Part ID
+      pattern_shape: IsUrgent
       title: Production Schedule
       hover_name: Order
       hover_data: ['Prod Due Date', 'task', 'Custom Part ID', 'Production Qty']
@@ -338,3 +363,70 @@ gantt_chart_json:
         y: 0.1
         xanchor: center
         x: 1.1
+
+op_mix_by_date_chart_json:
+  type: plotly.PlotlyDataset
+  filepath: data/08_reporting/op_mix_by_date_chart.json
+  plotly_args:
+    type: bar
+    fig:
+      x: date
+      y: ['CLS_Op1', 'CLS_Op2', 'Primary']
+      title: Completed Jobs per Day by Operation Type
+      barmode: 'stack'
+      text_auto: True
+    layout:
+      xaxis_title: Date
+      yaxis_title: Number of Completed Jobs
+      xaxis_type: category
+      uniformtext_minsize: 10
+      uniformtext_mode: 'hide'
+      legend:
+        title: Type
+
+op_mix_by_week_chart_json:
+  type: plotly.PlotlyDataset
+  filepath: data/08_reporting/op_mix_by_week_chart.json
+  plotly_args:
+    type: bar
+    fig:
+      x: week_start
+      y: ['CLS_Op1', 'CLS_Op2', 'Primary']
+      title: Completed Jobs per Week by Operation Type
+      barmode: 'stack'
+      text_auto: True
+    layout:
+      xaxis_title: Week Starting
+      yaxis_title: Number of Completed Jobs
+      xaxis_type: category
+      uniformtext_minsize: 10
+      uniformtext_mode: 'hide'
+      legend:
+        title: Type
+
+part_mix_by_week_chart_json:
+  type: plotly.PlotlyDataset
+  filepath: data/08_reporting/part_mix_chart.json
+  plotly_args:
+    type: bar
+    fig:
+      x: week_start
+      y: 'Count'
+      color: 'part_id'
+      title: Completed Jobs per Week by Part Type
+      barmode: 'stack'
+      text_auto: True
+    layout:
+      xaxis_title: Week Starting
+      yaxis_title: Number of Completed Jobs
+      xaxis_type: category
+      uniformtext_minsize: 10
+      uniformtext_mode: 'hide'
+      legend:
+        title: Part Type
+    traces:
+      text_angle: 0 
+
+
+
+    
