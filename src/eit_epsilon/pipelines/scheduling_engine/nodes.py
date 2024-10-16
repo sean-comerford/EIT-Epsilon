@@ -896,7 +896,9 @@ class GeneticAlgorithmScheduler:
         self.max_iterations = None
         self.task_time_buffer = None
 
-    def adjust_start_time(self, start: float, task: int = None) -> float:
+    def adjust_start_time(
+        self, start: float, duration: Union[float, int] = 0, task: int = None
+    ) -> float:
         """
         Adjusts the start time to ensure it falls within working hours. If the start time is outside the
         working hours, it is pushed to the start of the next working day. Additionally, if the start time
@@ -905,6 +907,7 @@ class GeneticAlgorithmScheduler:
 
         Args:
             start (float): The initial start time in minutes from the reference start date.
+            duration (Union[float, int]): The duration of the task in minutes.
             task (int): The task number as in parameters task_to_machines dictionary.
 
         Returns:
@@ -924,6 +927,8 @@ class GeneticAlgorithmScheduler:
                 start = current_day_start + self.total_minutes_per_day + 60
             else:
                 start = current_day_start + self.total_minutes_per_day
+        elif start + duration > current_day_start + self.working_minutes_per_day + self.task_time_buffer:
+            start = current_day_start + self.total_minutes_per_day
 
         # Determine the adjusted start date and time
         actual_start_datetime: datetime = starting_date + timedelta(minutes=start)
@@ -986,19 +991,20 @@ class GeneticAlgorithmScheduler:
                 if weekday == 6 or (
                     weekday == 5 and time_in_day >= datetime.strptime("19:00", "%H:%M").time()
                 ):
-                    return int(self.adjust_start_time(next_avail_time))
+                    return int(self.adjust_start_time(next_avail_time, duration))
                 else:
                     return next_avail_time
             else:
-                if next_avail_time >= self.adjust_start_time(next_avail_time, task_id):
+                if next_avail_time >= self.adjust_start_time(next_avail_time, duration, task_id):
                     return next_avail_time
                 else:
                     return (
-                        self.adjust_start_time(next_avail_time, task_id) // self.total_minutes_per_day
+                        self.adjust_start_time(next_avail_time, duration, task_id)
+                        // self.total_minutes_per_day
                     ) * self.total_minutes_per_day
         else:
             # For other tasks, ensure they are scheduled during working hours
-            next_avail_time = self.adjust_start_time(next_avail_time, task_id)
+            next_avail_time = self.adjust_start_time(next_avail_time, duration, task_id)
 
             # Determine if next_avail_time needs to be adjusted further for working hours
             day_offset = (next_avail_time // self.total_minutes_per_day) * self.total_minutes_per_day
@@ -1468,7 +1474,7 @@ class GeneticAlgorithmScheduler:
         if previous_task_finish >= avail_m[m]:
             # Start time is the completion of the previous task of the job in question
             start = self.adjust_start_time(
-                previous_task_finish + changeover_duration + self.task_time_buffer
+                previous_task_finish + changeover_duration + self.task_time_buffer, current_task_dur
             )
 
             # Difference between the moment the machine becomes available and the new tasks starts is slack
@@ -1601,7 +1607,9 @@ class GeneticAlgorithmScheduler:
 
             # If slack time is not used, start when the machine becomes available
             if not slack_time_used:
-                start = self.adjust_start_time(max(avail_m[m], haas_avail) + changeover_duration)
+                start = self.adjust_start_time(
+                    max(avail_m[m], haas_avail) + changeover_duration, current_task_dur
+                )
 
                 # Check if nutshell warmup time is applicable
                 start = self.nutshell_warmup(m, start)
@@ -3062,16 +3070,16 @@ def create_mix_charts(schedule: pd.DataFrame):
         part_mix_by_week_chart_json (plotly.graph_objs.Figure): Completed jobs by part id bar chart.
     """
     # Get only jobs that have been completed
-    schedule = schedule[schedule["task"].isin([7, 20, 44])]
+    schedule = schedule[schedule["task"].isin([7, 20, 44])].copy()
 
     schedule.loc[:, "End_time"] = pd.to_datetime(schedule["End_time"])
     schedule.loc[:, "date"] = schedule["End_time"].dt.date
 
     # Get the date of the start of the week
-    schedule["week_start"] = pd.to_datetime(schedule["End_time"].dt.date) - pd.to_timedelta(
+    schedule.loc[:, "week_start"] = pd.to_datetime(schedule["End_time"].dt.date) - pd.to_timedelta(
         schedule["End_time"].dt.weekday, unit="D"
     )
-    schedule["week_start"] = schedule["week_start"].dt.date
+    schedule.loc[:, "week_start"] = schedule["week_start"].dt.date
 
     schedule.loc[schedule["Cementless"] == "CTD", "operation"] = "Primary"
 
