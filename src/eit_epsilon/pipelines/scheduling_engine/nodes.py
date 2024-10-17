@@ -1,7 +1,7 @@
 import os
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time as datetime_time
 import math
 import time
 import re
@@ -221,7 +221,8 @@ class Job:
 
     @staticmethod
     def get_remaining_tasks(
-        work_process: pd.DataFrame,
+        timecard_data_single_job: pd.DataFrame,
+        start_date,
         part_id: str,
         timecard_ctd_mapping: Dict[str, int],
         timecard_op1_mapping: Dict[str, int],
@@ -229,6 +230,7 @@ class Job:
     ) -> Optional[List[int]]:
         """
         Determines the remaining tasks for a given part based on the work process and part ID.
+        Note: It is assumed that the input timecard data has been sorted by operation, so the most recent task is last.
 
         Args:
             work_process (pd.DataFrame): The DataFrame containing the work process steps.
@@ -240,12 +242,21 @@ class Job:
         Returns:
             Optional[List[int]]: A list of remaining task IDs, or None if the part is not recognized or if the last task is 'INSPE_RECIE'.
         """
+        
+        if timecard_data_single_job['Job ID'].iloc[-1] in [4428901, 4434502]:
+            print(f"Got job id {timecard_data_single_job['Job ID'].iloc[-1]}")
+        
+        work_process = timecard_data_single_job["Combined_ID"]        
+        
         # Remove duplicate entries in the work process
         work_process = work_process.drop_duplicates()
 
         # Get the last and previous tasks in the work process
         last = work_process.iloc[-1]
-        prev = work_process.iloc[-2] if len(work_process) > 1 else None
+        prev = work_process.iloc[-2] if len(work_process) > 1 else None        
+        
+        start_date = datetime.fromisoformat(start_date)
+        task_start = timecard_data_single_job['Act Start Time'].iloc[-1]
 
         def get_mapping(mapping: Dict[str, int], last_task: str, prev_task: Optional[str]) -> int:
             """
@@ -270,11 +281,25 @@ class Job:
 
         # Determine the end task ID and start task ID based on the part ID
         if "CTD" in part_id:
-            end = 44
+            end = 46
             start = get_mapping(timecard_ctd_mapping, last, prev)
+            
+            if all([start == 33, \
+                    task_start.time() > datetime_time(14, 30), \
+                    task_start.date() == (start_date.date() - timedelta(days=1))]):
+                start = 32
+                logger.info(f"Job {timecard_data_single_job['Job ID'].iloc[0]} requires unloading from HAAS.")
+            
         elif "OP1" in part_id:
-            end = 7
+            end = 8
             start = get_mapping(timecard_op1_mapping, last, prev)
+            
+            if all([start == 3, \
+                    task_start.time() > datetime_time(14, 30), \
+                    task_start.date() == (start_date.date() - timedelta(days=1))]):
+                #start = 2
+                logger.info(f"Job {timecard_data_single_job['Job ID'].iloc[0]} requires unloading from HAAS.")           
+            
         elif "OP2" in part_id:
             end = 20
             start = get_mapping(timecard_op2_mapping, last, prev)
@@ -753,7 +778,8 @@ class JobShop(Job, Shop):
         # Apply the function to determine remaining tasks and store the results in a separate Series
         remaining_tasks = remaining_jobs.apply(
             lambda row: self.get_remaining_tasks(
-                timecards[timecards["Job ID"] == row["Job ID"]]["Combined_ID"],
+                timecards[timecards["Job ID"] == row["Job ID"]],
+                scheduling_options['start_date'],
                 row["Custom Part ID"],
                 timecard_ctd_mapping,
                 timecard_op1_mapping,
