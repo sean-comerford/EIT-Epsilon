@@ -96,6 +96,10 @@ kpi_results:
     engine: openpyxl
     sheet_name: KPIs
 
+HAAS_starting_part_ids:
+  type: pickle.PickleDataset
+  filepath: data/05_model_input/HAAS_starting_part_ids.pkl
+
 cr_cycle_times:
   type: pandas.ParquetDataset
   filepath: data/03_primary/cr_cycle_times.pq

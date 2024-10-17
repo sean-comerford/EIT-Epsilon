@@ -44,6 +44,7 @@ def create_pipeline(**kwargs) -> Pipeline:
                     "params:timecard_ctd_mapping",
                     "params:timecard_op1_mapping",
                     "params:timecard_op2_mapping",
+                    "params:manual_HAAS_starting_part_ids",
                 ],
                 outputs=["input_repr_dict", "HAAS_starting_part_ids"],
                 name="build_ga_representation",
