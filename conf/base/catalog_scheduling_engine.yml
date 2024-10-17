@@ -29,7 +29,7 @@ timecards: # To determine which jobs are finished or partly finished
   load_args:
     engine: openpyxl
     sheet_name: Sheet1
-    usecols: ['Job ID', 'Operation', 'Work Centre ID', 'Process ID', 'Good Qty', 'Act End Time']
+    usecols: ['Job ID', 'Operation', 'Work Centre ID', 'Process ID', 'Good Qty', 'Act Start Time', 'Act End Time']
 
 
 order_forecast:
@@ -95,6 +95,10 @@ kpi_results:
   load_args:
     engine: openpyxl
     sheet_name: KPIs
+
+HAAS_starting_part_ids:
+  type: pickle.PickleDataset
+  filepath: data/05_model_input/HAAS_starting_part_ids.pkl
 
 cr_cycle_times:
   type: pandas.ParquetDataset
