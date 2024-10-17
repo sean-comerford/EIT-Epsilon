@@ -1,12 +1,15 @@
 task_to_machines: {
   # Cementless OP1
+  -1: [0],  # Changeover --> either 180 minutes or 0 minutes
+  0: [0],  # Load/Unload HAAS
   1: [1, 2, 3, 4, 5, 6],  # HAAS
-  2: [7, 8],  # Post-HAAS Inspection
-  3: [9],  # First Wash
-  4: [11, 12, 13, 14, 15, 16],  # Manual Prep & Touch-up
-  5: [11, 12, 13, 14, 15, 16],  # Optional touch-up inspection
-  6: [23],  # Final Wash
-  7: [25, 26],  # Final inspection
+  2: [0],  # Load/Unload HAAS
+  3: [7, 8],  # Post-HAAS Inspection
+  4: [9],  # First Wash
+  5: [11, 12, 13, 14, 15, 16],  # Manual Prep & Touch-up
+  6: [11, 12, 13, 14, 15, 16],  # Optional touch-up inspection
+  7: [23],  # Final Wash
+  8: [25, 26],  # Final inspection
 
   # Cementless OP2
   10: [27],  # Ceramic drag
@@ -22,21 +25,24 @@ task_to_machines: {
   20: [25, 26],  # Final inspection
 
   # Cemented (All)
-  30: [4, 5, 6],  # HAAS (only cemented)
-  31: [7, 8],  # Post-HAAS Inspection
-  32: [9],  # First Wash
-  33: [27],  # Ceramic drag
-  34: [29],  # Wash 2
-  35: [11, 12, 13, 14, 15, 16],  # Plastic prep (Blast included)
-  36: [33, 34, 35],  # Post-Plastic Inspection
-  37: [31],  # Plastic drag
-  38: [29],  # Wash 2
-  39: [33, 34, 35],  # Post-Plastic Inspection
-  40: [11, 12, 13, 14, 15, 16],  # Manual Prep & Touch-up
-  41: [11, 12, 13, 14, 15, 16],  # Optional touch-up inspection
-  42: [51],  # Nutshell drag
-  43: [53, 54],  # Polishing
-  44: [25, 26],  # Final inspection
+  29: [0],  # Changeover --> either 180 minutes or 0 minutes
+  30: [0],  # Load/Unload HAAS
+  31: [4, 5, 6],  # HAAS (only cemented)
+  32: [0],  # Load/Unload HAAS
+  33: [7, 8],  # Post-HAAS Inspection
+  34: [9],  # First Wash
+  35: [27],  # Ceramic drag
+  36: [29],  # Wash 2
+  37: [11, 12, 13, 14, 15, 16],  # Plastic prep (Blast included)
+  38: [33, 34, 35],  # Post-Plastic Inspection
+  39: [31],  # Plastic drag
+  40: [29],  # Wash 2
+  41: [33, 34, 35],  # Post-Plastic Inspection
+  42: [11, 12, 13, 14, 15, 16],  # Manual Prep & Touch-up
+  43: [11, 12, 13, 14, 15, 16],  # Optional touch-up inspection
+  44: [51],  # Nutshell drag
+  45: [53, 54],  # Polishing
+  46: [25, 26],  # Final inspection
 }
 
 # Define OP2 size categories for CR
@@ -66,6 +72,7 @@ column_mapping_reformat: {
 }
 
 machine_dict: {
+  0: 'Load or Unload HAAS',
   1: 'HAAS-1',
   2: 'HAAS-2',
   3: 'HAAS-3',
@@ -119,7 +126,8 @@ machine_dict: {
   51: 'Nutshell Drag',
   52: 'Nutshell Drag (Ghost)',
   53: 'Polishing-1',
-  54: 'Polishing-2'
+  54: 'Polishing-2',
+  99: 'Dummy Changeover'
 }
 
 ghost_machine_dict: {
@@ -203,43 +211,43 @@ arbor_quantities: {
 
 
 timecard_ctd_mapping: {
-    'HAAS1_HAAS': 31,
-    'HAAS2_HAAS': 31,
-    'HAAS3_HAAS': 31,
-    'HAAS4_HAAS': 31,
-    'HAAS5_HAAS': 31,
-    'HAAS6_HAAS': 31,
-    'INSPE_GRINS': 32,
-    'MECWS_CLEN,INSPE_GRINS': 33,
-    'MECWM_CLEN,INSPE_GRINS': 33,
-    'ROS1_ROS1': 34,
-    'MECWS_CLEN,ROS1_ROS1': 35,
-    'MECWM_CLEN,ROS1_ROS1': 35,
-    'BBLAS_BLAST': 35,
-    'MANP_PREP': 37,
-    'ROS2_ROS2': 38,
-    'MECWS_CLEN,ROS2_ROS2': 39,
-    'MECWM_CLEN,ROS2_ROS2': 39,
-    'INSPE_PLAIN': 40,
-    'MANP_OPT': 41,
-    'ROS3_ROS3': 43,
-    'RATES_SURFA': 43,
-    'MANP_POL': 44
+    'HAAS1_HAAS': 33,
+    'HAAS2_HAAS': 33,
+    'HAAS3_HAAS': 33,
+    'HAAS4_HAAS': 33,
+    'HAAS5_HAAS': 33,
+    'HAAS6_HAAS': 33,
+    'INSPE_GRINS': 34,
+    'MECWS_CLEN,INSPE_GRINS': 35,
+    'MECWM_CLEN,INSPE_GRINS': 35,
+    'ROS1_ROS1': 36,
+    'MECWS_CLEN,ROS1_ROS1': 37,
+    'MECWM_CLEN,ROS1_ROS1': 37,
+    'BBLAS_BLAST': 37,
+    'MANP_PREP': 39,
+    'ROS2_ROS2': 40,
+    'MECWS_CLEN,ROS2_ROS2': 41,
+    'MECWM_CLEN,ROS2_ROS2': 41,
+    'INSPE_PLAIN': 42,
+    'MANP_OPT': 43,
+    'ROS3_ROS3': 45,
+    'RATES_SURFA': 45,
+    'MANP_POL': 46
 }
 
 timecard_op1_mapping: {
-    'HAAS1_HAAS': 2,
-    'HAAS2_HAAS': 2,
-    'HAAS3_HAAS': 2,
-    'HAAS4_HAAS': 2,
-    'HAAS5_HAAS': 2,
-    'HAAS6_HAAS': 2,
-    'INSPE_GRINS': 3,
-    'MECWS_CLEN,INSPE_GRINS': 4,
-    'MECWM_CLEN,INSPE_GRINS': 4,
-    'MANP_POLIS': 5,
-    'MECWS_CLEN,INSPE_P': 7,
-    'MECWM_CLEN,INSPE_P': 7
+    'HAAS1_HAAS': 3,
+    'HAAS2_HAAS': 3,
+    'HAAS3_HAAS': 3,
+    'HAAS4_HAAS': 3,
+    'HAAS5_HAAS': 3,
+    'HAAS6_HAAS': 3,
+    'INSPE_GRINS': 4,
+    'MECWS_CLEN,INSPE_GRINS': 5,
+    'MECWM_CLEN,INSPE_GRINS': 5,
+    'MANP_POLIS': 6,
+    'MECWS_CLEN,INSPE_P': 8,
+    'MECWM_CLEN,INSPE_P': 8
 }
 
 timecard_op2_mapping: {
@@ -259,7 +267,7 @@ timecard_op2_mapping: {
 }
 
 scheduling_options: {
-  start_date: "2024-07-01T06:30",  # Starting date used to calculate difference with due datet
+  start_date: "2024-07-01T06:10",  # Starting date used to calculate difference with due datet
   change_over_time_op1: 180,  # Minutes required to do a changeover on the HAAS machines
   change_over_time_op2: 15,  # Minutes required to do a changeover on the non-Drag OP 2 machines
   change_over_machines_op1: [1, 2, 3, 4, 5, 6], # Machines that require a changeover for OP1 (key in machine dict above)
@@ -271,7 +279,7 @@ scheduling_options: {
   n: 100,  # Number of random schedules to generate
   n_e: 0.06,  # Proportion of best schedules to automatically pass on to the next generation (e.g.: 10%)
   n_c: 0.15,  # Proportion of children to generate in the offspring function
-  working_minutes_per_day: 480,  # Number of working minutes per day (8 hours * 60 minutes)
+  working_minutes_per_day: 500,  # Number of working minutes per day (8 hours * 60 minutes)
   total_minutes_per_day: 1440,  # Number of minutes in exactly 24 hours
   drag_machine_setup_time: 15,  # Time it takes to set up a new batch on the drag machines
   max_iterations: 10,  # Maximum number of iterations/generations to run the algorithm
@@ -301,39 +309,45 @@ visualization_options: {
 }
 
 task_to_names: {
-    1: 'HAAS',
-    2: 'Post-HAAS Inspection',
-    3: 'First Wash',
-    4: 'Manual Prep & Touch-up',
-    5: 'Optional touch-up inspection',
-    6: 'Final Wash',
-    7: 'Final inspection',
-    10: 'Ceramic drag',
-    11: 'Wash 2',
-    12: 'Plastic drag',
-    13: 'Wash 2',
-    14: 'Post-Plastic Inspection',
-    15: 'Manual Prep & Touch-up',
-    16: 'FPI-Inspect',
-    17: 'Nutshell drag',
-    18: 'Polishing',
-    19: 'Final Wash',
-    20: 'Final inspection',
-    30: 'HAAS (only cemented)',
-    31: 'Post-HAAS Inspection',
-    32: 'First Wash',
-    33: 'Ceramic drag',
-    34: 'Wash 2',
-    35: 'Plastic prep (Blast included)',
-    36: 'Post-Plastic Inspection',
-    37: 'Plastic drag',
-    38: 'Wash 2',
-    39: 'Post-Plastic Inspection',
-    40: 'Manual Prep & Touch-up',
-    41: 'Optional touch-up inspection',
-    42: 'Nutshell drag',
-    43: 'Polishing',
-    44: 'Final inspection'
+  -1: 'Changeover',
+  0: 'Load HAAS',
+  1: 'HAAS',
+  2: 'Unload HAAS',
+  3: 'Post-HAAS Inspection',
+  4: 'First Wash',
+  5: 'Manual Prep & Touch-up',
+  6: 'Optional touch-up inspection',
+  7: 'Final Wash',
+  8: 'Final inspection',
+  10: 'Ceramic drag',
+  11: 'Wash 2',
+  12: 'Plastic drag',
+  13: 'Wash 2',
+  14: 'Post-Plastic Inspection',
+  15: 'Manual Prep & Touch-up',
+  16: 'FPI-Inspect',
+  17: 'Nutshell drag',
+  18: 'Polishing',
+  19: 'Final Wash',
+  20: 'Final inspection',
+  29: 'Changeover',
+  30: 'Load HAAS',
+  31: 'HAAS (only cemented)',
+  32: 'Unload HAAS',
+  33: 'Post-HAAS Inspection',
+  34: 'First Wash',
+  35: 'Ceramic drag',
+  36: 'Wash 2',
+  37: 'Plastic prep (Blast included)',
+  38: 'Post-Plastic Inspection',
+  39: 'Plastic drag',
+  40: 'Wash 2',
+  41: 'Post-Plastic Inspection',
+  42: 'Manual Prep & Touch-up',
+  43: 'Optional touch-up inspection',
+  44: 'Nutshell drag',
+  45: 'Polishing',
+  46: 'Final inspection'
 }
 
 preprocess_options: {
