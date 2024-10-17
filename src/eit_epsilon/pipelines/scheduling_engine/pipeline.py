@@ -92,6 +92,7 @@ def create_pipeline(**kwargs) -> Pipeline:
                     "best_schedule",
                     "params:column_mapping_reformat",
                     "params:machine_dict",
+                    "params:task_to_names",
                 ],
                 outputs="croom_reformatted_orders",
                 name="reformat_output",

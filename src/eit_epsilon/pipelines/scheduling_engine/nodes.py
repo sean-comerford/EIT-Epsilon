@@ -268,12 +268,13 @@ class Job:
         if last == "INSPE_RECIE":
             return None
 
+        # TODO: Find a way to automate this
         # Determine the end task ID and start task ID based on the part ID
         if "CTD" in part_id:
-            end = 44
+            end = 46
             start = get_mapping(timecard_ctd_mapping, last, prev)
         elif "OP1" in part_id:
-            end = 7
+            end = 8
             start = get_mapping(timecard_op1_mapping, last, prev)
         elif "OP2" in part_id:
             end = 20
@@ -1840,7 +1841,9 @@ class GeneticAlgorithmScheduler:
         haas_processing_dur = self.dur.get((job_id, 1), self.dur.get((job_id, 31), 0))
 
         # The minimum time in day to start planning batches depends on HAAS duration
-        min_time_in_day = max(self.working_minutes_per_day - haas_processing_dur - 75, 0)
+        min_time_in_day = max(
+            self.working_minutes_per_day - haas_processing_dur - random.choice([70, 80, 90]), 0
+        )
 
         # Compute time within the current day
         day_start = (avail_m0 // self.total_minutes_per_day) * self.total_minutes_per_day
@@ -2156,7 +2159,7 @@ class GeneticAlgorithmScheduler:
                             (self.J[job_id][1] - (start_time + job_task_dur)),
                             1.02,
                         )
-                        * (60 if task_id in [1, 31] else 1)
+                        * (20 if task_id in [1, 31] else 1)
                         * (self.urgent_multiplier if job_id in self.urgent_orders else 1)
                         + (
                             # Fixed size bonus for completing the job on time (only applies if the final task is
@@ -2179,7 +2182,7 @@ class GeneticAlgorithmScheduler:
                         _,
                     ) in schedule
                     # Only consider the completion time of the final task and HAAS machines
-                    if task_id in [8, 20, 46] or task_id in [1, 31]
+                    if task_id in [8, 20, 46] or task_id in [1, 31] or task_id in [-1, 29]
                 )
             )
             # Evaluate each schedule in the population
@@ -2457,7 +2460,7 @@ class GeneticAlgorithmScheduler:
 
                         if all_durations_match:
                             # Extract custom part ID's
-                            # Should we remove the part ID from the schedule?
+                            # Should we remove the part ID requirement?
                             custom_part_id_1 = task_details_1[0][-1]
                             custom_part_id_2 = task_details_2[0][-1]
 
@@ -2522,8 +2525,17 @@ class GeneticAlgorithmScheduler:
         logger.info(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Iteration {iteration + 1}")
         self.evaluate_population(best_scores=best_scores)
         self.mutate()
+
         if len(self.P) < self.n:
-            self.P += random.sample(gene_pool, self.n - len(self.P))
+            # First ten iterations: Systematically sample the whole gene pool
+            if iteration < 10:
+                start_index = self.n * iteration
+                end_index = start_index + (self.n - len(self.P))
+                self.P += itertools.islice(gene_pool, start_index, end_index)
+            else:
+                # Start random sampling after everything in the gene pool has been sampled at least once
+                self.P += random.sample(gene_pool, self.n - len(self.P))
+
         iteration += 1
         return iteration
 
@@ -2607,8 +2619,8 @@ class GeneticAlgorithmScheduler:
             num_inds=self.n * 10, arbor_frequencies=arbor_frequencies
         )
 
-        # Randomly sample the initial population from the improved gene pool
-        self.P = random.sample(gene_pool, self.n)
+        # Take the first self.n occurrences from the gene pool
+        self.P = deque(itertools.islice(gene_pool, self.n))
 
         # Create double ended queue to append the results to
         best_scores = deque()
@@ -2674,8 +2686,8 @@ def reorder_jobs_by_starting_time(croom_processed_orders: pd.DataFrame) -> pd.Da
     grouped = croom_processed_orders.groupby(["part_id", "Prod Due Date"])
 
     def reorder_group(group: pd.DataFrame) -> pd.DataFrame:
-        # Filter tasks to include only HAAS & Ceramic Drag
-        filtered_tasks = group[group["task"].isin([1, 20, 31])]
+        # Filter tasks to only include final inspection for all
+        filtered_tasks = group[group["task"].isin([8, 20, 46])]
         # Find the minimum task in the filtered list
         min_task = filtered_tasks["task"].min()
 
@@ -2702,6 +2714,21 @@ def reorder_jobs_by_starting_time(croom_processed_orders: pd.DataFrame) -> pd.Da
     # Apply the reorder function to each group and reset the index to flatten the DataFrame
     reordered_df = grouped.apply(reorder_group).reset_index(drop=True)
 
+    # Check that every unique 'Order' number has the same 'ID'
+    order_id_consistency = reordered_df.groupby("Order")["ID"].nunique()
+    inconsistent_orders = order_id_consistency[order_id_consistency > 1].index.tolist()
+    if inconsistent_orders:
+        logger.warning(
+            f"Inconsistent 'short ID' values found for the following 'Job' numbers: {inconsistent_orders}"
+        )
+
+    # Check that every row has a value for 'ID'
+    if reordered_df["ID"].isnull().any():
+        logger.warning(
+            f"Some 'Job' numbers don't have a short ID: "
+            f"{reordered_df[reordered_df['ID'].isnull()]['Order'].unique()}"
+        )
+
     return reordered_df
 
 
@@ -2710,6 +2737,7 @@ def reformat_output(
     best_schedule: Dict[str, any],
     column_mapping_reformat: dict,
     machine_dict: dict,
+    task_to_names: dict,
 ) -> pd.DataFrame:
     """
     Reformats the output of the genetic algorithm by converting the best schedule into a dataframe,
@@ -2722,6 +2750,7 @@ def reformat_output(
         best_schedule (Dict[str, any]): The best schedule generated by the genetic algorithm.
         column_mapping_reformat (dict): The mapping for renaming columns in the output dataframe.
         machine_dict (dict): The dictionary mapping machine numbers to machine names.
+        task_to_names (dict): The dictionary mapping task numbers to task names.
 
     Returns:
         pd.DataFrame: The reformatted output dataframe.
@@ -2763,6 +2792,9 @@ def reformat_output(
 
     # Apply machine name mapping
     croom_reordered["Machine"] = croom_reordered["Machine"].map(machine_dict)
+
+    # Create a new column with task names
+    croom_reordered.loc[:, "Task Name"] = croom_reordered["task"].map(task_to_names)
 
     return croom_reordered
 
@@ -3169,8 +3201,8 @@ def order_to_id(
     # Update the mapping dictionary to only include valid orders
     updated_mapping_dict = {k: v for k, v in mapping_dict.items() if k in valid_orders}
 
-    # Find unused numbers between 1 and 300
-    unused_numbers = set(np.arange(1, 301)) - set(updated_mapping_dict.values())
+    # Find unused numbers between 1 and 500
+    unused_numbers = set(np.arange(1, 501)) - set(updated_mapping_dict.values())
 
     # Assign new IDs to new orders
     for order in schedule["Order"]:
