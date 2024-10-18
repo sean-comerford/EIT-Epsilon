@@ -257,12 +257,12 @@ class Job:
                 prev_task (Optional[str]): The previous task, if any.
 
             Returns:
-                int: The mapped value, or -1 if not found.
+                int: The mapped value, or -99 if not found.
             """
             key = last_task
             if prev_task is not None:
                 key = f"{last_task},{prev_task}"
-            return mapping.get(key, mapping.get(last_task, -1))
+            return mapping.get(key, mapping.get(last_task, -99))
 
         # Return None if none of the physical tasks have been completed yet (item is only received)
         if last == "INSPE_RECIE":
@@ -890,6 +890,358 @@ class JobShop(Job, Shop):
                     arbor_mapping[part_id] = arbor_number
 
         return arbor_mapping
+
+
+class OptimizeForecastOrders:
+    """
+    The OptimizeForecastOrders class contains methods for preprocessing forecast orders, calculating business days,
+    fetching production actuals, calculating normalized time delay (NTD), adjusting due dates based on NTD, and running
+    due date optimization for a manufacturing scheduling system.
+    """
+
+    def __init__(self):
+        self.start_date: Optional[datetime] = None
+        self.start_of_cycle_date: Optional[datetime] = None
+        self.end_of_cycle_date: Optional[datetime] = None
+        self.business_days_passed: Optional[int] = None
+        self.business_days_left: Optional[int] = None
+        self.total_business_days: Optional[int] = None
+        self.forecast_orders: Optional[pd.DataFrame] = None
+
+    @staticmethod
+    def convert_columns_to_numeric(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Convert columns of a DataFrame to numeric, replacing NaN with 0.
+
+        Args:
+            df (pd.DataFrame): The DataFrame to convert.
+
+        Returns:
+            pd.DataFrame: The converted DataFrame.
+        """
+        for col in df.columns:
+            try:
+                df[col] = pd.to_numeric(df[col], errors="raise").fillna(0)
+            except (ValueError, TypeError):
+                continue
+        return df
+
+    def preprocess_forecast_orders(self) -> None:
+        """
+        Preprocess the forecast orders DataFrame by filtering and transforming columns.
+
+        Returns:
+            None
+        """
+        # Make a copy of the forecast orders to avoid modifying the original DataFrame
+        forecast_temp = self.forecast_orders.copy()
+
+        # Remove the first two columns which are not needed for further processing
+        forecast_temp = forecast_temp.iloc[:, 2:]
+
+        # Drop rows where the 'Material' column has NaN values
+        forecast_cleaned = forecast_temp.dropna(subset=["Material"])
+
+        # Filter rows where 'Material' starts with a digit
+        forecast_filtered = forecast_cleaned[
+            forecast_cleaned["Material"].astype(str).str.match(r"^\d")
+        ].copy()
+
+        # Convert the fourth column to integer and assign it to a new column 'target'
+        forecast_filtered.loc[:, "target"] = forecast_filtered.iloc[:, 3].astype(int)
+
+        # Convert all columns to numeric, replacing NaN with 0
+        forecast_filtered = self.convert_columns_to_numeric(forecast_filtered)
+
+        # Assign new columns based on the 'Product Description' column
+        forecast_filtered = forecast_filtered.assign(
+            Type=lambda x: x["Product Description"].apply(
+                lambda y: "CR" if "CR" in y else ("PS" if "PS" in y else "")
+            ),
+            Size=lambda x: x["Product Description"].apply(
+                lambda y: (re.search(r"SZ (\d+N?)", y).group(1) if re.search(r"SZ (\d+N?)", y) else "")
+                + ("N" if "NAR" in y else "")
+            ),
+            Orientation=lambda x: x["Product Description"].apply(
+                lambda y: (
+                    "LEFT"
+                    if "LT" in y.upper() or "LEFT" in y.upper()
+                    else ("RIGHT" if "RT" in y.upper() or "RIGHT" in y.upper() else "")
+                )
+            ),
+            Cementless=lambda x: x["Product Description"].apply(
+                lambda y: "CTD" if "CEM" in y.upper() else "CLS"
+            ),
+            Operation=lambda x: x.apply(
+                lambda row: "OP1"
+                if row["Cementless"] == "CTD"
+                else ("OP1" if "OP1" in row["MRP Name"] else "OP2"),
+                axis=1,
+            ),
+        )
+
+        # Update the forecast_orders attribute with the processed DataFrame
+        self.forecast_orders = forecast_filtered
+
+    def calculate_business_days(self) -> None:
+        """
+        Calculate the total business days, business days passed, and business days left in the cycle.
+
+        Returns:
+            None
+        """
+        if self.start_date is None:
+            self.start_date = datetime.now()
+
+        # Extract week numbers from the forecast orders columns
+        week_columns = [col for col in self.forecast_orders.columns if "Week" in col]
+        week_numbers = [int(col.split()[1]) for col in week_columns]
+        min_week = min(week_numbers)
+        max_week = max(week_numbers)
+
+        def get_week_start_end(year: int, week: int) -> Tuple[datetime, datetime]:
+            # Calculate the start and end dates of a given week number
+            first_day = datetime(year, 1, 4)
+            start_of_week = first_day + timedelta(weeks=week - 1, days=-first_day.isoweekday() + 1)
+            end_of_week = start_of_week + timedelta(days=6)
+            return start_of_week, end_of_week
+
+        year = self.start_date.year
+        min_week_start, _ = get_week_start_end(year, min_week)
+        _, max_week_end = get_week_start_end(year, max_week)
+
+        def get_first_working_day(date: datetime) -> datetime:
+            # Find the first working day (Monday to Friday) from a given date
+            while date.weekday() >= 5:
+                date += timedelta(days=1)
+            return date
+
+        def get_last_working_day(date: datetime) -> datetime:
+            # Find the last working day (Monday to Friday) from a given date
+            while date.weekday() >= 5:
+                date -= timedelta(days=1)
+            return date
+
+        # Determine the start and end dates of the cycle
+        self.start_of_cycle_date = get_first_working_day(min_week_start)
+        self.end_of_cycle_date = get_last_working_day(max_week_end)
+
+        def count_working_days(start_date: datetime, end_date: datetime) -> int:
+            # Count the number of working days between two dates
+            start = np.datetime64(start_date.date())
+            end = np.datetime64(end_date.date())
+            working_days = np.busday_count(start, end + np.timedelta64(1, "D"))
+            return working_days
+
+        # Calculate the total number of business days in the cycle
+        self.total_business_days = count_working_days(self.start_of_cycle_date, self.end_of_cycle_date)
+
+        # Calculate the number of business days passed and left
+        if self.start_date.date() < self.start_of_cycle_date.date():
+            self.business_days_passed = 0
+        elif self.start_date.date() > self.end_of_cycle_date.date():
+            self.business_days_passed = self.total_business_days
+        else:
+            self.business_days_passed = count_working_days(self.start_of_cycle_date, self.start_date)
+
+        self.business_days_left = self.total_business_days - self.business_days_passed
+        self.start_of_cycle_date = self.start_of_cycle_date.date()
+        self.end_of_cycle_date = self.end_of_cycle_date.date()
+
+        logger.warning(f"{self.start_of_cycle_date}")
+        logger.warning(f"{self.end_of_cycle_date}")
+        logger.warning(f"{self.business_days_passed}")
+        logger.warning(f"{self.business_days_left}")
+        logger.warning(f"{self.start_date}")
+
+    def fetch_production_actuals(self, timecards: pd.DataFrame, closed_jobs: pd.DataFrame) -> None:
+        """
+        Fetch the actual production quantities from timecards and merge with forecast orders.
+
+        Args:
+            timecards (pd.DataFrame): The DataFrame containing timecard data.
+            closed_jobs (pd.DataFrame): The DataFrame containing closed jobs.
+
+        Returns:
+            None
+        """
+        # Filter timecards to include only those within the cycle period
+        in_scope_timecards = timecards[
+            timecards["Act End Time"] >= np.datetime64(self.start_of_cycle_date)
+        ]
+        shipped_product_timecards = in_scope_timecards[in_scope_timecards["Work Centre ID"] == "SHIP"]
+
+        if not shipped_product_timecards.empty:
+            # Create sub of croom processed orders
+            closed_jobs_sub = closed_jobs[["Job ID", "Part Description"]]
+
+            # Merge the timecards with the processed orders
+            shipped_product_timecards = shipped_product_timecards.merge(
+                closed_jobs_sub, on="Job ID", how="left"
+            )
+
+            # Assign new columns based on the 'Part Description' column
+            shipped_product_timecards = shipped_product_timecards.assign(
+                Type=lambda x: x["Part Description"].apply(
+                    lambda y: "CR" if "CR" in y else ("PS" if "PS" in y else "")
+                ),
+                Size=lambda x: x["Part Description"].apply(
+                    lambda y: (
+                        re.search(r"Sz (\d+N?)", y).group(1) if re.search(r"Sz (\d+N?)", y) else ""
+                    )
+                ),
+                Orientation=lambda x: x["Part Description"].apply(
+                    lambda y: (
+                        "LEFT" if "LEFT" in y.upper() else ("RIGHT" if "RIGHT" in y.upper() else "")
+                    )
+                ),
+                Cementless=lambda x: x["Part Description"].apply(
+                    lambda y: "CLS" if "CLS" in y.upper() else "CTD"
+                ),
+                Operation=lambda x: x.apply(
+                    lambda row: "OP1"
+                    if row["Cementless"] == "CTD"
+                    else ("OP1" if "OP 1" in row["Part Description"] else "OP2"),
+                    axis=1,
+                ),
+            )
+
+            # Sum the 'Good Qty' for each 'Custom Part ID'
+            completed_qty = shipped_product_timecards.groupby("Custom Part ID")["Good Qty"].sum()
+            completed_qty_df = pd.DataFrame(completed_qty)
+            completed_qty_df.reset_index(inplace=True, drop=False)
+
+            # Merge the completed quantities with the forecast orders
+            forecast_orders_temp = self.forecast_orders.copy()
+            rows_before_merge = len(forecast_orders_temp)
+            forecast_orders_temp = forecast_orders_temp.merge(
+                completed_qty_df, how="left", on="Custom Part ID"
+            )
+            rows_after_merge = len(forecast_orders_temp)
+
+            # Log a warning if the number of rows changed after the merge
+            if rows_before_merge != rows_after_merge:
+                logger.warning(
+                    f"Number of rows changed after merge: {rows_before_merge} -> {rows_after_merge}"
+                )
+
+            # Fill NaN values in 'Good Qty' with 0
+            forecast_orders_temp["Good Qty"].fillna(0, inplace=True)
+
+        else:
+            forecast_orders_temp = self.forecast_orders.copy()
+
+            forecast_orders_temp.loc[:, "Good Qty"] = 0
+
+        self.forecast_orders = forecast_orders_temp
+
+    def calculate_normalized_time_delay(self) -> None:
+        """
+        Calculate the Normalized Time Delay (NTD) for each row in the forecast orders DataFrame.
+
+        The NTD quantifies how far behind or ahead a production target is by comparing the proportion of time passed
+        to the proportion of production completed. The output is between -1 (production completed ahead of time)
+        and 1 (no production done, but the time has fully elapsed).
+
+        Returns:
+            None
+        """
+        # Calculate the proportion of time passed in the cycle
+        time_proportion = self.business_days_passed / self.total_business_days
+
+        def ntd_for_row(row: pd.Series) -> Union[float, None]:
+            # Calculate the NTD for a single row
+            earned_value = row["Good Qty"]
+            target = row["target"]
+
+            if target == 0:
+                return 0
+
+            completion_proportion = earned_value / target
+            ntd = time_proportion - completion_proportion
+            return ntd
+
+        # Apply the NTD calculation to each row in the forecast orders DataFrame
+        self.forecast_orders.loc[:, "NTD"] = self.forecast_orders.apply(ntd_for_row, axis=1)
+
+    def adjust_due_date_based_on_ntd(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Adjust the 'Algo Due Date' in the DataFrame based on the 'NTD' value using a sliding scale.
+
+        Args:
+            df (pd.DataFrame): The DataFrame containing the 'NTD' and 'Algo Due Date' columns.
+
+        Returns:
+            pd.DataFrame: The updated DataFrame with adjusted 'Algo Due Date'.
+        """
+        # Set the initial 'Algo Due Date' to the end of the cycle date
+        df.loc[:, "Algo Due Date"] = self.end_of_cycle_date
+        four_weeks = timedelta(weeks=4)
+        days_between_today_and_cycle_end = (self.end_of_cycle_date - self.start_date).days
+
+        if days_between_today_and_cycle_end < 0:
+            days_between_today_and_cycle_end = 0
+
+        def adjust_due_date(row: pd.Series) -> Union[datetime, pd.Timestamp]:
+            # Adjust the due date based on the NTD value
+            ntd = row["NTD"]
+
+            if ntd <= -1.0:
+                return self.end_of_cycle_date + four_weeks
+            elif -1.0 < ntd <= 0.0:
+                weeks_to_add = (-ntd) * 4
+                due_date = self.end_of_cycle_date + timedelta(weeks=weeks_to_add)
+                return due_date
+            elif 0.0 < ntd < 0.95:
+                proportion = ntd / 0.95
+                days_to_subtract = proportion * days_between_today_and_cycle_end
+                due_date = self.end_of_cycle_date - timedelta(days=days_to_subtract)
+                return due_date
+            elif ntd >= 0.95:
+                return self.start_date + timedelta(days=1)
+            else:
+                return row["Algo Due Date"]
+
+        # Apply the due date adjustment to each row in the DataFrame
+        df["Algo Due Date"] = df.apply(adjust_due_date, axis=1)
+        return df
+
+    def run_due_date_optimization(
+        self,
+        scheduling_options: dict,
+        timecards: pd.DataFrame,
+        forecast_orders: pd.DataFrame,
+        croom_processed_orders: pd.DataFrame,
+    ) -> pd.DataFrame:
+        """
+        Run due date optimization by preprocessing forecast orders, calculating business days, fetching production actuals,
+        calculating NTD, and adjusting due dates based on NTD.
+
+        Args:
+            scheduling_options (dict): The scheduling options containing the start date.
+            timecards (pd.DataFrame): The DataFrame containing timecard data.
+            forecast_orders (pd.DataFrame): The DataFrame containing forecast orders.
+            croom_processed_orders (pd.DataFrame): The DataFrame containing processed orders.
+
+        Returns:
+            pd.DataFrame: The updated DataFrame with optimized due dates.
+        """
+        # Initialize the start date and forecast orders
+        self.start_date = pd.to_datetime(scheduling_options["start_date"])
+        self.forecast_orders = forecast_orders
+
+        # Execute the preprocessing and calculation steps
+        self.preprocess_forecast_orders()
+        self.calculate_business_days()
+        self.fetch_production_actuals(timecards, croom_processed_orders)
+        self.calculate_normalized_time_delay()
+
+        # Merge the NTD values with the processed orders and adjust due dates
+        ntd_small = self.forecast_orders[["Custom Part ID", "NTD"]]  # TODO: Cannot find Custom Part ID
+        croom_processed_orders = croom_processed_orders.merge(ntd_small, on="Custom Part ID", how="left")
+        croom_processed_orders = self.adjust_due_date_based_on_ntd(croom_processed_orders)
+
+        return croom_processed_orders
 
 
 class GeneticAlgorithmScheduler:
@@ -1884,7 +2236,7 @@ class GeneticAlgorithmScheduler:
 
         # The minimum time in day to start planning batches depends on HAAS duration
         min_time_in_day = max(
-            self.working_minutes_per_day - haas_processing_dur - random.choice([70, 80, 90]), 0
+            self.working_minutes_per_day - haas_processing_dur - random.choice([70, 80, 90, 100, 120]), 0
         )
 
         # Compute time within the current day
