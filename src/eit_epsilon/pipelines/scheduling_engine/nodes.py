@@ -221,7 +221,7 @@ class Job:
 
     @staticmethod
     def get_remaining_tasks(
-        timecard_data_single_job: pd.DataFrame,
+        timecard_single_job: pd.DataFrame,
         start_date,
         part_id: str,
         timecard_ctd_mapping: Dict[str, int],
@@ -233,7 +233,8 @@ class Job:
         Note: It is assumed that the input timecard data has been sorted by operation, so the most recent task is last.
 
         Args:
-            work_process (pd.DataFrame): The DataFrame containing the work process steps.
+            timecard_single_job (pd.DataFrame): The timecard data for a single job (which contains the work process steps).
+            start_date (datetime): The start time of the scheduler (set in the parameters under scheduling_options).
             part_id (str): The ID of the part being processed.
             timecard_ctd_mapping (Dict[str, int]): Mapping for CTD parts.
             timecard_op1_mapping (Dict[str, int]): Mapping for OP1 parts.
@@ -246,7 +247,7 @@ class Job:
         if timecard_data_single_job['Job ID'].iloc[-1] in [4428901, 4434502]:
             print(f"Got job id {timecard_data_single_job['Job ID'].iloc[-1]}")
         
-        work_process = timecard_data_single_job["Combined_ID"]        
+        work_process = timecard_single_job["Combined_ID"]        
         
         # Remove duplicate entries in the work process
         work_process = work_process.drop_duplicates()
@@ -256,7 +257,7 @@ class Job:
         prev = work_process.iloc[-2] if len(work_process) > 1 else None        
         
         start_date = datetime.fromisoformat(start_date)
-        task_start = timecard_data_single_job['Act Start Time'].iloc[-1]
+        task_start = timecard_single_job['Act Start Time'].iloc[-1]
 
         def get_mapping(mapping: Dict[str, int], last_task: str, prev_task: Optional[str]) -> int:
             """
@@ -274,6 +275,22 @@ class Job:
             if prev_task is not None:
                 key = f"{last_task},{prev_task}"
             return mapping.get(key, mapping.get(last_task, -1))
+        
+        def unload_required(start_date: datetime, task_start: datetime) -> datetime:
+            """ An unload on HAAS is required if the task didn't start until after 14.30 the previous day.
+                If the schedule is run on a Monday, Friday also counts as the 'previous day'.
+
+            Args:
+                start_date (datetime): The start time of the scheduler (set in the parameters)
+                task_start (datetime): The start time of the task (taken from the timecard data)
+
+            Returns:
+                bool: Whether the task started after 14.30 on the 'previous day'
+            """
+            is_previous_day = task_start.date() == (start_date.date() - timedelta(days=1)) or \
+                            all([start_date.weekday() == 0, task_start.weekday() == 4, \
+                            task_start.date() == (start_date.date() - timedelta(days=3))])
+            return is_previous_day and task_start.time() > datetime_time(14, 30)
 
         # Return None if none of the physical tasks have been completed yet (item is only received)
         if last == "INSPE_RECIE":
@@ -284,21 +301,18 @@ class Job:
             end = 46
             start = get_mapping(timecard_ctd_mapping, last, prev)
             
-            if all([start == 33, \
-                    task_start.time() > datetime_time(14, 30), \
-                    task_start.date() == (start_date.date() - timedelta(days=1))]):
+            # Change task from post HAAS inspection to HAAS unload if the task started the day before after 14.30
+            if start == 33 and unload_required(start_date, task_start):
                 start = 32
-                logger.info(f"Job {timecard_data_single_job['Job ID'].iloc[0]} requires unloading from HAAS.")
+                logger.info(f"Job {timecard_single_job['Job ID'].iloc[0]} requires unloading from HAAS.")
             
         elif "OP1" in part_id:
             end = 8
             start = get_mapping(timecard_op1_mapping, last, prev)
             
-            if all([start == 3, \
-                    task_start.time() > datetime_time(14, 30), \
-                    task_start.date() == (start_date.date() - timedelta(days=1))]):
-                #start = 2
-                logger.info(f"Job {timecard_data_single_job['Job ID'].iloc[0]} requires unloading from HAAS.")           
+            if start == 3 and unload_required(start_date, task_start):
+                start = 2
+                logger.info(f"Job {timecard_single_job['Job ID'].iloc[0]} requires unloading from HAAS.")           
             
         elif "OP2" in part_id:
             end = 20
