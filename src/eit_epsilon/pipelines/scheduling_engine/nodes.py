@@ -243,10 +243,7 @@ class Job:
         Returns:
             Optional[List[int]]: A list of remaining task IDs, or None if the part is not recognized or if the last task is 'INSPE_RECIE'.
         """
-        
-        if timecard_data_single_job['Job ID'].iloc[-1] in [4428901, 4434502]:
-            print(f"Got job id {timecard_data_single_job['Job ID'].iloc[-1]}")
-        
+                
         work_process = timecard_single_job["Combined_ID"]        
         
         # Remove duplicate entries in the work process
