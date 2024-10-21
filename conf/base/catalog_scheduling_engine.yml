@@ -10,7 +10,6 @@ orders:
 
 croom_open_orders:
   type: pandas.ExcelDataset
-
   filepath: data/01_raw/jobs_jul_2024.xlsm
   load_args:
     engine: openpyxl
