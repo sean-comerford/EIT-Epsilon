@@ -282,7 +282,7 @@ class Job:
                 task_start_time (pd.Timestamp): The start time of the task (taken from the timecard data)
 
             Returns:
-                bool: Whether the task started after 14.30 on the 'previous day'
+                bool: Whether the task started after 13.30 on the 'previous day'
             """
 
             is_previous_day = task_start_time.date() == scheduler_start_date.date() - timedelta(
