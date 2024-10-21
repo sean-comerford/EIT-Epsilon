@@ -221,7 +221,8 @@ class Job:
 
     @staticmethod
     def get_remaining_tasks(
-        work_process: pd.DataFrame,
+        timecard_single_job: pd.DataFrame,
+        start_date: str,
         part_id: str,
         timecard_ctd_mapping: Dict[str, int],
         timecard_op1_mapping: Dict[str, int],
@@ -229,9 +230,11 @@ class Job:
     ) -> Optional[List[int]]:
         """
         Determines the remaining tasks for a given part based on the work process and part ID.
+        Note: It is assumed that the input timecard data has been sorted by operation, so the most recent task is last.
 
         Args:
-            work_process (pd.DataFrame): The DataFrame containing the work process steps.
+            timecard_single_job (pd.DataFrame): The timecard data for a single job (which contains the work process steps).
+            start_date (str): The start time of the scheduler (set in the parameters under scheduling_options).
             part_id (str): The ID of the part being processed.
             timecard_ctd_mapping (Dict[str, int]): Mapping for CTD parts.
             timecard_op1_mapping (Dict[str, int]): Mapping for OP1 parts.
@@ -240,12 +243,18 @@ class Job:
         Returns:
             Optional[List[int]]: A list of remaining task IDs, or None if the part is not recognized or if the last task is 'INSPE_RECIE'.
         """
+
+        work_process = timecard_single_job["Combined_ID"]
+
         # Remove duplicate entries in the work process
         work_process = work_process.drop_duplicates()
 
         # Get the last and previous tasks in the work process
         last = work_process.iloc[-1]
         prev = work_process.iloc[-2] if len(work_process) > 1 else None
+        
+        start_date = pd.Timestamp(start_date)
+        task_start = pd.Timestamp(timecard_single_job["Act Start Time"].iloc[-1])
 
         def get_mapping(
             default: int, mapping: Dict[str, int], last_task: str, prev_task: Optional[str]
@@ -274,6 +283,28 @@ class Job:
                 logger.warning(f"No mapping found for key '{key}'. Using default value '{default}'. ")
                 return default
 
+        def unload_required(scheduler_start_date: pd.Timestamp, task_start_time: pd.Timestamp) -> bool:
+            """An unload on HAAS is required if the task didn't start until after 14.30 the previous day.
+                If the schedule is run on a Monday, Friday also counts as the 'previous day'.
+
+            Args:
+                scheduler_start_date (pd.Timestamp): The start time of the scheduler (set in the parameters)
+                task_start_time (pd.Timestamp): The start time of the task (taken from the timecard data)
+
+            Returns:
+                bool: Whether the task started after 13.30 on the 'previous day'
+            """
+
+            is_previous_day = task_start_time.date() == scheduler_start_date.date() - timedelta(
+                days=1
+            ) or (
+                scheduler_start_date.weekday() == 0
+                and task_start_time.weekday() == 4
+                and task_start_time.date() == scheduler_start_date.date() - timedelta(days=3)
+            )
+
+            return is_previous_day and task_start_time.time() > pd.Timestamp("13:30").time()
+
         # Return None if none of the physical tasks have been completed yet (item is only received)
         if last == "INSPE_RECIE":
             return None
@@ -283,9 +314,20 @@ class Job:
         if "CTD" in part_id:
             end = 46
             start = get_mapping(29, timecard_ctd_mapping, last, prev)
+  
+            # Change task from post HAAS inspection to HAAS unload if the task started the day before after 14.30
+            if start == 33 and unload_required(start_date, task_start):
+                start = 32
+                logger.info(f"Job {timecard_single_job['Job ID'].iloc[0]} requires unloading from HAAS.")
+          
         elif "OP1" in part_id:
             end = 8
             start = get_mapping(-1, timecard_op1_mapping, last, prev)
+
+            if start == 3 and unload_required(start_date, task_start):
+                start = 2
+                logger.info(f"Job {timecard_single_job['Job ID'].iloc[0]} requires unloading from HAAS.")
+
         elif "OP2" in part_id:
             end = 20
             start = get_mapping(10, timecard_op2_mapping, last, prev)
@@ -802,7 +844,8 @@ class JobShop(Job, Shop):
         # Apply the function to determine remaining tasks and store the results in a separate Series
         remaining_tasks = remaining_jobs.apply(
             lambda row: self.get_remaining_tasks(
-                timecards[timecards["Job ID"] == row["Job ID"]]["Combined_ID"],
+                timecards[timecards["Job ID"] == row["Job ID"]],
+                scheduling_options["start_date"],
                 row["Custom Part ID"],
                 timecard_ctd_mapping,
                 timecard_op1_mapping,
