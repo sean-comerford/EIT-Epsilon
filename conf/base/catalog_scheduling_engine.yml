@@ -332,6 +332,7 @@ gantt_chart_json:
                                 'rgb(18, 95, 142)', 'rgb(38, 116, 137)', 'rgb(53, 136, 136)',
                                 'rgb(65, 157, 133)', 'rgb(81, 178, 124)', 'rgb(111, 198, 107)',
                                 'rgb(160, 214, 91)', 'rgb(212, 225, 112)', 'rgb(253, 238, 153)']
+      color_discrete_map: {'Unavailable': 'lightgrey'}
 
     layout:
       xaxis_title: Time

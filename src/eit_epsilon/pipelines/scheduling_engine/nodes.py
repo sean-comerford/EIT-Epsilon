@@ -679,6 +679,7 @@ class JobShop(Job, Shop):
         timecards: pd.DataFrame,
         croom_task_durations: pd.DataFrame,
         task_to_machines: Dict[int, List[int]],
+        task_to_names: Dict[int, List[str]],
         scheduling_options: dict,
         machine_dict: Dict[int, str],
         timecard_ctd_mapping: Dict[str, int],
@@ -698,6 +699,7 @@ class JobShop(Job, Shop):
             timecards (pd.DataFrame): Timecard data (contains info about completed/partially completed jobs).
             croom_task_durations (pd.DataFrame): The task durations.
             task_to_machines (Dict[int, List[int]]): The task to machines dictionary.
+            task_to_names (Dict[int, List[str]]): The task to names dictionary.
             scheduling_options (dict): The scheduling options.
             machine_dict (Dict[int, str]): The machine dictionary.
             timecard_ctd_mapping (Dict[str, int]): Mapping for CTD parts.
@@ -826,10 +828,17 @@ class JobShop(Job, Shop):
 
         # Create the machine list
         M = self.create_machines(machine_dict)
+         
+        # Remove unavailable machines from task_to_machines
+        for t, machines in task_to_machines.items():
+            new_machines = [m for m in machines if m not in scheduling_options["unavailable_machines"]]
+            task_to_machines[t] = new_machines
+            if len(new_machines) == 0:
+                logger.critical(f"No machines available to complete task: {t} {task_to_names[t]}")
 
         part_id_to_task_seq = self.create_part_id_to_task_seq(remaining_jobs)
 
-        dur = self.get_duration_matrix(J, part_id_to_task_seq, remaining_jobs, croom_task_durations)
+        dur = self.get_duration_matrix(J, part_id_to_task_seq, remaining_jobs, croom_task_durations)       
 
         input_repr_dict = {
             "J": J,
@@ -1149,19 +1158,31 @@ class GeneticAlgorithmScheduler:
 
         # Initialize indices for cementless and cemented machines
         machine_index_cementless = 0
-        machine_index_cemented = 0
+        machine_index_cemented = 0        
+        
+       # self.change_over_machines_op1 = [m for m in self.change_over_machines_op1 if m not in self.unavailable_machines]
+        #self.cemented_only_haas_machines = [m for m in self.cemented_only_haas_machines if m not in self.unavailable_machines]        
+        #if not self.change_over_machines_op1: logger.critical("No cementless machines to assign arbors to")
+      #  if not self.cemented_only_haas_machines: logger.critical("No cemented machines to assign arbors to")
 
         # Initialize machine lists
         machines_cementless = self.change_over_machines_op1
         machines_cemented = list(reversed(self.cemented_only_haas_machines))
-
+        
+        machines_cementless = [m for m in machines_cementless if m not in self.unavailable_machines]
+        machines_cemented = [m for m in machines_cemented if m not in self.unavailable_machines]
+        
+        if not machines_cementless: logger.critical("No cementless machines to assign arbors to")
+        if not machines_cemented: logger.critical("No cemented machines to assign arbors to")
+                
         # Randomly select machines
         # For cementless: [1, 2, 3, 4, 5, 6], [1, 2, 3, 4, 5], [1, 2, 3, 4],
         # The latter options have fewer machines but also less overlap with cemented machines
-        selected_machines_cls = random.choice(
-            [machines_cementless, machines_cementless[:-1], machines_cementless[:-2]]
-        )
+        selected_machines_cls = random.choice([machines_cementless, machines_cementless[:-1], machines_cementless[:-2]])            
         selected_machines_ctd = random.choice([machines_cemented, machines_cemented[:-1]])
+        
+        if not selected_machines_cls: selected_machines_cls = machines_cementless
+        if not selected_machines_ctd: selected_machines_ctd = machines_cemented           
 
         # Randomly shuffle the arbor order
         arbors = list(arbor_frequency.items())
@@ -1192,14 +1213,17 @@ class GeneticAlgorithmScheduler:
             position = sorted_arbors.index(arbor) + 1
 
             # Calculate the probability based on the position
-            probability_two_machines = (len(sorted_arbors) - position + 1) / len(sorted_arbors)
-            num_machines_to_assign = 2 if random.random() < probability_two_machines else 1
+            if len(machines) == 1: 
+                num_machines_to_assign = 1
+            else:
+                probability_two_machines = (len(sorted_arbors) - position + 1) / len(sorted_arbors)
+                num_machines_to_assign = 2 if random.random() < probability_two_machines else 1
 
             # If this arbor is already on a machine from the very beginning,
             # then with a certain probability use that machine
             # Use arbor_dict to map from part id to arbor
             for m, starting_part_id in self.HAAS_starting_part_ids.items():
-                if self.arbor_dict[starting_part_id] == arbor:
+                if self.arbor_dict[starting_part_id] == arbor and m not in self.unavailable_machines:
                     arbor_to_machines[arbor].append(m)
                     num_machines_to_assign -= 1
                     if num_machines_to_assign == 0:
@@ -2628,6 +2652,7 @@ class GeneticAlgorithmScheduler:
         self.change_over_machines_op2 = scheduling_options["change_over_machines_op2"]
         self.cemented_only_haas_machines = scheduling_options["cemented_only_haas_machines"]
         self.non_slack_machines = scheduling_options["non_slack_machines"]
+        self.unavailable_machines = scheduling_options["unavailable_machines"]
         self.compatibility_dict = compatibility_dict
         self.arbor_dict = arbor_dict
         self.ghost_machine_dict = ghost_machine_dict
@@ -3101,7 +3126,7 @@ def calculate_kpi(schedule: pd.DataFrame) -> pd.DataFrame:
 
 
 def create_chart(
-    schedule: pd.DataFrame, parameters: Dict[str, Union[str, Dict[str, str]]], scheduling_options
+    schedule: pd.DataFrame, parameters: Dict[str, Union[str, Dict[str, str]]], scheduling_options, machine_dict
 ) -> pd.DataFrame:
     """
     Creates a Gantt chart based on the schedule and parameters.
@@ -3113,6 +3138,13 @@ def create_chart(
     Returns:
         pd.DataFrame: The updated schedule data with additional columns for the chart.
     """
+    
+    start = schedule['Start_time'].min()
+    end = schedule['End_time'].max()     
+    data = [[machine_dict[m], start, end, 'Unavailable', 0, 0, 0] for m in scheduling_options['unavailable_machines']]
+    df = pd.DataFrame(data, columns=['Machine', 'Start_time', 'End_time', 'Custom Part ID', 'Prod Due Date', 'task', 'Production Qty'])
+        
+    schedule = pd.concat([schedule, df if not df.empty else None], axis=0, join='outer')
 
     schedule["IsUrgent"] = schedule.apply(
         lambda row: True if row["job_id"] in scheduling_options["urgent_orders"] else False, axis=1
