@@ -252,7 +252,7 @@ class Job:
         # Get the last and previous tasks in the work process
         last = work_process.iloc[-1]
         prev = work_process.iloc[-2] if len(work_process) > 1 else None
-        
+
         start_date = pd.Timestamp(start_date)
         task_start = pd.Timestamp(timecard_single_job["Act Start Time"].iloc[-1])
 
@@ -314,12 +314,12 @@ class Job:
         if "CTD" in part_id:
             end = 46
             start = get_mapping(29, timecard_ctd_mapping, last, prev)
-  
+
             # Change task from post HAAS inspection to HAAS unload if the task started the day before after 14.30
             if start == 33 and unload_required(start_date, task_start):
                 start = 32
                 logger.info(f"Job {timecard_single_job['Job ID'].iloc[0]} requires unloading from HAAS.")
-          
+
         elif "OP1" in part_id:
             end = 8
             start = get_mapping(-1, timecard_op1_mapping, last, prev)
@@ -2214,8 +2214,11 @@ class GeneticAlgorithmScheduler:
         # Initialize machine availability, slack times, and product assignments
         avail_m, slack_m, haas_pick_m, product_m, P_j = self.initialize_resources()
 
+        # Find jobs that start with a HAAS unloading task
+        unloading_start = self.filter_dict_by_first_element(self.custom_tasks)
+
         # Prepare the job list with random shuffling and sorting
-        J_temp = self.prepare_job_list()
+        J_temp = self.prepare_job_list(unloading_start)
 
         # Determine the fixture to machine assignment
         fixture_to_machine_assignment = self.assign_arbors_to_machines(arbor_frequencies)
@@ -2278,7 +2281,13 @@ class GeneticAlgorithmScheduler:
 
         return avail_m, slack_m, haas_pick_m, product_m, P_j
 
-    def prepare_job_list(self) -> List[int]:
+    @staticmethod
+    def filter_dict_by_first_element(custom_tasks: dict) -> List[int]:
+        """Filters out jobs where custom tasks start with an unloading task on HAAS (2 or 32)"""
+        # Use a dictionary comprehension to filter entries
+        return [key for key, value in custom_tasks.items() if value[0] in (2, 32)]
+
+    def prepare_job_list(self, unloading_start: List[int]) -> List[int]:
         """
         Prepares the job list by shuffling and sorting based on random criteria and urgent orders.
 
@@ -2290,6 +2299,9 @@ class GeneticAlgorithmScheduler:
         5. Selects one to three random sizes to prioritize.
         6. Sorts the job list based on the random number and part IDs or due dates.
         7. Brings urgent orders to the front of the list.
+
+        Args:
+            unloading_start (List[int]): A list of job IDs where custom tasks start with an unloading task on HAAS.
 
         Returns:
             List[int]: A list of job IDs ready for scheduling.
@@ -2324,6 +2336,12 @@ class GeneticAlgorithmScheduler:
         # Bring urgent orders to the front
         random.shuffle(self.urgent_orders)
         for job in self.urgent_orders:
+            if job in J_temp:
+                J_temp.remove(job)
+                J_temp.append(job)
+
+        # Tasks that start with an unloading task must be brought to the front (even before priority orders)
+        for job in unloading_start:
             if job in J_temp:
                 J_temp.remove(job)
                 J_temp.append(job)
