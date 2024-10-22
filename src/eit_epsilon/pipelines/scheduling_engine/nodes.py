@@ -999,6 +999,9 @@ class OptimizeForecastOrders:
         # Convert the fourth column to integer and assign it to a new column 'target'
         forecast_filtered.loc[:, "target"] = forecast_filtered.iloc[:, 3].astype(int)
 
+        # Drop rows where the production 'target' column is 0
+        forecast_filtered = forecast_filtered[forecast_filtered["target"] != 0]
+
         # Convert all columns to numeric, replacing NaN with 0
         forecast_filtered = self.convert_columns_to_numeric(forecast_filtered)
 
@@ -1385,9 +1388,16 @@ class OptimizeForecastOrders:
                 # Use logging to issue a warning
                 logger.warning(warning_message)
 
-        # Proceed with merging and adjusting due dates
-        croom_processed_orders = croom_processed_orders.merge(ntd_small, on="Custom Part ID", how="left")
+        # Proceed with merging and adjusting due dates,
+        # fill NTD with negative value if that product type does not have a production target in this cycle
+        croom_processed_orders = croom_processed_orders.merge(
+            ntd_small, on="Custom Part ID", how="left"
+        ).fillna({"NTD": -1.5})
         croom_processed_orders = self.adjust_due_date_based_on_ntd(croom_processed_orders)
+
+        logger.info(
+            f"Number of orders with 0 prod. target: {croom_processed_orders[croom_processed_orders['NTD'] == -1.5].shape[0]}"
+        )
 
         return croom_processed_orders
 
