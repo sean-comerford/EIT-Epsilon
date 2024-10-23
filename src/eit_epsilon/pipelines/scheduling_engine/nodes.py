@@ -3182,10 +3182,10 @@ def create_chart(
         pd.DataFrame: The updated schedule data with additional columns for the chart.
     """
     
-    start = schedule['Start_time'].min()
-    end = schedule['End_time'].max()     
-    data = [[machine_dict[m], start, end, 'Unavailable', 0, 0, 0] for m in scheduling_options['unavailable_machines']]
-    df = pd.DataFrame(data, columns=['Machine', 'Start_time', 'End_time', 'Custom Part ID', 'Prod Due Date', 'task', 'Production Qty'])
+    start = schedule["Start_time"].min()
+    end = schedule["End_time"].max()     
+    data = [[machine_dict[m], start, end, "Machine Unavailable", "Machine Unavailable", 0, 0, 0] for m in scheduling_options["unavailable_machines"]]
+    df = pd.DataFrame(data, columns=["Machine", "Start_time", "End_time", "ID", "Custom Part ID", "Prod Due Date", "task", "Production Qty"])
         
     schedule = pd.concat([schedule, df if not df.empty else None], axis=0, join='outer')
 
