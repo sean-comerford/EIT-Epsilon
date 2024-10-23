@@ -256,22 +256,32 @@ class Job:
         start_date = pd.Timestamp(start_date)
         task_start = pd.Timestamp(timecard_single_job["Act Start Time"].iloc[-1])
 
-        def get_mapping(mapping: Dict[str, int], last_task: str, prev_task: Optional[str]) -> int:
+        def get_mapping(
+            default: int, mapping: Dict[str, int], last_task: str, prev_task: Optional[str]
+        ) -> int:
             """
             Retrieves the mapping value based on the last and previous tasks.
 
             Args:
+                default (int): The default task to start from if no mapping can be found.
                 mapping (Dict[str, int]): The mapping dictionary.
                 last_task (str): The last task.
                 prev_task (Optional[str]): The previous task, if any.
 
             Returns:
-                int: The mapped value, or -1 if not found.
+                int: The mapped value, or default if not found.
             """
             key = last_task
             if prev_task is not None:
                 key = f"{last_task},{prev_task}"
-            return mapping.get(key, mapping.get(last_task, -1))
+
+            if key in mapping:
+                return mapping[key]
+            elif last_task in mapping:
+                return mapping[last_task]
+            else:
+                logger.warning(f"No mapping found for key '{key}'. Using default value '{default}'. ")
+                return default
 
         def unload_required(scheduler_start_date: pd.Timestamp, task_start_time: pd.Timestamp) -> bool:
             """An unload on HAAS is required if the task didn't start until after 14.30 the previous day.
@@ -303,7 +313,7 @@ class Job:
         # Determine the end task ID and start task ID based on the part ID
         if "CTD" in part_id:
             end = 46
-            start = get_mapping(timecard_ctd_mapping, last, prev)
+            start = get_mapping(29, timecard_ctd_mapping, last, prev)
 
             # Change task from post HAAS inspection to HAAS unload if the task started the day before after 14.30
             if start == 33 and unload_required(start_date, task_start):
@@ -312,7 +322,7 @@ class Job:
 
         elif "OP1" in part_id:
             end = 8
-            start = get_mapping(timecard_op1_mapping, last, prev)
+            start = get_mapping(-1, timecard_op1_mapping, last, prev)
 
             if start == 3 and unload_required(start_date, task_start):
                 start = 2
@@ -320,14 +330,10 @@ class Job:
 
         elif "OP2" in part_id:
             end = 20
-            start = get_mapping(timecard_op2_mapping, last, prev)
+            start = get_mapping(10, timecard_op2_mapping, last, prev)
         else:
             logger.warning(f"Part ID {part_id} not recognized")
             return None
-
-        # Check if start was defined
-        if start == -1:
-            logger.warning(f"Starting task is undefined: {work_process}")
 
         # Return the list of remaining tasks if start is valid, otherwise return None
         return list(range(start, end + 1))
@@ -514,7 +520,7 @@ class Shop:
         total_minutes = scheduling_options["total_minutes_per_day"]
 
         due = deque()
-        for due_date in in_scope_orders["Prod Due Date"]:
+        for due_date in in_scope_orders["Algo Due Date"]:
             if pd.Timestamp(base_date) > due_date:
                 working_days = -len(pd.bdate_range(due_date, base_date)) * total_minutes
             else:
@@ -933,6 +939,467 @@ class JobShop(Job, Shop):
                     arbor_mapping[part_id] = arbor_number
 
         return arbor_mapping
+
+
+class OptimizeForecastOrders:
+    """
+    The OptimizeForecastOrders class contains methods for preprocessing forecast orders, calculating business days,
+    fetching production actuals, calculating normalized time delay (NTD), adjusting due dates based on NTD, and running
+    due date optimization for a manufacturing scheduling system.
+    """
+
+    def __init__(self):
+        self.start_date: Optional[datetime] = None
+        self.start_of_cycle_date: Optional[datetime] = None
+        self.end_of_cycle_date: Optional[datetime] = None
+        self.business_days_passed: Optional[int] = None
+        self.business_days_left: Optional[int] = None
+        self.total_business_days: Optional[int] = None
+        self.forecast_orders: Optional[pd.DataFrame] = None
+
+    @staticmethod
+    def convert_columns_to_numeric(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Convert columns of a DataFrame to numeric, replacing NaN with 0.
+
+        Args:
+            df (pd.DataFrame): The DataFrame to convert.
+
+        Returns:
+            pd.DataFrame: The converted DataFrame.
+        """
+        for col in df.columns:
+            try:
+                df[col] = pd.to_numeric(df[col], errors="raise").fillna(0)
+            except (ValueError, TypeError):
+                continue
+        return df
+
+    def preprocess_forecast_orders(self) -> None:
+        """
+        Preprocess the forecast orders DataFrame by filtering and transforming columns.
+
+        Returns:
+            None
+        """
+        # Make a copy of the forecast orders to avoid modifying the original DataFrame
+        forecast_temp = self.forecast_orders.copy()
+
+        # Remove the first two columns which are not needed for further processing
+        forecast_temp = forecast_temp.iloc[:, 2:]
+
+        # Drop rows where the 'Material' column has NaN values
+        forecast_cleaned = forecast_temp.dropna(subset=["Material"])
+
+        # Filter rows where 'Material' starts with a digit
+        forecast_filtered = forecast_cleaned[
+            forecast_cleaned["Material"].astype(str).str.match(r"^\d")
+        ].copy()
+
+        # Convert the fourth column to integer and assign it to a new column 'target'
+        forecast_filtered.loc[:, "target"] = forecast_filtered.iloc[:, 3].astype(int)
+
+        # Drop rows where the production 'target' column is 0
+        forecast_filtered = forecast_filtered[forecast_filtered["target"] != 0]
+
+        # Convert all columns to numeric, replacing NaN with 0
+        forecast_filtered = self.convert_columns_to_numeric(forecast_filtered)
+
+        # Assign new columns based on the 'Product Description' column
+        forecast_filtered = forecast_filtered.assign(
+            Type=lambda x: x["Product Description"].apply(
+                lambda y: "CR" if "CR" in y else ("PS" if "PS" in y else "")
+            ),
+            Size=lambda x: x["Product Description"].apply(
+                lambda y: (re.search(r"SZ (\d+N?)", y).group(1) if re.search(r"SZ (\d+N?)", y) else "")
+                + ("N" if "NAR" in y else "")
+            ),
+            Orientation=lambda x: x["Product Description"].apply(
+                lambda y: (
+                    "LEFT"
+                    if "LT" in y.upper() or "LEFT" in y.upper()
+                    else ("RIGHT" if "RT" in y.upper() or "RIGHT" in y.upper() else "")
+                )
+            ),
+            Cementless=lambda x: x["Product Description"].apply(
+                lambda y: "CTD" if "CEM" in y.upper() else "CLS"
+            ),
+            Operation=lambda x: x.apply(
+                lambda row: "OP1"
+                if row["Cementless"] == "CTD"
+                else ("OP1" if "OP1" in row["MRP Name"] else "OP2"),
+                axis=1,
+            ),
+        )
+
+        # Create custom Part ID
+        forecast_filtered["Custom Part ID"] = (
+            forecast_filtered["Orientation"]
+            + "-"
+            + forecast_filtered["Type"]
+            + "-"
+            + forecast_filtered["Size"]
+            + "-"
+            + forecast_filtered["Cementless"]
+            + "-"
+            + forecast_filtered["Operation"]
+        )
+
+        # Update the forecast_orders attribute with the processed DataFrame
+        self.forecast_orders = forecast_filtered
+
+        # Debug statement
+        logger.info(f"Custom Part ID present: {'Custom Part ID' in self.forecast_orders.columns}")
+
+    def calculate_business_days(self) -> None:
+        """
+        Calculate the total business days, business days passed, and business days left in the cycle.
+
+        Returns:
+            None
+        """
+        if self.start_date is None:
+            self.start_date = datetime.now()
+
+        # Extract week numbers from the forecast orders columns
+        week_columns = [col for col in self.forecast_orders.columns if "Week" in col]
+        week_numbers = [int(col.split()[1]) for col in week_columns]
+        min_week = min(week_numbers)
+        max_week = max(week_numbers)
+
+        def get_week_start_end(year: int, week: int) -> Tuple[datetime, datetime]:
+            # Calculate the start and end dates of a given week number
+            first_day = datetime(year, 1, 4)  # The 4th of January is always in week 1
+            start_of_week = first_day + timedelta(weeks=week - 1, days=-first_day.isoweekday() + 1)
+            end_of_week = start_of_week + timedelta(days=6)
+            return start_of_week, end_of_week
+
+        year = self.start_date.year
+        min_week_start, _ = get_week_start_end(year, min_week)
+        _, max_week_end = get_week_start_end(year, max_week)
+
+        def get_first_working_day(date: datetime) -> datetime:
+            # Find the first working day (Monday to Friday) from a given date
+            while date.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
+                date += timedelta(days=1)
+            return date
+
+        def get_last_working_day(date: datetime) -> datetime:
+            # Find the last working day (Monday to Friday) from a given date
+            while date.weekday() >= 5:
+                date -= timedelta(days=1)
+            return date
+
+        # Determine the start and end dates of the cycle
+        self.start_of_cycle_date = get_first_working_day(min_week_start)
+        self.end_of_cycle_date = get_last_working_day(max_week_end)
+
+        def count_working_days(start_date: datetime, end_date: datetime) -> int:
+            # Count the number of working days between two dates
+            start = np.datetime64(start_date, "D")
+            end = np.datetime64(end_date, "D")
+            working_days = np.busday_count(start, end + np.timedelta64(1, "D"))
+            return working_days
+
+        # Calculate the total number of business days in the cycle
+        self.total_business_days = count_working_days(self.start_of_cycle_date, self.end_of_cycle_date)
+
+        # Calculate the number of business days passed and left
+        if self.start_date < self.start_of_cycle_date:
+            self.business_days_passed = 0
+        elif self.start_date > self.end_of_cycle_date:
+            self.business_days_passed = self.total_business_days
+        else:
+            self.business_days_passed = count_working_days(self.start_of_cycle_date, self.start_date)
+
+        self.business_days_left = self.total_business_days - self.business_days_passed
+
+        # Convert to pandas.Timestamp
+        self.start_of_cycle_date = pd.Timestamp(self.start_of_cycle_date)
+        self.end_of_cycle_date = pd.Timestamp(self.end_of_cycle_date)
+
+        # Debug statement
+        logger.info(
+            f"Start of cycle date: {self.start_of_cycle_date}, end of cycle date: {self.end_of_cycle_date}"
+        )
+
+    def fetch_production_actuals(self, timecards: pd.DataFrame, closed_jobs: pd.DataFrame) -> None:
+        """
+        Fetch the actual production quantities from timecards and merge with forecast orders.
+
+        Args:
+            timecards (pd.DataFrame): The DataFrame containing timecard data.
+            closed_jobs (pd.DataFrame): The DataFrame containing closed jobs.
+
+        Returns:
+            None
+        """
+        # Filter timecards to include only those within the cycle period
+        in_scope_timecards = timecards[
+            timecards["Act End Time"] >= np.datetime64(self.start_of_cycle_date)
+        ]
+        shipped_product_timecards = in_scope_timecards[in_scope_timecards["Work Centre ID"] == "SHIP"]
+
+        if not shipped_product_timecards.empty:
+            # Create sub of croom processed orders
+            closed_jobs_sub = closed_jobs[["Job ID", "Part Description"]]
+
+            # Merge the timecards with the processed orders
+            shipped_product_timecards = shipped_product_timecards.merge(
+                closed_jobs_sub, on="Job ID", how="left"
+            )
+
+            missing_part_desc_jobs = shipped_product_timecards[
+                shipped_product_timecards["Part Description"].isna()
+            ]["Job ID"].unique()
+            if len(missing_part_desc_jobs) > 0:
+                logger.warning(
+                    f"Part ID could not be retrieved from closed jobs data for Job IDs: {missing_part_desc_jobs}"
+                )
+                shipped_product_timecards.fillna({"Part Description": "MISSING"}, inplace=True)
+
+            # Assign new columns based on the 'Part Description' column
+            shipped_product_timecards = shipped_product_timecards.assign(
+                Type=lambda x: x["Part Description"].apply(
+                    lambda y: "CR" if "CR" in y else ("PS" if "PS" in y else "")
+                ),
+                Size=lambda x: x["Part Description"].apply(
+                    lambda y: (
+                        re.search(r"Sz (\d+N?)", y).group(1) if re.search(r"Sz (\d+N?)", y) else ""
+                    )
+                ),
+                Orientation=lambda x: x["Part Description"].apply(
+                    lambda y: (
+                        "LEFT" if "LEFT" in y.upper() else ("RIGHT" if "RIGHT" in y.upper() else "")
+                    )
+                ),
+                Cementless=lambda x: x["Part Description"].apply(
+                    lambda y: "CLS" if "CLS" in y.upper() else "CTD"
+                ),
+                Operation=lambda x: x.apply(
+                    lambda row: "OP1"
+                    if row["Cementless"] == "CTD"
+                    else ("OP1" if "OP 1" in row["Part Description"] else "OP2"),
+                    axis=1,
+                ),
+            )
+
+            # Create custom Part ID
+            shipped_product_timecards["Custom Part ID"] = (
+                shipped_product_timecards["Orientation"]
+                + "-"
+                + shipped_product_timecards["Type"]
+                + "-"
+                + shipped_product_timecards["Size"]
+                + "-"
+                + shipped_product_timecards["Cementless"]
+                + "-"
+                + shipped_product_timecards["Operation"]
+            )
+
+            # Sum the 'Good Qty' for each 'Custom Part ID'
+            completed_qty = shipped_product_timecards.groupby("Custom Part ID")["Good Qty"].sum()
+            completed_qty_df = pd.DataFrame(completed_qty)
+            completed_qty_df.reset_index(inplace=True, drop=False)
+
+            # Merge the completed quantities with the forecast orders
+            forecast_orders_temp = self.forecast_orders.copy()
+            rows_before_merge = len(forecast_orders_temp)
+            forecast_orders_temp = forecast_orders_temp.merge(
+                completed_qty_df, how="left", on="Custom Part ID"
+            )
+            rows_after_merge = len(forecast_orders_temp)
+
+            # Log a warning if the number of rows changed after the merge
+            if rows_before_merge != rows_after_merge:
+                logger.warning(
+                    f"Number of rows changed after merge: {rows_before_merge} -> {rows_after_merge}"
+                )
+
+            # Fill NaN values in 'Good Qty' with 0
+            forecast_orders_temp.fillna({"Good Qty": 0}, inplace=True)
+
+        else:
+            forecast_orders_temp = self.forecast_orders.copy()
+
+            forecast_orders_temp.loc[:, "Good Qty"] = 0
+
+        self.forecast_orders = forecast_orders_temp
+
+    def calculate_normalized_time_delay(self) -> None:
+        """
+        Calculate the Normalized Time Delay (NTD) for each row in the forecast orders DataFrame.
+
+        The NTD quantifies how far behind or ahead a production target is by comparing the proportion of time passed
+        to the proportion of production completed. The output is between -1 (production completed ahead of time)
+        and 1 (no production done, but the time has fully elapsed).
+
+        Returns:
+            None
+        """
+        # Calculate the proportion of time passed in the cycle
+        time_proportion = self.business_days_passed / self.total_business_days
+
+        def ntd_for_row(row: pd.Series) -> Union[float, None]:
+            # Calculate the NTD for a single row
+            earned_value = row["Good Qty"]
+            target = row["target"]
+
+            if target == 0:
+                return 0
+
+            completion_proportion = earned_value / target
+            ntd = time_proportion - completion_proportion
+            return ntd
+
+        # Apply the NTD calculation to each row in the forecast orders DataFrame
+        self.forecast_orders.loc[:, "NTD"] = self.forecast_orders.apply(ntd_for_row, axis=1)
+
+        # Debug statement
+        logger.info(
+            f"Max. NTD: {self.forecast_orders['NTD'].max()}, Min. NTD: {self.forecast_orders['NTD'].min()}"
+        )
+
+    def adjust_due_date_based_on_ntd(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Adjust the 'Algo Due Date' in the DataFrame based on the 'NTD' value using a sliding scale,
+        and further adjust based on 'Job Date'.
+
+        Args:
+            df (pd.DataFrame): The DataFrame containing the 'NTD', 'Job Date', and 'Algo Due Date' columns.
+
+        Returns:
+            pd.DataFrame: The updated DataFrame with adjusted 'Algo Due Date'.
+        """
+        # Set the initial 'Algo Due Date' to the end of the cycle date
+        df.loc[:, "Algo Due Date"] = self.end_of_cycle_date
+        four_weeks = timedelta(weeks=4)
+        days_between_today_and_cycle_end = (self.end_of_cycle_date - self.start_date).days
+
+        if days_between_today_and_cycle_end < 0:
+            days_between_today_and_cycle_end = 0
+
+        def adjust_due_date(row: pd.Series) -> Union[datetime, pd.Timestamp]:
+            # Adjust the due date based on the NTD value
+            ntd = row["NTD"]
+
+            if ntd <= -1.0:
+                due_date = self.end_of_cycle_date + four_weeks
+            elif -1.0 < ntd <= 0.0:
+                days_to_add = round((-ntd) * 28)  # 4 weeks * 7 days per week
+                due_date = self.end_of_cycle_date + timedelta(days=days_to_add)
+            elif 0.0 < ntd < 0.9:
+                proportion = ntd / 0.9
+                days_to_subtract = round(proportion * days_between_today_and_cycle_end)
+                due_date = self.end_of_cycle_date - timedelta(days=days_to_subtract)
+            elif ntd >= 0.9:
+                due_date = self.start_date + timedelta(days=1)
+            else:
+                due_date = row["Algo Due Date"]
+
+            # Adjust due_date based on Job Date
+            job_date = row["Created Date"]
+
+            try:
+                # Ensure 'Job Date' is a datetime object
+                job_date = pd.to_datetime(job_date)
+                days_difference = (self.start_date - job_date).days
+
+                # Adjust 'Algo Due Date' based on the days_difference
+                if days_difference > 20:
+                    due_date -= timedelta(days=3)
+                elif days_difference > 10:
+                    due_date -= timedelta(days=2)
+                elif days_difference > 5:
+                    due_date -= timedelta(days=1)
+                # No adjustment if days_difference <= 5
+            except Exception as e:
+                logger.warning(f"Invalid 'Job Date' for row with index {row.name}: {e}")
+
+            # Ensure the due date is at minimum self.start_date + timedelta(days=1)
+            min_due_date = self.start_date + timedelta(days=1)
+            if due_date < min_due_date:
+                due_date = min_due_date
+
+            return due_date
+
+        # Apply the due date adjustment to each row in the DataFrame
+        df["Algo Due Date"] = df.apply(adjust_due_date, axis=1)
+
+        # Debug statement
+        logger.info(
+            f"Max. Algo Due Date: {df['Algo Due Date'].max()}, Min. Algo Due Date: {df['Algo Due Date'].min()}"
+        )
+
+        return df
+
+    def run_due_date_optimization(
+        self,
+        scheduling_options: dict,
+        timecards: pd.DataFrame,
+        forecast_orders: pd.DataFrame,
+        croom_processed_orders: pd.DataFrame,
+    ) -> pd.DataFrame:
+        """
+        Run due date optimization by preprocessing forecast orders, calculating business days, fetching production actuals,
+        calculating NTD, and adjusting due dates based on NTD.
+
+        Args:
+            scheduling_options (dict): The scheduling options containing the start date.
+            timecards (pd.DataFrame): The DataFrame containing timecard data.
+            forecast_orders (pd.DataFrame): The DataFrame containing forecast orders.
+            croom_processed_orders (pd.DataFrame): The DataFrame containing processed orders.
+
+        Returns:
+            pd.DataFrame: The updated DataFrame with optimized due dates.
+        """
+        # Initialize the start date and forecast orders
+        self.start_date = pd.to_datetime(scheduling_options["start_date"])
+        self.forecast_orders = forecast_orders
+
+        # Execute the preprocessing and calculation steps
+        self.preprocess_forecast_orders()
+        self.calculate_business_days()
+        self.fetch_production_actuals(timecards, croom_processed_orders)
+        self.calculate_normalized_time_delay()
+
+        # Merge the NTD values with the processed orders and adjust due dates
+        ntd_small = self.forecast_orders[["Custom Part ID", "NTD"]]
+
+        # Identify 'Custom Part ID's that have a mild delay or higher (NTD > .3)
+        ntd_above_threshold = ntd_small[ntd_small["NTD"] > 0.3]
+
+        # Get the set of 'Custom Part ID's in croom_processed_orders
+        croom_custom_part_ids = set(croom_processed_orders["Custom Part ID"].unique())
+
+        # Find 'Custom Part ID's not present in croom_processed_orders
+        missing_ntd = ntd_above_threshold[
+            ~ntd_above_threshold["Custom Part ID"].isin(croom_custom_part_ids)
+        ]
+
+        # Raise warnings for missing 'Custom Part ID's where production is behind schedule,
+        # but there is no booked in product of that type
+        if not missing_ntd.empty:
+            for index, row in missing_ntd.iterrows():
+                warning_message = (
+                    f"There is no booked in product for '{row['Custom Part ID']}', "
+                    f"but there is a normalized time delay of {row['NTD']}. This indicates production is behind schedule."
+                )
+                # Use logging to issue a warning
+                logger.warning(warning_message)
+
+        # Proceed with merging and adjusting due dates,
+        # fill NTD with negative value if that product type does not have a production target in this cycle
+        croom_processed_orders = croom_processed_orders.merge(
+            ntd_small, on="Custom Part ID", how="left"
+        ).fillna({"NTD": -1.5})
+        croom_processed_orders = self.adjust_due_date_based_on_ntd(croom_processed_orders)
+
+        logger.info(
+            f"Number of orders with 0 prod. target: {croom_processed_orders[croom_processed_orders['NTD'] == -1.5].shape[0]}"
+        )
+
+        return croom_processed_orders
 
 
 class GeneticAlgorithmScheduler:
@@ -1757,8 +2224,11 @@ class GeneticAlgorithmScheduler:
         # Initialize machine availability, slack times, and product assignments
         avail_m, slack_m, haas_pick_m, product_m, P_j = self.initialize_resources()
 
+        # Find jobs that start with a HAAS unloading task
+        unloading_start = self.filter_dict_by_first_element(self.custom_tasks)
+
         # Prepare the job list with random shuffling and sorting
-        J_temp = self.prepare_job_list()
+        J_temp = self.prepare_job_list(unloading_start)
 
         # Determine the fixture to machine assignment
         fixture_to_machine_assignment = self.assign_arbors_to_machines(arbor_frequencies)
@@ -1821,7 +2291,13 @@ class GeneticAlgorithmScheduler:
 
         return avail_m, slack_m, haas_pick_m, product_m, P_j
 
-    def prepare_job_list(self) -> List[int]:
+    @staticmethod
+    def filter_dict_by_first_element(custom_tasks: dict) -> List[int]:
+        """Filters out jobs where custom tasks start with an unloading task on HAAS (2 or 32)"""
+        # Use a dictionary comprehension to filter entries
+        return [key for key, value in custom_tasks.items() if value[0] in (2, 32)]
+
+    def prepare_job_list(self, unloading_start: List[int]) -> List[int]:
         """
         Prepares the job list by shuffling and sorting based on random criteria and urgent orders.
 
@@ -1833,6 +2309,9 @@ class GeneticAlgorithmScheduler:
         5. Selects one to three random sizes to prioritize.
         6. Sorts the job list based on the random number and part IDs or due dates.
         7. Brings urgent orders to the front of the list.
+
+        Args:
+            unloading_start (List[int]): A list of job IDs where custom tasks start with an unloading task on HAAS.
 
         Returns:
             List[int]: A list of job IDs ready for scheduling.
@@ -1867,6 +2346,12 @@ class GeneticAlgorithmScheduler:
         # Bring urgent orders to the front
         random.shuffle(self.urgent_orders)
         for job in self.urgent_orders:
+            if job in J_temp:
+                J_temp.remove(job)
+                J_temp.append(job)
+
+        # Tasks that start with an unloading task must be brought to the front (even before priority orders)
+        for job in unloading_start:
             if job in J_temp:
                 J_temp.remove(job)
                 J_temp.append(job)
@@ -1927,7 +2412,7 @@ class GeneticAlgorithmScheduler:
 
         # The minimum time in day to start planning batches depends on HAAS duration
         min_time_in_day = max(
-            self.working_minutes_per_day - haas_processing_dur - random.choice([70, 80, 90]), 0
+            self.working_minutes_per_day - haas_processing_dur - random.choice([70, 80, 90, 100, 120]), 0
         )
 
         # Compute time within the current day
@@ -2244,7 +2729,7 @@ class GeneticAlgorithmScheduler:
                             (self.J[job_id][1] - (start_time + job_task_dur)),
                             1.02,
                         )
-                        * (20 if task_id in [1, 31] else 1)
+                        * (5 if task_id in [1, 31] else 1)
                         * (self.urgent_multiplier if job_id in self.urgent_orders else 1)
                         + (
                             # Fixed size bonus for completing the job on time (only applies if the final task is
@@ -2252,7 +2737,7 @@ class GeneticAlgorithmScheduler:
                             on_time_bonus
                             if (self.J[job_id][1] - (start_time + job_task_dur)) > 0
                             and task_id in [8, 20, 46]
-                            else 0
+                            else (-on_time_bonus / 2)
                         )
                         # Subtract points for every changeover that is made in the schedule (to minimize changeovers)
                         - (changeover_penalty if task_id in [-1, 29] and start_time != 0 else 0)
@@ -2550,7 +3035,10 @@ class GeneticAlgorithmScheduler:
                             custom_part_id_2 = task_details_2[0][-1]
 
                             # If the part ID between the jobs is the same, or they are compatible append to job pairs
-                            if custom_part_id_1 == custom_part_id_2:
+                            # For the OP2 machines we can mix and match Part IDs
+                            if "OP2" in custom_part_id_1:
+                                job_pairs.append((job1, job2))
+                            elif custom_part_id_1 == custom_part_id_2:
                                 job_pairs.append((job1, job2))
 
             # If no pairs found, continue to the next schedule

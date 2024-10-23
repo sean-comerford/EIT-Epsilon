@@ -14,6 +14,7 @@ from .nodes import (
     split_and_save_schedule,
     output_schedule_per_machine,
     reorder_jobs_by_starting_time,
+    OptimizeForecastOrders,
 )
 
 
@@ -21,6 +22,7 @@ def create_pipeline(**kwargs) -> Pipeline:
     # Instantiate a jobshop object
     jobshop = JobShop()
     genetic_algorithm = GeneticAlgorithmScheduler()
+    forecast_optimizer = OptimizeForecastOrders()
 
     # Create a pipeline with the jobshop object
     pipeline = Pipeline(
@@ -34,9 +36,20 @@ def create_pipeline(**kwargs) -> Pipeline:
                 name="preprocess_orders",
             ),
             node(
+                func=forecast_optimizer.run_due_date_optimization,
+                inputs=[
+                    "params:scheduling_options",
+                    "timecards",
+                    "forecast_orders",
+                    "croom_processed_orders",
+                ],
+                outputs="croom_updated_orders",
+                name="optimize_forecast_orders",
+            ),
+            node(
                 func=jobshop.build_ga_representation,
                 inputs=[
-                    "croom_processed_orders",
+                    "croom_updated_orders",
                     "timecards",
                     "croom_task_durations",
                     "params:task_to_machines",
@@ -53,7 +66,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             node(
                 func=jobshop.build_changeover_compatibility,
                 inputs=[
-                    "croom_processed_orders",
+                    "croom_updated_orders",
                     "params:size_categories_op2_cr",
                     "params:size_categories_op2_ps",
                 ],
@@ -89,7 +102,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             node(
                 func=reformat_output,
                 inputs=[
-                    "croom_processed_orders",
+                    "croom_updated_orders",
                     "best_schedule",
                     "params:column_mapping_reformat",
                     "params:machine_dict",
