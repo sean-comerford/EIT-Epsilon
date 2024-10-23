@@ -1201,20 +1201,15 @@ class GeneticAlgorithmScheduler:
 
         # Initialize indices for cementless and cemented machines
         machine_index_cementless = 0
-        machine_index_cemented = 0        
-        
-       # self.change_over_machines_op1 = [m for m in self.change_over_machines_op1 if m not in self.unavailable_machines]
-        #self.cemented_only_haas_machines = [m for m in self.cemented_only_haas_machines if m not in self.unavailable_machines]        
-        #if not self.change_over_machines_op1: logger.critical("No cementless machines to assign arbors to")
-      #  if not self.cemented_only_haas_machines: logger.critical("No cemented machines to assign arbors to")
+        machine_index_cemented = 0       
 
         # Initialize machine lists
         machines_cementless = self.change_over_machines_op1
         machines_cemented = list(reversed(self.cemented_only_haas_machines))
         
+        # Remove machines that are unavailable
         machines_cementless = [m for m in machines_cementless if m not in self.unavailable_machines]
-        machines_cemented = [m for m in machines_cemented if m not in self.unavailable_machines]
-        
+        machines_cemented = [m for m in machines_cemented if m not in self.unavailable_machines]        
         if not machines_cementless: logger.critical("No cementless machines to assign arbors to")
         if not machines_cemented: logger.critical("No cemented machines to assign arbors to")
                 
@@ -1224,6 +1219,7 @@ class GeneticAlgorithmScheduler:
         selected_machines_cls = random.choice([machines_cementless, machines_cementless[:-1], machines_cementless[:-2]])            
         selected_machines_ctd = random.choice([machines_cemented, machines_cemented[:-1]])
         
+        # Ensure we have machines to select from
         if not selected_machines_cls: selected_machines_cls = machines_cementless
         if not selected_machines_ctd: selected_machines_ctd = machines_cemented           
 
@@ -3169,7 +3165,10 @@ def calculate_kpi(schedule: pd.DataFrame) -> pd.DataFrame:
 
 
 def create_chart(
-    schedule: pd.DataFrame, parameters: Dict[str, Union[str, Dict[str, str]]], scheduling_options, machine_dict
+    schedule: pd.DataFrame, 
+    parameters: Dict[str, Union[str, Dict[str, str]]], 
+    scheduling_options: Dict[str, Any], 
+    machine_dict: Dict[int, str]
 ) -> pd.DataFrame:
     """
     Creates a Gantt chart based on the schedule and parameters.
@@ -3177,16 +3176,16 @@ def create_chart(
     Args:
         schedule (pd.DataFrame): The schedule data.
         parameters (Dict[str, Union[str, Dict[str, str]]]): The parameters for creating the chart.
-
+        scheduling_options Dict[str, Any]:  A dictionary containing scheduling options.
+        machine_dict (Dict[int, str]): The dictionary of all available machines numbers and their names.        
     Returns:
         pd.DataFrame: The updated schedule data with additional columns for the chart.
     """
-    
+    # Add a bar across the chart to indicate which machines are marked as unavailable in the scheduling options.
     start = schedule["Start_time"].min()
     end = schedule["End_time"].max()     
     data = [[machine_dict[m], start, end, "Machine Unavailable", "Machine Unavailable", 0, 0, 0] for m in scheduling_options["unavailable_machines"]]
-    df = pd.DataFrame(data, columns=["Machine", "Start_time", "End_time", "ID", "Custom Part ID", "Prod Due Date", "task", "Production Qty"])
-        
+    df = pd.DataFrame(data, columns=["Machine", "Start_time", "End_time", "ID", "Custom Part ID", "Prod Due Date", "task", "Production Qty"])        
     schedule = pd.concat([schedule, df if not df.empty else None], axis=0, join='outer')
 
     schedule["IsUrgent"] = schedule.apply(
