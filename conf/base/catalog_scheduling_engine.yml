@@ -331,12 +331,13 @@ gantt_chart_json:
       pattern_shape: IsUrgent
       title: Production Schedule
       hover_name: ID
-      hover_data: ['Prod Due Date', 'Algo Due Date', 'task', 'Custom Part ID', 'Production Qty']
+      hover_data: ['Prod Due Date', 'Algo Due Date', 'Task Name', 'Custom Part ID', 'Production Qty']
       template: simple_white
       color_discrete_sequence: ['rgb(41, 24, 107)', 'rgb(42, 35, 160)', 'rgb(15, 71, 153)',
                                 'rgb(18, 95, 142)', 'rgb(38, 116, 137)', 'rgb(53, 136, 136)',
                                 'rgb(65, 157, 133)', 'rgb(81, 178, 124)', 'rgb(111, 198, 107)',
                                 'rgb(160, 214, 91)', 'rgb(212, 225, 112)', 'rgb(253, 238, 153)']
+      color_discrete_map: {'Machine Unavailable': 'rgba(200,200,200, 0.5)'}
 
     layout:
       xaxis_title: Time

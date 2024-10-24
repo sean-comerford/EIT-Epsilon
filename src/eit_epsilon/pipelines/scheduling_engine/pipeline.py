@@ -53,6 +53,7 @@ def create_pipeline(**kwargs) -> Pipeline:
                     "timecards",
                     "croom_task_durations",
                     "params:task_to_machines",
+                    "params:task_to_names",
                     "params:scheduling_options",
                     "params:machine_dict",
                     "params:timecard_ctd_mapping",
@@ -140,7 +141,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             ),
             node(
                 func=reorder_jobs_by_starting_time,
-                inputs="final_schedule_with_id",
+                inputs=["final_schedule_with_id", "params:scheduling_options", "params:machine_dict"],
                 outputs="final_schedule_reordered",
                 name="reorder_jobs_by_starting_time",
             ),

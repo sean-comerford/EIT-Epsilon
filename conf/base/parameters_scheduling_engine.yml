@@ -127,7 +127,7 @@ machine_dict: {
   52: 'Nutshell Drag (Ghost)',
   53: 'Polishing-1',
   54: 'Polishing-2',
-  99: 'Dummy Changeover'
+  99: 'Dummy Machine'
 }
 
 ghost_machine_dict: {
@@ -276,6 +276,7 @@ scheduling_options: {
   cemented_only_haas_machines: [4, 5, 6], # HAAS Machines that can process cemented (primary) products
   non_manual_task_machines: [1, 3, 6, 10, 11, 12, 13, 17, 30, 32, 33, 34, 37, 38, 42], # Non-manual tasks (can go past EOD)
   non_slack_machines: [37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50],  # Machines that cannot use slack time
+  unavailable_machines: [], # Machines that are out of commission
   task_time_buffer: 5,  # Number of extra minutes to keep between tasks as a buffer (switching time)
   n: 500,  # Number of random schedules to generate
   n_e: 0.06,  # Proportion of best schedules to automatically pass on to the next generation (e.g.: 10%)
