@@ -10,10 +10,17 @@ orders:
 
 croom_open_orders:
   type: pandas.ExcelDataset
-  filepath: data/01_raw/jobs_jul_2024.xlsm
+  filepath: data/01_raw/jobs_until_jul_2024.xlsm
   load_args:
     engine: openpyxl
     sheet_name: Sheet1
+
+forecast_orders:
+  type: pandas.ExcelDataset
+  filepath: data/01_raw/forecast_orders_jul_halfway.xlsx
+  load_args:
+      engine: openpyxl
+      sheet_name: SKU Level Req
 
 jobs_not_booked_in:
   type: pandas.ExcelDataset
@@ -29,7 +36,6 @@ timecards: # To determine which jobs are finished or partly finished
     engine: openpyxl
     sheet_name: Sheet1
     usecols: ['Job ID', 'Operation', 'Work Centre ID', 'Process ID', 'Good Qty', 'Act Start Time', 'Act End Time']
-
 
 order_forecast:
   type: pandas.ExcelDataset
@@ -325,7 +331,7 @@ gantt_chart_json:
       pattern_shape: IsUrgent
       title: Production Schedule
       hover_name: ID
-      hover_data: ['Prod Due Date', 'Task Name', 'Custom Part ID', 'Production Qty']
+      hover_data: ['Prod Due Date', 'Algo Due Date', 'Task Name', 'Custom Part ID', 'Production Qty']
       template: simple_white
       color_discrete_sequence: ['rgb(41, 24, 107)', 'rgb(42, 35, 160)', 'rgb(15, 71, 153)',
                                 'rgb(18, 95, 142)', 'rgb(38, 116, 137)', 'rgb(53, 136, 136)',

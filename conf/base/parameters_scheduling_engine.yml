@@ -247,7 +247,8 @@ timecard_op1_mapping: {
     'MECWM_CLEN,INSPE_GRINS': 5,
     'MANP_POLIS': 6,
     'MECWS_CLEN,INSPE_P': 8,
-    'MECWM_CLEN,INSPE_P': 8
+    'MECWM_CLEN,INSPE_P': 8,
+    'MECWM_CLEN,INSPE_P INS': 8
 }
 
 timecard_op2_mapping: {
@@ -267,7 +268,7 @@ timecard_op2_mapping: {
 }
 
 scheduling_options: {
-  start_date: "2024-07-01T06:10",  # Starting date used to calculate difference with due datet
+  start_date: "2024-07-01T06:10",  # Starting date used to calculate difference with due date
   change_over_time_op1: 180,  # Minutes required to do a changeover on the HAAS machines
   change_over_time_op2: 15,  # Minutes required to do a changeover on the non-Drag OP 2 machines
   change_over_machines_op1: [1, 2, 3, 4, 5, 6], # Machines that require a changeover for OP1 (key in machine dict above)
@@ -277,13 +278,13 @@ scheduling_options: {
   non_slack_machines: [37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50],  # Machines that cannot use slack time
   unavailable_machines: [], # Machines that are out of commission
   task_time_buffer: 5,  # Number of extra minutes to keep between tasks as a buffer (switching time)
-  n: 50,  # Number of random schedules to generate
+  n: 500,  # Number of random schedules to generate
   n_e: 0.06,  # Proportion of best schedules to automatically pass on to the next generation (e.g.: 10%)
   n_c: 0.15,  # Proportion of children to generate in the offspring function
   working_minutes_per_day: 500,  # Number of working minutes per day (8 hours * 60 minutes)
   total_minutes_per_day: 1440,  # Number of minutes in exactly 24 hours
   drag_machine_setup_time: 15,  # Time it takes to set up a new batch on the drag machines
-  max_iterations: 10,  # Maximum number of iterations/generations to run the algorithm
+  max_iterations: 35,  # Maximum number of iterations/generations to run the algorithm
   time_budget: 0,  # Maximum runtime for the algorithm in seconds - 0 means no limit; max_iterations will be used
   offspring_frequency: 7,  # Enable offspring every X generations (E.g.: a value of 2 means every other generation)
   urgent_multiplier: 3,  # Multiplier for (due_date - completion_time) for urgent_orders
