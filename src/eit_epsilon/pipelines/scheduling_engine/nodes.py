@@ -877,7 +877,7 @@ class JobShop(Job, Shop):
             new_machines = [m for m in machines if m not in scheduling_options["unavailable_machines"]]
             task_to_machines[t] = new_machines
             if len(new_machines) == 0:
-                logger.critical(f"No machines available to complete task: {t} {task_to_names[t]}")
+                logger.warning(f"No machines available to complete task: {t} {task_to_names[t]}!")
 
         part_id_to_task_seq = self.create_part_id_to_task_seq(remaining_jobs)
 
@@ -1296,7 +1296,7 @@ class GeneticAlgorithmScheduler:
         avail_m: Dict[int, int],
         random_roll: float,
         prob: float = 0.75,
-    ) -> int:
+    ) -> Union[int, None]:
         """
         Selects a machine for the given task based on availability and compatibility.
         There is a chance of 'prob' to select the machine that comes available earliest,
@@ -1316,7 +1316,9 @@ class GeneticAlgorithmScheduler:
             task_id
         ]  # A list of machines that are compatible with this task
 
-        if random_roll < prob:
+        if not compat_with_task:
+            return 99  # Dummy machine ID for tasks that can't be processed
+        elif random_roll < prob:
             m = min(compat_with_task, key=lambda x: avail_m.get(x))
         else:
             m = random.choice(compat_with_task)
@@ -2070,7 +2072,7 @@ class GeneticAlgorithmScheduler:
                 compat_task_0,
                 product_m,
                 job_id,
-                fixture_to_machine_assignment,  # Use the correct parameter
+                fixture_to_machine_assignment,
             )
             haas_m = (
                 min(preferred_machines, key=lambda x: avail_m.get(x))
