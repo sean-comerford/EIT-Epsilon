@@ -871,7 +871,7 @@ class JobShop(Job, Shop):
 
         # Create the machine list
         M = self.create_machines(machine_dict)
-         
+
         # Remove unavailable machines from task_to_machines
         for t, machines in task_to_machines.items():
             new_machines = [m for m in machines if m not in scheduling_options["unavailable_machines"]]
@@ -881,7 +881,7 @@ class JobShop(Job, Shop):
 
         part_id_to_task_seq = self.create_part_id_to_task_seq(remaining_jobs)
 
-        dur = self.get_duration_matrix(J, part_id_to_task_seq, remaining_jobs, croom_task_durations)       
+        dur = self.get_duration_matrix(J, part_id_to_task_seq, remaining_jobs, croom_task_durations)
 
         input_repr_dict = {
             "J": J,
@@ -990,6 +990,7 @@ class GeneticAlgorithmScheduler:
         self.urgent_multiplier = None
         self.max_iterations = None
         self.task_time_buffer = None
+        self.unavailable_machines = None
 
     def adjust_start_time(
         self, start: float, duration: Union[float, int] = 0, task: int = None
@@ -1201,27 +1202,33 @@ class GeneticAlgorithmScheduler:
 
         # Initialize indices for cementless and cemented machines
         machine_index_cementless = 0
-        machine_index_cemented = 0       
+        machine_index_cemented = 0
 
         # Initialize machine lists
         machines_cementless = self.change_over_machines_op1
         machines_cemented = list(reversed(self.cemented_only_haas_machines))
-        
+
         # Remove machines that are unavailable
         machines_cementless = [m for m in machines_cementless if m not in self.unavailable_machines]
-        machines_cemented = [m for m in machines_cemented if m not in self.unavailable_machines]        
-        if not machines_cementless: logger.critical("No cementless machines to assign arbors to")
-        if not machines_cemented: logger.critical("No cemented machines to assign arbors to")
-                
+        machines_cemented = [m for m in machines_cemented if m not in self.unavailable_machines]
+        if not machines_cementless:
+            logger.critical("No cementless machines to assign arbors to")
+        if not machines_cemented:
+            logger.critical("No cemented machines to assign arbors to")
+
         # Randomly select machines
         # For cementless: [1, 2, 3, 4, 5, 6], [1, 2, 3, 4, 5], [1, 2, 3, 4],
         # The latter options have fewer machines but also less overlap with cemented machines
-        selected_machines_cls = random.choice([machines_cementless, machines_cementless[:-1], machines_cementless[:-2]])            
+        selected_machines_cls = random.choice(
+            [machines_cementless, machines_cementless[:-1], machines_cementless[:-2]]
+        )
         selected_machines_ctd = random.choice([machines_cemented, machines_cemented[:-1]])
-        
+
         # Ensure we have machines to select from
-        if not selected_machines_cls: selected_machines_cls = machines_cementless
-        if not selected_machines_ctd: selected_machines_ctd = machines_cemented           
+        if not selected_machines_cls:
+            selected_machines_cls = machines_cementless
+        if not selected_machines_ctd:
+            selected_machines_ctd = machines_cemented
 
         # Randomly shuffle the arbor order
         arbors = list(arbor_frequency.items())
@@ -1252,7 +1259,7 @@ class GeneticAlgorithmScheduler:
             position = sorted_arbors.index(arbor) + 1
 
             # Calculate the probability based on the position
-            if len(machines) == 1: 
+            if len(machines) == 1:
                 num_machines_to_assign = 1
             else:
                 probability_two_machines = (len(sorted_arbors) - position + 1) / len(sorted_arbors)
@@ -2773,7 +2780,9 @@ class GeneticAlgorithmScheduler:
         return self.best_schedule, best_scores
 
 
-def reorder_jobs_by_starting_time(croom_processed_orders: pd.DataFrame) -> pd.DataFrame:
+def reorder_jobs_by_starting_time(
+    croom_processed_orders: pd.DataFrame, scheduling_options: dict, machine_dict: dict
+) -> pd.DataFrame:
     """
     Reorders jobs by their starting time within each group of 'part_id' and 'Prod Due Date'.
     The smallest job_id gets the earliest starting time, while ensuring each Order retains the same tasks as before.
@@ -2784,6 +2793,8 @@ def reorder_jobs_by_starting_time(croom_processed_orders: pd.DataFrame) -> pd.Da
     Args:
         croom_processed_orders (pd.DataFrame): DataFrame containing the processed orders with columns 'part_id',
                                                'Prod Due Date', 'task', 'Start_time', and 'Order'.
+        scheduling_options (dict): Dictionary containing machine names with key 'unavailable_machines'.
+        machine_dict (dict): Dictionary mapping machine numbers to machine names.
 
     Returns:
         pd.DataFrame: DataFrame with reordered Orders based on starting time.
@@ -2835,6 +2846,22 @@ def reorder_jobs_by_starting_time(croom_processed_orders: pd.DataFrame) -> pd.Da
             f"{reordered_df[reordered_df['ID'].isnull()]['Order'].unique()}"
         )
 
+    # Add a bar across the chart to indicate which machines are marked as unavailable in the scheduling options.
+    start, end = reordered_df["Start_time"].min(), reordered_df["End_time"].max()
+
+    # Create a DataFrame for unavailable machines only if there are any
+    if scheduling_options["unavailable_machines"]:
+        unavailable_machine_tasks = pd.DataFrame(
+            [
+                [machine_dict[m], start, end, "Machine Unavailable", "Machine Unavailable"]
+                for m in scheduling_options["unavailable_machines"]
+            ],
+            columns=["Machine", "Start_time", "End_time", "Custom Part ID", "Task Name"],
+        )
+
+        # Concatenate the unavailable machine tasks
+        reordered_df = pd.concat([reordered_df, unavailable_machine_tasks], axis=0)
+
     return reordered_df
 
 
@@ -2861,10 +2888,14 @@ def reformat_output(
     Returns:
         pd.DataFrame: The reformatted output dataframe.
     """
+
+    # Initialize scheduling columns
+    schedule_cols = ["job_id", "task", "machine", "starting_time", "duration", "task_idx", "part_id"]
+
     # Convert best schedule into a dataframe
     schedule_df = pd.DataFrame(
         best_schedule,
-        columns=["job_id", "task", "machine", "starting_time", "duration", "task_idx", "part_id"],
+        columns=schedule_cols,
     )
 
     # Round the starting time and duration
@@ -3092,7 +3123,7 @@ def create_start_end_time(
     # Check if the time between the end of one task and the start of the next is at least 15 minutes
     # for machines with 'Drag' in the name
     for machine in croom_reformatted_orders["Machine"].unique():
-        if "Drag" in machine:
+        if machine is not None and "Drag" in machine:
             machine_schedule = croom_reformatted_orders[
                 croom_reformatted_orders["Machine"] == machine
             ].sort_values("Start_time")
@@ -3165,10 +3196,9 @@ def calculate_kpi(schedule: pd.DataFrame) -> pd.DataFrame:
 
 
 def create_chart(
-    schedule: pd.DataFrame, 
-    parameters: Dict[str, Union[str, Dict[str, str]]], 
-    scheduling_options: Dict[str, Any], 
-    machine_dict: Dict[int, str]
+    schedule: pd.DataFrame,
+    parameters: Dict[str, Union[str, Dict[str, str]]],
+    scheduling_options: Dict[str, Any],
 ) -> pd.DataFrame:
     """
     Creates a Gantt chart based on the schedule and parameters.
@@ -3177,17 +3207,10 @@ def create_chart(
         schedule (pd.DataFrame): The schedule data.
         parameters (Dict[str, Union[str, Dict[str, str]]]): The parameters for creating the chart.
         scheduling_options Dict[str, Any]:  A dictionary containing scheduling options.
-        machine_dict (Dict[int, str]): The dictionary of all available machines numbers and their names.        
+
     Returns:
         pd.DataFrame: The updated schedule data with additional columns for the chart.
     """
-    # Add a bar across the chart to indicate which machines are marked as unavailable in the scheduling options.
-    start = schedule["Start_time"].min()
-    end = schedule["End_time"].max()     
-    data = [[machine_dict[m], start, end, "Machine Unavailable", "Machine Unavailable", 0, 0, 0] for m in scheduling_options["unavailable_machines"]]
-    df = pd.DataFrame(data, columns=["Machine", "Start_time", "End_time", "ID", "Custom Part ID", "Prod Due Date", "task", "Production Qty"])        
-    schedule = pd.concat([schedule, df if not df.empty else None], axis=0, join='outer')
-
     schedule["IsUrgent"] = schedule.apply(
         lambda row: True if row["job_id"] in scheduling_options["urgent_orders"] else False, axis=1
     )

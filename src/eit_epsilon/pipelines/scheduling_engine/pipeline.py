@@ -128,7 +128,7 @@ def create_pipeline(**kwargs) -> Pipeline:
             ),
             node(
                 func=reorder_jobs_by_starting_time,
-                inputs="final_schedule_with_id",
+                inputs=["final_schedule_with_id", "params:scheduling_options", "params:machine_dict"],
                 outputs="final_schedule_reordered",
                 name="reorder_jobs_by_starting_time",
             ),
@@ -138,7 +138,6 @@ def create_pipeline(**kwargs) -> Pipeline:
                     "final_schedule_reordered",
                     "params:visualization_options",
                     "params:scheduling_options",
-                    "params:machine_dict",
                 ],
                 outputs="gantt_chart_json",
                 name="schedule_chart",
