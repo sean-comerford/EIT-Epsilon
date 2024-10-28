@@ -127,7 +127,7 @@ class Job:
         grouped = data.groupby("Part ID")[["Type", "Size", "Orientation", "Custom Part ID"]].nunique()
 
         if (grouped > 1).any().any():
-            logger.error(
+            logger.warning(
                 "[bold red blink]Part ID not unique for every combination of Type, Size, and Orientation[/]",
                 extra={"markup": True},
             )
