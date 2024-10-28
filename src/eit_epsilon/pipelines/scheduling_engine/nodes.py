@@ -2722,7 +2722,9 @@ class GeneticAlgorithmScheduler:
         best_scores: deque = None,
         display_scores: bool = True,
         on_time_bonus: int = 5000,
-        changeover_penalty: int = 10000,
+        changeover_penalty: int = 50000,
+        multiplication_haas: int = 10,
+        late_exponent: float = 1.025,
     ):
         """
         Evaluates the population of schedules by calculating a score for each schedule based on the completion times
@@ -2737,6 +2739,8 @@ class GeneticAlgorithmScheduler:
             display_scores (bool, optional): If True, logs the best, median, and worst scores. Defaults to True.
             on_time_bonus (int, optional): A fixed bonus added to the score for jobs completed on time. Defaults to 5000.
             changeover_penalty (int, optional): A penalty for every changeover made in the schedule. Defaults to 10000.
+            multiplication_haas (int, optional): A multiplier to apply to the score for HAAS tasks. Defaults to 10.
+            late_exponent (float, optional): The exponent to use for penalizing late jobs. Defaults to 1.025.
 
         Returns:
             None
@@ -2756,9 +2760,9 @@ class GeneticAlgorithmScheduler:
                         # Difference between due date and completion time, multiplied by urgent_multiplier if urgent.
                         self.negative_exponentiation(
                             (self.J[job_id][1] - (start_time + job_task_dur)),
-                            1.02,
+                            late_exponent,
                         )
-                        * (5 if task_id in [1, 31] else 1)
+                        * (multiplication_haas if task_id in [1, 31] else 1)
                         * (self.urgent_multiplier if job_id in self.urgent_orders else 1)
                         + (
                             # Fixed size bonus for completing the job on time (only applies if the final task is
